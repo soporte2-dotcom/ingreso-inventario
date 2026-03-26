@@ -1,25 +1,8 @@
 <?php
 require_once("../../config/conexionserver.php");
-
-// Verificar permisos de acceso
-if(isset($_SESSION["Id_Usuario"])) {
-    require_once("../../models/mdlPermisos.php");
-    $permisos = new Permisos();
-    $menuUsuario = $permisos->get_menu_usuario($_SESSION["Id_Usuario"]);
-    
-    // Verificar si tiene permiso para acceder a este módulo
-    $tienePermiso = false;
-    foreach ($menuUsuario as $item) {
-        if (strpos($item['ruta'], 'Permisos') !== false) {
-            $tienePermiso = true;
-            break;
-        }
-    }
-    
-    if (!$tienePermiso) {
-        header("Location:../../view/Home/");
-        exit();
-    }
+if(isset($_SESSION["Id_Usuario"])){
+date_default_timezone_set("America/Bogota");
+$DateAndTime = date('d-m-Y h:i:s', time());
 ?>
 <!DOCTYPE html>
 <html>

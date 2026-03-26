@@ -74,12 +74,10 @@ $(document).ready(function(){
 		if ($('body').hasClass('menu-left-opened')) {
 			$(this).removeClass('is-active');
 			$('body').removeClass('menu-left-opened');
-			$('body').addClass('sidebar-hidden');
 			$('html').css('overflow','auto');
 		} else {
 			$(this).addClass('is-active');
 			$('body').addClass('menu-left-opened');
-			$('body').removeClass('sidebar-hidden');
 			$('html').css('overflow','hidden');
 		}
 	});

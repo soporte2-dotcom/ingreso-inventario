@@ -907,6 +907,7 @@ function duplicarLinea(tipo, consecutivo, producto, seq) {
         if (isConfirm) {
             console.log('📤 Enviando petición de duplicación...');
             
+            // 🔥 IMPORTANTE: Cancelar cualquier edición activa antes de duplicar
             if (editingRow) {
                 cancelarEdicionNativa();
             }

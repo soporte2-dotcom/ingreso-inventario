@@ -35,6 +35,7 @@ $(document).ready(function() {
 
     var tipo =  getUrlParameter('tipo');
     var consecutivo =  getUrlParameter('consecutivo');
+    listardetalle(tipo, consecutivo);
 
 });
 
@@ -53,7 +54,7 @@ var getUrlParameter = function getUrlParameter(sParam) {
     }
 };
 
-$(document).on("click","#btnupdate1", function(event){
+$(document).on("click","#btnupdate", function(event){
 
     event.preventDefault();       
 
@@ -99,63 +100,34 @@ $(document).on("click","#btnupdate1", function(event){
 
 
 
-// Evento click para el botón actualizar
-$(document).on("click","#btnupdate", function(event){
 
-    event.preventDefault(); // Prevenir comportamiento por defecto
-    
-    // Array para almacenar los registros modificados
-    let registrosModificados = [];
+
+function listardetalle(tipo, consecutivo){
+
+    $.post("../../controller/documento.php?op=mostrar_entrada", { tipo : tipo, consecutivo : consecutivo }, function (data) {
+        data = JSON.parse(data);
+        console.log(data);
+        $('#tipo').val(data.tipo);
+        $('#tipodoc').val(data.TipoDoctos);
+        $('#numdoc').val(data.Numero_documento);
+        $('#pedido1').val(data.Numero_Docto_Base_2);
+        $('#traslfact1').val(data.Numero_Docto_Base);        
+        $('#nit1').val(data.nit_Cedula);
+        $('#nombre1').val(data.Nombre_Cliente);
+        $('#direcc').val(data.codigo_direccion);
+        $('#direccion1').val(data.direccion);
+        $('#telefono1').val(data.telefono_1);
+        $('#nit2').val(data.nit_Cedula_2);
+        $('#nombre2').val(data.nombre2);
+        $('#codigo_direccion2').val(data.codigo_direccion_2);
+        $('#direccion2').val(data.direccion2);
+        $('#sw').val(data.Tipo_Docto_Base_2);
+
         
-    // Recorrer todos los inputs de la tabla
-    $("#tb-doc tbody input[type='text']").each(function() {
-        let input = $(this);
-        let id = input.attr('id');
-        let valor = input.val();
-            
-        // Separar el tipo y número de documento del ID
-        let [tipo, numeroDocumento] = id.split('_');
-            
-        registrosModificados.push({
-            tipo: tipo,
-            numeroDocumento: numeroDocumento,
-            numeroDoctoBase: valor
-        });
+
     });
-
-    console.log('Datos a enviar:', registrosModificados); // Para debug
         
-        // Llamada AJAX para actualizar
-        $.ajax({
-            url: '../../controller/documento.php?op=update_doc_ref',
-            type: 'POST',
-            data: {
-                registros: JSON.stringify(registrosModificados)
-            },
-            success: function(response) {
-                console.log('Respuesta raw del servidor:', response); // Para debug
-                try {
-                    let data = JSON.parse(response);
-                    if(data.status) {
-                        swal("¡Éxito!", "Registros actualizados correctamente", "success");
-                        // Opcional: recargar la tabla
-                        $("#tb-doc").submit();
-                    } else {
-                        swal("Error", "No se pudieron actualizar los registros", "error");
-                    }
-                } catch(e) {
-                    console.error(e);
-                    swal("Error", "Ocurrió un error al procesar la respuesta", "error");
-                }
-            },
-            error: function() {
-                swal("Error", "Error en la comunicación con el servidor", "error");
-            }
-        });
-});
-
-
-
+}
 
 
 init();
