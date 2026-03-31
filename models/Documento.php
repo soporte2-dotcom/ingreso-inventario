@@ -135,33 +135,37 @@
 
         public function listar_entradas_x_usuario($usuario){
             $cn = new Conectarserver;
+            $resultado = array();
 
-            if($usuario='LAUREN' ||  $usuario='SA'){
+            if($usuario == 'LAUREN' || $usuario == 'SA'){
 
-                $sql="SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2, 
+                $sql="SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
                     d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, d.exportado, d.usuario
 
                     FROM Documentos d, Terceros_Dir td, TblTipoDoctos tt, TblTerceros t
 
-                    WHERE CONVERT(date, Fecha_Hora_Factura) > '2025/07/31'
-                    AND tt.idTipoDoctos = d.tipo AND td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion 
+                    WHERE CONVERT(date, Fecha_Hora_Factura) > '2025/07/31' AND tt.tipo IN ('12', '3')
+                    AND tt.idTipoDoctos = d.tipo AND td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion
                     AND t.nit_cedula = d.nit_Cedula
                     ORDER BY d.Fecha_Hora_Factura DESC";
+
+                $registros = sqlsrv_query($cn->getConecta(), $sql);
+
             } else {
 
-                $sql="SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2, 
+                $sql="SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
                     d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, d.exportado, d.usuario
 
                     FROM Documentos d, Terceros_Dir td, TblTipoDoctos tt, TblTerceros t
 
-                    WHERE d.usuario = ? AND CONVERT(date, Fecha_Hora_Factura) > '2024/12/31'
-                    AND tt.idTipoDoctos = d.tipo AND td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion 
+                    WHERE d.usuario = ? AND CONVERT(date, Fecha_Hora_Factura) > '2024/12/31' AND tt.tipo IN ('12', '3')
+                    AND tt.idTipoDoctos = d.tipo AND td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion
                     AND t.nit_cedula = d.nit_Cedula
                     ORDER BY d.Fecha_Hora_Factura DESC";
-            }
 
-            $params = array($usuario);
-            $registros = sqlsrv_query($cn->getConecta(), $sql, $params);
+                $params = array($usuario);
+                $registros = sqlsrv_query($cn->getConecta(), $sql, $params);
+            }
 
             if($registros === false) {
                 $this->registrar_error("Error en listar_entradas_x_usuario: " . print_r(sqlsrv_errors(), true));
@@ -169,7 +173,7 @@
             }
 
             while($stmt = sqlsrv_fetch_array($registros, SQLSRV_FETCH_ASSOC)) {
-                $resultado[] = $stmt;                   
+                $resultado[] = $stmt;
             }
 
             return $resultado;

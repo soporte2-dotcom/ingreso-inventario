@@ -72,7 +72,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 
 .tipo-permisos-selector .permiso-btn {
     float: left;
-    width: 49%;
+    width: 32%;
     padding: 15px 20px;
     background-color: #f8f9fa !important;
     border: 2px solid #dee2e6 !important;
@@ -113,6 +113,25 @@ $DateAndTime = date('d-m-Y h:i:s', time());
         margin-right: 0;
         margin-bottom: 10px;
     }
+}
+
+/* === Botones de tipo de permiso con colores === */
+.tipo-permisos-selector .permiso-btn.modulos-btn.active {
+    background-color: #007bff !important;
+    border-color: #007bff !important;
+    color: #ffffff !important;
+}
+
+.tipo-permisos-selector .permiso-btn.entradas-btn.active {
+    background-color: #28a745 !important;
+    border-color: #28a745 !important;
+    color: #ffffff !important;
+}
+
+.tipo-permisos-selector .permiso-btn.salidas-btn.active {
+    background-color: #dc3545 !important;
+    border-color: #dc3545 !important;
+    color: #ffffff !important;
 }
 
 /* === Usuario Seleccionado === */
@@ -186,12 +205,16 @@ $DateAndTime = date('d-m-Y h:i:s', time());
                     <div class="row">
                         <div class="col-lg-12">
                             <div class="tipo-permisos-selector">
-                                <button type="button" id="btn_permisos_modulos" class="permiso-btn active">
-                                    Permisos de Módulos
+                                <button type="button" id="btn_permisos_modulos" class="permiso-btn modulos-btn active">
+                                    <span class="glyphicon glyphicon-lock"></span> Permisos de Módulos
                                 </button>
-                                
-                                <button type="button" id="btn_permisos_documentos" class="permiso-btn">
-                                    Permisos de Documentos
+
+                                <button type="button" id="btn_permisos_entradas" class="permiso-btn entradas-btn">
+                                    <span class="glyphicon glyphicon-log-in"></span> Permisos de Entradas
+                                </button>
+
+                                <button type="button" id="btn_permisos_salidas" class="permiso-btn salidas-btn">
+                                    <span class="glyphicon glyphicon-log-out"></span> Permisos de Salidas
                                 </button>
                             </div>
                         </div>
@@ -279,7 +302,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
     </div>
 
     <?php require_once("../MainJs/js.php"); ?>
-    <script type="text/javascript" src="permisos.js"></script>
+    <script type="text/javascript" src="permisos.js?v=2"></script>
 
 </body>
 </html>

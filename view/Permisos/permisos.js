@@ -1,35 +1,37 @@
-$(document).ready(function() {   
-    // Variable para controlar el tipo de permisos
+$(document).ready(function() {
+    // Variable para controlar el tipo de permisos: 'modulos', 'entradas', 'salidas'
     var tipoPermisosActual = 'modulos';
 
     // Configurar botones de toggle
     $("#btn_permisos_modulos").click(function() {
         tipoPermisosActual = 'modulos';
-        
-        // Remover active de todos y agregarlo solo al clickeado
-        $("#btn_permisos_modulos").addClass('active');
-        $("#btn_permisos_documentos").removeClass('active');
-        
-        // Si ya hay un usuario seleccionado, recargar permisos
-        let usuario_id = $("#usuario_id").val();
-        if (usuario_id) {
-            cargarPermisosUsuario(usuario_id);
-        }
+        actualizarBotonesActivos(this);
+        recargarPermisosSiHayUsuario();
     });
 
-    $("#btn_permisos_documentos").click(function() {
-        tipoPermisosActual = 'documentos';
-        
-        // Remover active de todos y agregarlo solo al clickeado
-        $("#btn_permisos_documentos").addClass('active');
-        $("#btn_permisos_modulos").removeClass('active');
-        
-        // Si ya hay un usuario seleccionado, recargar permisos
+    $("#btn_permisos_entradas").click(function() {
+        tipoPermisosActual = 'entradas';
+        actualizarBotonesActivos(this);
+        recargarPermisosSiHayUsuario();
+    });
+
+    $("#btn_permisos_salidas").click(function() {
+        tipoPermisosActual = 'salidas';
+        actualizarBotonesActivos(this);
+        recargarPermisosSiHayUsuario();
+    });
+
+    function actualizarBotonesActivos(botonActivo) {
+        $(".permiso-btn").removeClass('active');
+        $(botonActivo).addClass('active');
+    }
+
+    function recargarPermisosSiHayUsuario() {
         let usuario_id = $("#usuario_id").val();
         if (usuario_id) {
             cargarPermisosUsuario(usuario_id);
         }
-    });
+    }
 
     // Buscar usuario al escribir
     $("#buscar_usuario").on('input', function() {
@@ -61,9 +63,9 @@ $(document).ready(function() {
     // Función para buscar usuarios
     function buscarUsuarios(busqueda) {
         $("#resultados_busqueda").html('<div class="no-results">Buscando...</div>').show();
-        
-        $.post("../../controller/permisos.php?op=buscar_usuario", 
-            { busqueda: busqueda }, 
+
+        $.post("../../controller/permisos.php?op=buscar_usuario",
+            { busqueda: busqueda },
             function(data) {
                 if (data && data.trim() !== '') {
                     $("#resultados_busqueda").html(data).show();
@@ -81,11 +83,11 @@ $(document).ready(function() {
     $(document).on("click", ".usuario-item", function() {
         let usuario_id = $(this).data('usuario-id');
         let usuario_text = $(this).text().trim();
-        
+
         $("#buscar_usuario").val(usuario_text);
         $("#usuario_id").val(usuario_id);
         $("#resultados_busqueda").hide().html('');
-        
+
         // Cargar permisos del usuario seleccionado
         cargarPermisosUsuario(usuario_id);
     });
@@ -93,33 +95,25 @@ $(document).ready(function() {
     // Función para cargar permisos del usuario
     function cargarPermisosUsuario(usuario_id) {
         $("#usuario_seleccionado").html('<div class="text-center"><span class="glyphicon glyphicon-refresh glyphicon-spin"></span> Cargando permisos...</div>').show();
-        
-        var operacion = (tipoPermisosActual === 'documentos') ? 'cargar_permisos_documentos' : 'cargar_permisos';
-        
-        $.post("../../controller/permisos.php?op=" + operacion, 
-            { usuario_id: usuario_id }, 
+
+        // Determinar operación según tipo de permiso
+        var operacion;
+        if (tipoPermisosActual === 'modulos') {
+            operacion = 'cargar_permisos';
+        } else if (tipoPermisosActual === 'entradas') {
+            operacion = 'cargar_permisos_entradas';
+        } else {
+            operacion = 'cargar_permisos_salidas';
+        }
+
+        $.post("../../controller/permisos.php?op=" + operacion,
+            { usuario_id: usuario_id },
             function(data) {
                 $("#usuario_seleccionado").html(data);
-                
+
                 // Agregar botón de guardar después de cargar los permisos
-                if (!$("#btn_guardar_container").length) {
-                    var textoBoton = (tipoPermisosActual === 'documentos') ? 
-                        'Guardar Permisos de Documentos' : 'Guardar Permisos';
-                    
-                    $("#usuario_seleccionado").append(`
-                        <div class="row" id="btn_guardar_container">
-                            <div class="col-lg-12 text-right" style="margin-top: 20px;">
-                                <button type="button" id="btn_guardar" class="btn btn-rounded btn-inline btn-success">
-                                    <span class="glyphicon glyphicon-floppy-disk"></span> ${textoBoton}
-                                </button>
-                                <button type="button" id="btn_limpiar" class="btn btn-rounded btn-inline btn-default">
-                                    <span class="glyphicon glyphicon-remove"></span> Limpiar
-                                </button>
-                            </div>
-                        </div>
-                    `);
-                }
-                
+                agregarBotonesGuardar();
+
                 // Configurar eventos del checkbox "Seleccionar Todos"
                 configurarSeleccionarTodos();
             }
@@ -129,46 +123,75 @@ $(document).ready(function() {
         });
     }
 
+    function agregarBotonesGuardar() {
+        if (!$("#btn_guardar_container").length) {
+            var textoBoton;
+            if (tipoPermisosActual === 'modulos') {
+                textoBoton = 'Guardar Permisos de Módulos';
+            } else if (tipoPermisosActual === 'entradas') {
+                textoBoton = 'Guardar Permisos de Entradas';
+            } else {
+                textoBoton = 'Guardar Permisos de Salidas';
+            }
+
+            $("#usuario_seleccionado").append(`
+                <div class="row" id="btn_guardar_container">
+                    <div class="col-lg-12 text-right" style="margin-top: 20px;">
+                        <button type="button" id="btn_guardar" class="btn btn-rounded btn-inline btn-success">
+                            <span class="glyphicon glyphicon-floppy-disk"></span> ${textoBoton}
+                        </button>
+                        <button type="button" id="btn_limpiar" class="btn btn-rounded btn-inline btn-default">
+                            <span class="glyphicon glyphicon-remove"></span> Limpiar
+                        </button>
+                    </div>
+                </div>
+            `);
+        }
+    }
+
     // Función para configurar el checkbox "Seleccionar Todos"
     function configurarSeleccionarTodos() {
         // Para módulos
         $(document).off('change', '#select_all_modulos').on('change', '#select_all_modulos', function() {
             var isChecked = $(this).prop('checked');
             $('.modulos-list input[type="checkbox"]').prop('checked', isChecked);
-            console.log('Módulos todos ' + (isChecked ? 'marcados' : 'desmarcados'));
         });
-        
-        // Para documentos
-        $(document).off('change', '#select_all_documentos').on('change', '#select_all_documentos', function() {
+
+        // Para documentos de entrada
+        $(document).off('change', '#select_all_documentos_entrada').on('change', '#select_all_documentos_entrada', function() {
             var isChecked = $(this).prop('checked');
-            $('.documentos-list input[type="checkbox"]').prop('checked', isChecked);
-            console.log('Documentos todos ' + (isChecked ? 'marcados' : 'desmarcados'));
+            $('.documentos-entrada input[type="checkbox"]').prop('checked', isChecked);
         });
-        
+
+        // Para documentos de salida
+        $(document).off('change', '#select_all_documentos_salida').on('change', '#select_all_documentos_salida', function() {
+            var isChecked = $(this).prop('checked');
+            $('.documentos-salida input[type="checkbox"]').prop('checked', isChecked);
+        });
+
         // Actualizar estado del "Seleccionar Todos" cuando se marca/desmarca individual
         $('.modulos-list').off('change', 'input[type="checkbox"]').on('change', 'input[type="checkbox"]', function() {
             actualizarEstadoSelectAll('.modulos-list', '#select_all_modulos');
         });
-        
-        $('.documentos-list').off('change', 'input[type="checkbox"]').on('change', 'input[type="checkbox"]', function() {
-            actualizarEstadoSelectAll('.documentos-list', '#select_all_documentos');
+
+        $('.documentos-entrada').off('change', 'input[type="checkbox"]').on('change', 'input[type="checkbox"]', function() {
+            actualizarEstadoSelectAll('.documentos-entrada', '#select_all_documentos_entrada');
         });
-        
-        // Verificar estado inicial
-        actualizarEstadoSelectAll('.modulos-list', '#select_all_modulos');
-        actualizarEstadoSelectAll('.documentos-list', '#select_all_documentos');
+
+        $('.documentos-salida').off('change', 'input[type="checkbox"]').on('change', 'input[type="checkbox"]', function() {
+            actualizarEstadoSelectAll('.documentos-salida', '#select_all_documentos_salida');
+        });
     }
-    
+
     // Función auxiliar para actualizar el estado del checkbox "Seleccionar Todos"
     function actualizarEstadoSelectAll(containerSelector, checkboxSelector) {
         var $container = $(containerSelector);
         var $checkboxes = $container.find('input[type="checkbox"]').not(checkboxSelector);
         var total = $checkboxes.length;
         var checked = $checkboxes.filter(':checked').length;
-        
+
         if (total > 0) {
             $(checkboxSelector).prop('checked', checked === total);
-            // Opcional: estado indeterminado si algunos están marcados
             $(checkboxSelector).prop('indeterminate', checked > 0 && checked < total);
         }
     }
@@ -183,8 +206,19 @@ $(document).ready(function() {
             return;
         }
 
-        var operacion = (tipoPermisosActual === 'documentos') ? 'guardar_permisos_documentos' : 'guardar_permisos';
-        var texto = (tipoPermisosActual === 'documentos') ? 'permisos de documentos' : 'permisos';
+        var operacion, texto;
+        if (tipoPermisosActual === 'modulos') {
+            operacion = 'guardar_permisos';
+            texto = 'permisos de módulos';
+        } else if (tipoPermisosActual === 'entradas') {
+            operacion = 'guardar_permisos_documentos';
+            texto = 'permisos de entradas';
+            formData.append('tipo_documentos', 'entradas');
+        } else {
+            operacion = 'guardar_permisos_documentos';
+            texto = 'permisos de salidas';
+            formData.append('tipo_documentos', 'salidas');
+        }
 
         swal({
             title: "¿Guardar " + texto + "?",

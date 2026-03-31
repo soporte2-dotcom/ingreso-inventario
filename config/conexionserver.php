@@ -22,7 +22,7 @@ session_start();
 
         $servidor = "192.168.16.8\BDACOPI";
         //$info = array("Database"=>"DOT_BUGA_NUEVA","UID"=>"sa","PWD"=>"3.1416.asd*","CharacterSet"=>"UTF-8");
-        $info = array("Database"=>"DOT_BUGA_NUEVA_BKJH20251002","UID"=>"sa","PWD"=>"3.1416.asd*","CharacterSet"=>"UTF-8");
+        $info = array("Database"=>"DOT_BUGA_NUEVABK20260106","UID"=>"sa","PWD"=>"3.1416.asd*","CharacterSet"=>"UTF-8");
         
          $this->cn = sqlsrv_connect($servidor, $info);
     }

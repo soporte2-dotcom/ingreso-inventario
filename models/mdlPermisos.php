@@ -167,8 +167,8 @@ class Permisos {
         }
     }
 
-    // Obtener tipos de documento desde SQL Server
-  public function get_tipos_documento() {
+  // Obtener tipos de documento entrada desde SQL Server
+  public function get_tipos_documento_entradas() {
       try {
           require_once(__DIR__ . "/../config/conexionserver.php");
           $cn_sqlserver = new Conectarserver();
@@ -179,22 +179,54 @@ class Permisos {
                     ORDER BY TipoDoctos ASC";
           
           $registros = sqlsrv_query($cn_sqlserver->getConecta(), $query);
-          
+
           if ($registros === false) {
-              error_log("Error get_tipos_documento: " . print_r(sqlsrv_errors(), true));
+              error_log("Error get_tipos_documento_entradas: " . print_r(sqlsrv_errors(), true));
               return [];
           }
-          
+
           $tipos = [];
           while ($fila = sqlsrv_fetch_array($registros, SQLSRV_FETCH_ASSOC)) {
               $tipos[] = $fila;
           }
-          
+
           sqlsrv_free_stmt($registros);
           return $tipos;
-          
+
       } catch (Exception $e) {
-          error_log("Error get_tipos_documento: " . $e->getMessage());
+          error_log("Error get_tipos_documento_entradas: " . $e->getMessage());
+          return [];
+      }
+  }
+
+  // Obtener tipos de documento salidas y consumos desde SQL Server
+  public function get_tipos_documento_salidas() {
+      try {
+          require_once(__DIR__ . "/../config/conexionserver.php");
+          $cn_sqlserver = new Conectarserver();
+          
+          $query = "SELECT idTipoDoctos, TipoDoctos, tipo 
+                    FROM TblTipoDoctos 
+                    WHERE Activo = 'S' AND tipo IN ('11', '2')
+                    ORDER BY TipoDoctos ASC";
+          
+          $registros = sqlsrv_query($cn_sqlserver->getConecta(), $query);
+          
+          if ($registros === false) {
+              error_log("Error get_tipos_documento_salidas: " . print_r(sqlsrv_errors(), true));
+              return [];
+          }
+
+          $tipos = [];
+          while ($fila = sqlsrv_fetch_array($registros, SQLSRV_FETCH_ASSOC)) {
+              $tipos[] = $fila;
+          }
+
+          sqlsrv_free_stmt($registros);
+          return $tipos;
+
+      } catch (Exception $e) {
+          error_log("Error get_tipos_documento_salidas: " . $e->getMessage());
           return [];
       }
   }
@@ -246,17 +278,57 @@ class Permisos {
       try {
           $conn = $this->mysql->obtenerConexion();
           $query = "DELETE FROM usuario_permisos_documentos WHERE usuario_id = ?";
-          
+
           $stmt = $conn->prepare($query);
           return $stmt->execute([$usuario_id]);
-          
+
       } catch (Exception $e) {
           error_log("Error delete_permisos_documentos_usuario: " . $e->getMessage());
           return false;
       }
   }
 
-    // Obtener tipos de documento permitidos para un usuario (para el combo)
+  // Eliminar permisos de documentos de un usuario por tipo (entrada o salida)
+  public function delete_permisos_documentos_por_tipo($usuario_id, $tipo_documentos) {
+      try {
+          $conn = $this->mysql->obtenerConexion();
+
+          // Obtener los IDs de tipos de documento según el tipo
+          require_once(__DIR__ . "/../config/conexionserver.php");
+          $cn_sqlserver = new Conectarserver();
+
+          if ($tipo_documentos === 'entradas') {
+              $query_tipos = "SELECT idTipoDoctos FROM TblTipoDoctos WHERE tipo IN ('12', '3') AND Activo = 'S'";
+          } else {
+              $query_tipos = "SELECT idTipoDoctos FROM TblTipoDoctos WHERE tipo IN ('11', '2') AND Activo = 'S'";
+          }
+
+          $registros = sqlsrv_query($cn_sqlserver->getConecta(), $query_tipos);
+          $ids = [];
+          while ($fila = sqlsrv_fetch_array($registros, SQLSRV_FETCH_ASSOC)) {
+              $ids[] = $fila['idTipoDoctos'];
+          }
+          sqlsrv_free_stmt($registros);
+
+          if (empty($ids)) {
+              return true;
+          }
+
+          // Crear placeholders para la consulta IN
+          $placeholders = implode(',', array_fill(0, count($ids), '?'));
+          $query = "DELETE FROM usuario_permisos_documentos WHERE usuario_id = ? AND tipo_documento_id IN ($placeholders)";
+
+          $stmt = $conn->prepare($query);
+          $params = array_merge([$usuario_id], $ids);
+          return $stmt->execute($params);
+
+      } catch (Exception $e) {
+          error_log("Error delete_permisos_documentos_por_tipo: " . $e->getMessage());
+          return false;
+      }
+  }
+
+    // Obtener tipos de documento de entrada permitidos para un usuario (para el combo)
     public function get_tipos_documento_permitidos($usuario_id) {
       try {
           // Si es admin, mostrar todos
@@ -330,6 +402,80 @@ class Permisos {
       }
   }
 
+  // Obtener tipos de documento de salidas permitidos para un usuario (para el combo)
+    public function get_tipos_documento_salidas_permitidos($usuario_id) {
+      try {
+          // Si es admin, mostrar todos
+          if (in_array($usuario_id, ['LAUREN'])) {
+              require_once(__DIR__ . "/../config/conexionserver.php");
+              $cn_sqlserver = new Conectarserver();
+              
+              $query = "SELECT idTipoDoctos, TipoDoctos, tipo 
+                        FROM TblTipoDoctos 
+                        WHERE tipo IN ('11', '2') AND Activo = 'S' 
+                        ORDER BY TipoDoctos ASC";
+              
+              $registros = sqlsrv_query($cn_sqlserver->getConecta(), $query);
+              
+              $tipos = [];
+              while ($fila = sqlsrv_fetch_array($registros, SQLSRV_FETCH_ASSOC)) {
+                  $tipos[] = $fila;
+              }
+              
+              sqlsrv_free_stmt($registros);
+              return $tipos;
+          }
+          
+          // Para usuarios normales: primero obtener permisos de MySQL
+          $conn = $this->mysql->obtenerConexion();
+          $query_permisos = "SELECT tipo_documento_id 
+                            FROM usuario_permisos_documentos 
+                            WHERE usuario_id = ? AND permiso = 'S'";
+          
+          $stmt = $conn->prepare($query_permisos);
+          $stmt->execute([$usuario_id]);
+          $permisos = $stmt->fetchAll(PDO::FETCH_COLUMN);
+          
+          // Si no tiene permisos, retornar vacío
+          if (empty($permisos)) {
+              return [];
+          }
+          
+          // Ahora obtener los tipos de documento de SQL Server
+          require_once(__DIR__ . "/../config/conexionserver.php");
+          $cn_sqlserver = new Conectarserver();
+          
+          // Crear lista de IDs para la consulta
+          $ids_string = implode(',', $permisos);
+          
+          $query = "SELECT idTipoDoctos, TipoDoctos, tipo 
+                    FROM TblTipoDoctos 
+                    WHERE idTipoDoctos IN ($ids_string) 
+                      AND tipo IN ('11', '2') 
+                      AND Activo = 'S' 
+                    ORDER BY TipoDoctos ASC";
+          
+          $registros = sqlsrv_query($cn_sqlserver->getConecta(), $query);
+          
+          if ($registros === false) {
+              error_log("Error get_tipos_documento_permitidos: " . print_r(sqlsrv_errors(), true));
+              return [];
+          }
+          
+          $tipos = [];
+          while ($fila = sqlsrv_fetch_array($registros, SQLSRV_FETCH_ASSOC)) {
+              $tipos[] = $fila;
+          }
+          
+          sqlsrv_free_stmt($registros);
+          return $tipos;
+          
+      } catch (Exception $e) {
+          error_log("Error get_tipos_documento_permitidos: " . $e->getMessage());
+          return [];
+      }
+  }
+
   /**
    * Registra un cambio en los permisos en el log de auditoría
    */
@@ -375,19 +521,31 @@ class Permisos {
                   }
               }
           } else {
-              $tipos_documento = $this->get_tipos_documento();
+              // Obtener tanto documentos de entrada como de salida
+              $tipos_entrada = $this->get_tipos_documento_entradas();
+              $tipos_salida = $this->get_tipos_documento_salidas();
               $permisos_docs = $this->get_permisos_documentos_usuario($usuario_id);
               $resultado = [];
-              foreach ($tipos_documento as $tipo) {
-                  if (isset($permisos_docs[$tipo['idTipoDoctos']]) && 
+
+              // Documentos de entrada
+              foreach ($tipos_entrada as $tipo) {
+                  if (isset($permisos_docs[$tipo['idTipoDoctos']]) &&
                       $permisos_docs[$tipo['idTipoDoctos']] === 'S') {
-                      $resultado[] = $tipo['TipoDoctos'];
+                      $resultado[] = '[ENTRADA] ' . $tipo['TipoDoctos'];
+                  }
+              }
+
+              // Documentos de salida
+              foreach ($tipos_salida as $tipo) {
+                  if (isset($permisos_docs[$tipo['idTipoDoctos']]) &&
+                      $permisos_docs[$tipo['idTipoDoctos']] === 'S') {
+                      $resultado[] = '[SALIDA] ' . $tipo['TipoDoctos'];
                   }
               }
           }
-          
+
           return json_encode($resultado, JSON_UNESCAPED_UNICODE);
-          
+
       } catch (Exception $e) {
           error_log("Error obtener_permisos_json: " . $e->getMessage());
           return json_encode([]);
