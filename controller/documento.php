@@ -160,10 +160,11 @@
                     $output["direccion2"] = $row["direccion2"];
                     $output["notas"] = $row["notas"];
                     $output["exportado"] = $row["exportado"];
+                    $output["IdVendedor"] = $row["IdVendedor"];
                 }
                 echo json_encode($output);
 
-            }   
+            }
         break;
 
         case "total_entrada":

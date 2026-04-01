@@ -287,6 +287,15 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 						</fieldset>
 					</div>
 
+					<div class="col-lg-2" style="display: none" id="div_dotacion">
+						<fieldset class="form-group">
+							<label class="form-label semibold">&nbsp;</label>
+							<div class="form-check" style="margin-top: 8px;">
+								<input class="form-check-input" type="checkbox" id="dotacion_epp" name="dotacion_epp" value="1">
+								<label class="form-check-label" for="dotacion_epp">Dotacion y EPP</label>
+							</div>
+						</fieldset>
+					</div>
 
 				</div>
 

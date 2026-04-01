@@ -297,26 +297,28 @@ function editarProducto() {
 
 function guardarDocumento() {
     if ($("#btnguardar").prop('disabled')) {
-        swal("Advertencia!", "No se puede modificar un documento exportado", "warning");
-        return false;
+      swal("Advertencia!", "No se puede modificar un documento exportado", "warning");
+      return false;
     }
 
     const sw = document.getElementById("sw").value;
 
     if (sw == 10) {
-        const nit1 = document.getElementById("nit1").value;
-        const direccion1 = document.getElementById("direccion1").value;
-        const nit2 = document.getElementById("nit2").value;
-        const direccion2 = document.getElementById("direccion2").value;
 
-        if (!validarCampoRequerido(nit1, "NIT Facturar A") ||
-            !validarCampoRequerido(direccion1, "Dirección Facturar A") ||
-            !validarCampoRequerido(nit2, "NIT Enviar A") ||
-            !validarCampoRequerido(direccion2, "Dirección Enviar A")) {
-            return false;
-        }
+      const nit1 = document.getElementById("nit1").value;
+      const direccion1 = document.getElementById("direccion1").value;
+      const nit2 = document.getElementById("nit2").value;
+      const direccion2 = document.getElementById("direccion2").value;
 
-        procesarGuardado(CONFIG.endpoints.salidas.guardar_salida);
+      if (!validarCampoRequerido(nit1, "NIT Facturar A") ||
+          !validarCampoRequerido(direccion1, "Dirección Facturar A") ||
+          !validarCampoRequerido(nit2, "NIT Enviar A") ||
+          !validarCampoRequerido(direccion2, "Dirección Enviar A")) {
+          return false;
+      }
+
+      procesarGuardado(CONFIG.endpoints.salidas.guardar_salida);
+
     } else if (sw == 9) {
         const nit = document.getElementById("nit3").value;
         const direccion = document.getElementById("direccion3").value;
@@ -393,7 +395,7 @@ function configurarInterfazParaDocumentoExistente(data) {
     const elementosMostrar = [
         "txt_tipodoc", "txt_numdoc", "txt_fecha1", "txt_pedido1",
         "txt_traslfact1", "tipodoc", "numdoc",
-        "fecha1", "pedido1", "traslfact1", "btnlot", "btnguardar"
+        "fecha1", "pedido1", "traslfact1", "div_dotacion", "btnlot", "btnguardar"
     ];
     
     elementosMostrar.forEach(id => {
@@ -451,7 +453,7 @@ function configurarEstadoExportado(exportado) {
         const camposEditables = ['nit1', 'nombre1', 'direccion1', 'telefono1',
                                  'nit2', 'nombre2', 'direccion2',
                                  'nit3', 'nombre3', 'direccion3', 'telefono3',
-                                 'traslfact1', 'notas'];
+                                 'traslfact1', 'dotacion_epp', 'notas'];
         camposEditables.forEach(id => {
             const el = document.getElementById(id);
             if(el) el.disabled = true;
@@ -577,6 +579,7 @@ function listardetalle(tipo, consecutivo){
         }
         $('#notas').html(data.notas);
         $('#sw').val(data.Tipo_Docto_Base_2);
+        $('#dotacion_epp').prop('checked', data.IdVendedor == 12);
 
         if(data !== null){
             configurarInterfazParaDocumentoExistente(data);

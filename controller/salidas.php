@@ -21,11 +21,14 @@
             $dir2 = $_POST["direccion2"] ?? '';
             if(strpos($dir2, ",") !== false) $dir2 = explode(",", $dir2)[0];
 
+            $dotacion = isset($_POST["dotacion_epp"]) && $_POST["dotacion_epp"] == '1';
+
             $salidas->guardar_salida(
                 $_POST["tipo"], $_POST["numdoc"],
                 $_POST["nit1"], $dir1,
                 $_POST["nit2"], $dir2,
-                $_POST["traslfact1"] ?? '', $_POST["notas"] ?? ''
+                $_POST["traslfact1"] ?? '', $_POST["notas"] ?? '',
+                $dotacion
             );
         break;
 
