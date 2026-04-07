@@ -161,6 +161,7 @@
                     $output["notas"] = $row["notas"];
                     $output["exportado"] = $row["exportado"];
                     $output["IdVendedor"] = $row["IdVendedor"];
+                    $output["Fecha_Hora_Factura"] = $row["Fecha_Hora_Factura"] ? date_format($row["Fecha_Hora_Factura"], "Y-m-d") : date("Y-m-d");
                 }
                 echo json_encode($output);
 
@@ -169,18 +170,23 @@
 
         case "total_entrada":
             $datos=$documento->total_entrada($_POST["tipo"],$_POST["consecutivo"]);  
+            $output = array("total" => "0");
             if(is_array($datos)==true and count($datos)>0){
                 foreach($datos as $row)
                 {
                     $output["total"] = number_format($row["total"]);
                 }
-                echo json_encode($output);
-
-            }   
+            }
+            echo json_encode($output);
         break;
 
         case "totales":
             $datos=$documento->totales($_POST["tipo"],$_POST["consecutivo"]);  
+            $output = array(
+                "valorTotal" => "0",
+                "totalImpuesto" => "0",
+                "totalDescuento" => "0"
+            );
             if(is_array($datos)==true and count($datos)>0){
                 foreach($datos as $row)
                 {
@@ -188,21 +194,20 @@
                     $output["totalImpuesto"] = number_format($row["Valor_impuesto"]);
                     $output["totalDescuento"] = number_format($row["descuento_1"]);
                 }
-                echo json_encode($output);
-
             }   
+            echo json_encode($output);
         break;
 
         case "total_cantidad":
             $datos=$documento->total_cantidad($_POST["tipo"],$_POST["consecutivo"]);  
+            $output = array("totalCantidad" => "0");
             if(is_array($datos)==true and count($datos)>0){
                 foreach($datos as $row)
                 {
                     $output["totalCantidad"] = number_format($row["totalCantidad"]);
                 }
-                echo json_encode($output);
-
             }   
+            echo json_encode($output);
         break;
 
         case "listar_detalle_entrada":
@@ -219,19 +224,17 @@
                 $sub_array[] = number_format($row["Porcentaje_Descuento_1"], 2);
                 $sub_array[] = number_format($row["Valor_Unitario"], 2);
                 $sub_array[] = $row["Numero_Lote"];
-                $sub_array[] = $row["Fecha_Vence"] ? date_format($row["Fecha_Vence"], "Y-m-d") : '';
+                $sub_array[] = $row["Fecha_Vence"] ? date_format($row["Fecha_Vence"], "d/m/Y") : '';
                 $sub_array[] = $row["Nota_Linea"];
                 $sub_array[] = $row["Unidades"];
 
                 if($row["exportado"] == 'N') {
                     $sub_array[] = '
                         <div class="edit-actions">
-                            <button type="button" class="btn btn-info btn-sm btn-action btn-duplicar" title="Duplicar línea" 
-                                    onclick="duplicarLinea(\'' . $_POST["tipo"] . '\', \'' . $_POST["consecutivo"] . '\', \'' . $row["IdProducto"] . '\', \'' . $row["seq"] . '\')">
+                            <button type="button" class="btn btn-info btn-sm btn-action btn-duplicar" title="Duplicar línea">
                                 <i class="fa fa-copy"></i>
                             </button>
-                            <button type="button" class="btn btn-warning btn-sm btn-action btn-eliminar" title="Eliminar registro" 
-                                    onclick="eliminar(\'' . $_POST["tipo"] . '\', \'' . $_POST["consecutivo"] . '\', \'' . $row["IdProducto"] . '\', \'' . $row["seq"] . '\')">
+                            <button type="button" class="btn btn-warning btn-sm btn-action btn-eliminar" title="Eliminar registro">
                                 <i class="fa fa-trash"></i>
                             </button>
                         </div>

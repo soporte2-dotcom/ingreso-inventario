@@ -10,6 +10,7 @@ const CONFIG = {
     baseUrl: "../../controller/",
     endpoints: {
         permisos: "permisos.php?op=combo_salidas_permisos",
+        permisos_tipos_originales: "permisos.php?op=combo_tipos_doc_originales",
         tipodoctos: {
             consecutivos: "tipodoctos.php?op=consecutivos"
         },
@@ -19,8 +20,12 @@ const CONFIG = {
         },
         salidas: {
             insert_doc_salida: "../../controller/salidas.php?op=insert_doc_salida",
+            insert_doc_manual: "../../controller/salidas.php?op=insert_doc_manual",
+            get_farm_info: "../../controller/salidas.php?op=get_farm_info",
             guardar_salida: "salidas.php?op=guardar_salida",
-            update_lote_salida: "../../controller/salidas.php?op=update_lote_salida"
+            update_lote_salida: "../../controller/salidas.php?op=update_lote_salida",
+            agregar_linea_manual: "../../controller/salidas.php?op=agregar_linea_manual",
+            get_precio_producto: "../../controller/salidas.php?op=get_precio_producto"
         },
         documento: {
             insert_doc_entrada: "documento.php?op=insert_doc_entrada",
@@ -97,29 +102,149 @@ function mostrarFeedbackExitoso(mensaje = "Cambio guardado correctamente") {
 }
 
 // FUNCIONES DE INICIALIZACIÓN
+function inicializarDatepicker(selector, hiddenSelector, initialIso) {
+    $(selector).datepicker({
+        dateFormat: "dd/mm/yy",
+        changeMonth: true,
+        changeYear: true,
+        onSelect: function(dateText) {
+            // dateText viene en dd/mm/yyyy — convertir a YYYY-MM-DD para el hidden
+            var parts = dateText.split("/");
+            var iso = parts[2] + "-" + parts[1] + "-" + parts[0];
+            if (hiddenSelector) $(hiddenSelector).val(iso);
+        }
+    });
+
+    // Establecer valor inicial
+    var initial = initialIso ? new Date(initialIso + "T00:00:00") : new Date();
+    $(selector).datepicker("setDate", initial);
+    if (hiddenSelector) {
+        var d = initial;
+        var mm = String(d.getMonth() + 1).padStart(2, '0');
+        var dd = String(d.getDate()).padStart(2, '0');
+        $(hiddenSelector).val(d.getFullYear() + "-" + mm + "-" + dd);
+    }
+}
+
 function inicializarCombos() {
     $.post(CONFIG.baseUrl + CONFIG.endpoints.permisos, function(data) {
         $('#idTipo').html(data);
+        window.originalTipoOptions = data;
     });
+
+    const isoHoy = $('#fecha_factura_iso').val() || moment().format('YYYY-MM-DD');
+    inicializarDatepicker('#fecha_factura', '#fecha_factura_iso', isoHoy);
+    inicializarDatepicker('#fecha_factura2', '#fecha_factura2_iso', null);
 }
 
 function inicializarEventos() {
     // Evento para cambio de tipo de documento
     $("#idTipo").change(function() {
         const idTipo = $(this).val();
-        
-        // Verificación de tipos restringidos (requieren OS)
-        if (window.tiposRestringidos.includes(idTipo)) {
-            $("#docref").val("0").change(); // Forzar a "No" (OS)
-            $("#docref").prop('disabled', true);
-            swal("Aviso!", "Este tipo de documento requiere obligatoriamente una Orden de Salida (OS).", "info");
+        const textoTipo = $(this).find('option:selected').text().trim();
+        const esDev = textoTipo.startsWith('Dev');
+
+        if (esDev) {
+            // Modo devolución: ocultar docref, mostrar campos devolución
+            $('#row_docref').hide();
+            $('#docref').val('3'); // sin trigger para no llamar showInp()
+            // Asegurar que numero esté visible
+            document.getElementById("txt_numero").style.display = "inline-block";
+            document.getElementById("numero").style.display = "inline-block";
+            document.getElementById("div_fecha_factura").style.display = "none";
+            // Ocultar campos manual si estaban visibles
+            ['hr1','txt_nit1','nit1','txt_nombre1','nombre1','txt_direccion1','direccion1',
+             'txt_telefono1','telefono1','hr2','txt_nit2','nit2','txt_nombre2','nombre2',
+             'txt_direccion2','direccion2'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+            // Mostrar div devolución y cargar tipos originales con permisos del usuario
+            $('#div_devolucion').show();
+            $.post(CONFIG.baseUrl + CONFIG.endpoints.permisos_tipos_originales, function(data) {
+                $('#tipoDocOrig').html(data);
+            });
         } else {
-            $("#docref").prop('disabled', false);
+            // Modo normal: mostrar docref, ocultar devolución
+            $('#row_docref').show();
+            $('#docref').val('0');
+            showInp();
+            $('#div_devolucion').hide();
+            $('#tipoDocOrig').html('<option value="" disabled selected>Seleccione tipo...</option>');
+            // Verificación de tipos restringidos (requieren OS)
+            if (window.tiposRestringidos.includes(idTipo)) {
+                $("#docref").val("0").change();
+                $("#docref").prop('disabled', true);
+                swal("Aviso!", "Este tipo de documento requiere obligatoriamente una Orden de Salida (OS).", "info");
+            } else {
+                $("#docref").prop('disabled', false);
+            }
         }
 
         $.post(CONFIG.baseUrl + CONFIG.endpoints.tipodoctos.consecutivos, { idTipo }, function(data) {
             data = JSON.parse(data);
             $("#consecutivo").val(data.consecutivo);
+        });
+
+        // Consultar información de la granja para auto-llenado
+        $.post(CONFIG.endpoints.salidas.get_farm_info, { idTipo: idTipo }, function(data) {
+            data = JSON.parse(data);
+            if (data.status === "success") {
+                const nit = data.nitCompany;
+                const dir = String(data.dayEntryPrebail).trim();
+
+                // Llenar nit1 y nit2
+                $('#nit1').val(nit);
+                $('#nit2').val(nit);
+
+                // Cargar y pre-seleccionar direccion1
+                $("#direccion1").html('<option value="" disabled selected>Seleccione...</option>');
+                $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.combo_dir, { nit: nit }, function(html) {
+                    $("#direccion1").html(html);
+                    $("#direccion1 option").each(function() {
+                        if ($(this).val().split(',')[0].trim() == dir) {
+                            $(this).prop('selected', true);
+                            $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.telefono_dir,
+                                   { direccion: $(this).val() }, function(tdata) {
+                                tdata = JSON.parse(tdata);
+                                $("#telefono1").val(tdata.telefono_1);
+                            });
+                            return false;
+                        }
+                    });
+                });
+
+                // Cargar y pre-seleccionar direccion2
+                $("#direccion2").html('<option value="" disabled selected>Seleccione...</option>');
+                $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.combo_dir, { nit: nit }, function(html) {
+                    $("#direccion2").html(html);
+                    $("#direccion2 option").each(function() {
+                        if ($(this).val().split(',')[0].trim() == dir) {
+                            $(this).prop('selected', true);
+                            return false;
+                        }
+                    });
+                });
+
+                // Obtener nombre del tercero
+                $.ajax({
+                    url: CONFIG.baseUrl + "terceros.php?op=terceroxnit",
+                    type: "GET",
+                    data: { term: nit },
+                    dataType: "json",
+                    success: function(items) {
+                        if (items && items.length > 0) {
+                            const match = items.find(function(i) {
+                                return String(i.value).trim() === String(nit).trim();
+                            }) || items[0];
+                            if (match) {
+                                $('#nombre1').val(match.nombre);
+                                $('#nombre2').val(match.nombre);
+                            }
+                        }
+                    }
+                });
+            }
         });
     });
 
@@ -170,27 +295,126 @@ function inicializarEventos() {
 function crearDocumento() {
     const tipo = document.getElementById("idTipo").value;
     const consecutivo = document.getElementById("consecutivo").value;
-    const numero = document.getElementById("numero").value;
-    
+    const docref = $("#docref").val();
+    const textoTipoSel = $("#idTipo option:selected").text().trim();
+    const esDev = textoTipoSel.startsWith('Dev');
+
     if (!validarCampoRequerido(tipo, "Tipo de Documento") ||
-        !validarCampoRequerido(consecutivo, "Consecutivo") ||
-        !validarCampoRequerido(numero, "Número")) {
+        !validarCampoRequerido(consecutivo, "Consecutivo")) {
         return false;
     }
 
-    // Validación extra para tipos restringidos
-    if (window.tiposRestringidos.includes(tipo)) {
-        const docref = $("#docref").val();
+    // Caso Manual
+    if (!esDev && docref == "2") {
+        const nit1 = $("#nit1").val();
+        const dir1 = $("#direccion1").val();
+        const nit2 = $("#nit2").val();
+        const dir2 = $("#direccion2").val();
+        const fechaFactura = $("#fecha_factura_iso").val();
+        if (!fechaFactura) {
+            swal("Advertencia!", "La fecha 'Facturado el' no es válida", "warning");
+            return false;
+        }
+
+        if (!validarCampoRequerido(nit1, "NIT Facturar A") ||
+            !validarCampoRequerido(dir1, "Dirección Facturar A") ||
+            !validarCampoRequerido(nit2, "NIT Enviar A") ||
+            !validarCampoRequerido(dir2, "Dirección Enviar A")) {
+            return false;
+        }
+
+        $.blockUI({ message: '<h2>Cargando favor Espere...</h2>' });
+
+        $.ajax({
+            url: CONFIG.endpoints.salidas.insert_doc_manual,
+            type: "POST",
+            data: { idTipo: tipo, nit1: nit1, dir1: dir1, nit2: nit2, dir2: dir2, fecha_factura: fechaFactura },
+            dataType: "json",
+            success: function(response) {
+                $.unblockUI();
+                if (response.status === "success") {
+                    swal({ title: "Correcto!", text: response.message, type: "success" }, function() {
+                        window.location.href = 'index.php?tipo=' + response.tipo + '&consecutivo=' + response.consecutivo;
+                    });
+                } else {
+                    swal("Error!", response.message, "error");
+                    $("#btncrear").prop('disabled', false);
+                }
+            },
+            error: function() {
+                $.unblockUI();
+                swal("Error!", "Ha ocurrido un error al procesar la solicitud.", "error");
+                $("#btncrear").prop('disabled', false);
+            }
+        });
+
+        $("#btncrear").prop('disabled', true);
+        return false;
+    }
+
+    // Devolución
+    if (esDev) {
+        const tipoDocOrig = $("#tipoDocOrig").val();
+        const numeroDev = document.getElementById("numero").value;
+
+        if (!validarCampoRequerido(tipoDocOrig, "Tipo Documento Original") ||
+            !validarCampoRequerido(numeroDev, "Número del documento a devolver")) {
+            return false;
+        }
+
+        document.getElementById("tipoDocRef").value = tipoDocOrig;
+
+        $.blockUI({ message: '<h2>Cargando favor Espere...</h2>' });
+
+        const formDataDev = new FormData($("#doc_form")[0]);
+
+        $.ajax({
+            url: CONFIG.endpoints.salidas.insert_doc_salida,
+            type: "POST",
+            data: formDataDev,
+            contentType: false,
+            processData: false,
+            dataType: "json",
+            success: function(response) {
+                $.unblockUI();
+                if (response.status === "success") {
+                    swal({ title: "Correcto!", text: response.message, type: "success" }, function() {
+                        window.location.href = 'index.php?tipo=' + response.tipo + '&consecutivo=' + response.consecutivo;
+                    });
+                } else {
+                    swal("Error!", response.message, "error");
+                    $("#btncrear").prop('disabled', false);
+                }
+            },
+            error: function() {
+                $.unblockUI();
+                swal("Error!", "Ha ocurrido un error al procesar la solicitud.", "error");
+                $("#btncrear").prop('disabled', false);
+            }
+        });
+
+        $("#btncrear").prop('disabled', true);
+        return false;
+    }
+
+    // OS / Traslado
+    const numero = document.getElementById("numero").value;
+    if (!validarCampoRequerido(numero, "Número")) {
+        return false;
+    }
+
+    // Validación extra para tipos restringidos (excluir devoluciones)
+    if (window.tiposRestringidos.includes(tipo) && !esDev) {
         if (docref != "0") {
-             swal("Error!", "Para este tipo de documento la base debe ser una Orden de Salida (OS)", "error");
-             return false;
+            swal("Error!", "Para este tipo de documento la base debe ser una Orden de Salida (OS)", "error");
+            return false;
         }
     }
-    
+
     $.blockUI({ message: '<h2>Cargando favor Espere...</h2>' });
-    
+
     const formData = new FormData($("#doc_form")[0]);
-    
+
     $.ajax({
         url: CONFIG.endpoints.salidas.insert_doc_salida,
         type: "POST",
@@ -221,7 +445,7 @@ function crearDocumento() {
             $("#btncrear").prop('disabled', false);
         }
     });
-    
+
     $("#btncrear").prop('disabled', true);
     return false;
 }
@@ -252,13 +476,10 @@ function editarProducto() {
     const cantidad = document.getElementById("cantidad").value;
     const valorUnitario = document.getElementById("Valor_Unitario").value;
     const lote = document.getElementById("lote").value;
-    const fechaVence = document.getElementById("fecha_vence").value;
-    
     if (!validarCampoRequerido(idproducto, "Código de Producto") ||
         !validarCampoRequerido(cantidad, "Cantidad") ||
         !validarCampoRequerido(valorUnitario, "Valor Unitario") ||
-        !validarCampoRequerido(lote, "Lote") ||
-        !validarCampoRequerido(fechaVence, "Fecha de Vencimiento")) {
+        !validarCampoRequerido(lote, "Lote")) {
         return false;
     }
     
@@ -283,7 +504,7 @@ function editarProducto() {
                 const consecutivo = getUrlParameter('consecutivo');
                 
                 $('#tb-doc').DataTable().ajax.reload();
-                $('#cantidad, #idproducto, #Valor_Unitario, #lote, #fecha_vence').val('');
+                $('#cantidad, #idproducto, #Valor_Unitario, #lote').val('');
         
                 actualizarTodosLosTotales(tipo, consecutivo);
             });
@@ -301,9 +522,15 @@ function guardarDocumento() {
       return false;
     }
 
+    const totalLineas = tabla ? tabla.rows().count() : 0;
+    if (totalLineas === 0) {
+        swal("Advertencia!", "No se puede guardar un documento sin líneas de detalle. Agregue al menos un producto.", "warning");
+        return false;
+    }
+
     const sw = document.getElementById("sw").value;
 
-    if (sw == 10) {
+    if (sw == 10 || sw == 2) {
 
       const nit1 = document.getElementById("nit1").value;
       const direccion1 = document.getElementById("direccion1").value;
@@ -370,17 +597,35 @@ function procesarGuardado(endpoint) {
 
 // FUNCIONES DE INTERFAZ
 function showInp(){
-    const getSelectValue = document.getElementById("docref").value;
-    const displayStyle = getSelectValue == "0" ? "none" : "inline-block";
-    
-    document.getElementById("txt_tipoDocRef").style.display = displayStyle;
-    document.getElementById("tipoDocRef").style.display = displayStyle;
+    const val = document.getElementById("docref").value;
+
+    // Campo Número — oculto solo para Manual (value=2)
+    const displayNumero = val == "2" ? "none" : "inline-block";
+    document.getElementById("txt_numero").style.display = displayNumero;
+    document.getElementById("numero").style.display = displayNumero;
+
+    // Campo Facturado el — solo visible para Manual (value=2)
+    document.getElementById("div_fecha_factura").style.display = val == "2" ? "inline-block" : "none";
+
+    // Secciones Facturar A / Enviar A — visibles en fase 1 solo para Manual
+    const manualFields = [
+        "hr1", "txt_nit1", "nit1", "txt_nombre1", "nombre1", "txt_direccion1", "direccion1",
+        "txt_telefono1", "telefono1",
+        "hr2", "txt_nit2", "nit2", "txt_nombre2", "nombre2", "txt_direccion2", "direccion2"
+    ];
+    const displayManual = val == "2" ? "inline-block" : "none";
+    manualFields.forEach(function(id) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = displayManual;
+    });
+
 }
 
 function configurarInterfazParaDocumentoExistente(data) {
     const elementosOcultar = [
         "idTipo", "consecutivo", "numero", "docref", "fecha",
-        "txt_idTipo", "txt_consecutivo", "txt_numero", "txt_docref", "txt_fecha"
+        "txt_idTipo", "txt_consecutivo", "txt_numero", "txt_docref", "txt_fecha",
+        "div_fecha_factura"
     ];
     
     elementosOcultar.forEach(id => {
@@ -394,8 +639,9 @@ function configurarInterfazParaDocumentoExistente(data) {
 
     const elementosMostrar = [
         "txt_tipodoc", "txt_numdoc", "txt_fecha1", "txt_pedido1",
-        "txt_traslfact1", "tipodoc", "numdoc",
-        "fecha1", "pedido1", "traslfact1", "div_dotacion", "btnlot", "btnguardar"
+        "txt_traslfact1", "txt_fecha_factura2",
+        "tipodoc", "numdoc", "fecha1", "pedido1", "traslfact1", "fecha_factura2",
+        "div_dotacion", "btnlot", "btnguardar"
     ];
     
     elementosMostrar.forEach(id => {
@@ -407,6 +653,9 @@ function configurarInterfazParaDocumentoExistente(data) {
         mostrarCamposEntrada();
     } else {
         mostrarCamposTraslado();
+        if (data.Tipo_Docto_Base_2 == '2') {
+            document.getElementById("btnagregar").style.display = "inline-block";
+        }
     }
 
     // Configurar estado de exportación
@@ -453,7 +702,9 @@ function configurarEstadoExportado(exportado) {
         const camposEditables = ['nit1', 'nombre1', 'direccion1', 'telefono1',
                                  'nit2', 'nombre2', 'direccion2',
                                  'nit3', 'nombre3', 'direccion3', 'telefono3',
-                                 'traslfact1', 'dotacion_epp', 'notas'];
+                                 'traslfact1', 'dotacion_epp', 'notas', 'fecha_factura2'];
+        const el_btnagregar = document.getElementById("btnagregar");
+        if (el_btnagregar) el_btnagregar.disabled = true;
         camposEditables.forEach(id => {
             const el = document.getElementById(id);
             if(el) el.disabled = true;
@@ -580,6 +831,15 @@ function listardetalle(tipo, consecutivo){
         $('#notas').html(data.notas);
         $('#sw').val(data.Tipo_Docto_Base_2);
         $('#dotacion_epp').prop('checked', data.IdVendedor == 12);
+        if (data.Fecha_Hora_Factura) {
+            var fechaDoc = new Date(data.Fecha_Hora_Factura + "T00:00:00");
+            if (!isNaN(fechaDoc)) {
+                $('#fecha_factura2').datepicker("setDate", fechaDoc);
+                var mm2 = String(fechaDoc.getMonth() + 1).padStart(2, '0');
+                var dd2 = String(fechaDoc.getDate()).padStart(2, '0');
+                $('#fecha_factura2_iso').val(fechaDoc.getFullYear() + "-" + mm2 + "-" + dd2);
+            }
+        }
 
         if(data !== null){
             configurarInterfazParaDocumentoExistente(data);
@@ -669,9 +929,9 @@ function agregarEventosEdicionInline() {
     table.removeEventListener('dblclick', manejarDobleClic);
     table.addEventListener('dblclick', manejarDobleClic);
     
-    // Evento para eliminar con delegation
-    document.removeEventListener('click', manejarEliminarGlobal);
-    document.addEventListener('click', manejarEliminarGlobal);
+    // Eventos para acciones con delegation
+    document.removeEventListener('click', manejarAccionesTabla);
+    document.addEventListener('click', manejarAccionesTabla);
 }
 
 // Función separada para manejar doble clic
@@ -682,18 +942,31 @@ function manejarDobleClic(e) {
     }
 }
 
-// Función separada para manejar eliminación global
-function manejarEliminarGlobal(e) {
-    if (e.target.closest('.btn-eliminar')) {
+// Función centralizada para manejar acciones en la tabla Documentos_Lin
+function manejarAccionesTabla(e) {
+    const btnEliminar = e.target.closest('.btn-eliminar');
+    const btnDuplicar = e.target.closest('.btn-duplicar');
+    
+    if (btnEliminar) {
         e.preventDefault();
-        const row = e.target.closest('tr');
+        const row = btnEliminar.closest('tr');
         const tipo = getUrlParameter('tipo');
         const consecutivo = getUrlParameter('consecutivo');
         const seq = row.cells[0].textContent.trim();
         const producto = row.cells[1].textContent.trim();
         
-        console.log(' Eliminando producto:', producto);
+        console.log('🗑️ Eliminando producto:', producto);
         eliminar(tipo, consecutivo, producto, seq);
+    } else if (btnDuplicar) {
+        e.preventDefault();
+        const row = btnDuplicar.closest('tr');
+        const tipo = getUrlParameter('tipo');
+        const consecutivo = getUrlParameter('consecutivo');
+        const seq = row.cells[0].textContent.trim();
+        const producto = row.cells[1].textContent.trim();
+        
+        console.log('📋 Duplicando producto:', producto);
+        duplicarLinea(tipo, consecutivo, producto, seq);
     }
 }
 
@@ -728,6 +1001,17 @@ function iniciarEdicionNativa(cell) {
             input.type = 'number';
             input.value = currentValue;
             input.step = cellIndex === 6 ? '0.01' : '1';
+            break;
+        case 8: // Fecha Vence - usar input type=date para evitar inversión día/mes
+            input = document.createElement('input');
+            input.type = 'date';
+            // currentValue viene en formato DD/MM/YYYY — convertir a YYYY-MM-DD para el input
+            var partsDate = currentValue.split('/');
+            if (partsDate.length === 3) {
+                input.value = partsDate[2] + '-' + partsDate[1] + '-' + partsDate[0];
+            } else {
+                input.value = currentValue;
+            }
             break;
         case 9: // Nota - permitir vacío
             input = document.createElement('input');
@@ -877,7 +1161,13 @@ function guardarEdicionNativa(row) {
         
         if (response && response.trim() === "success") {
             // 🔥 CORRECIÓN: Primero actualizar el contenido de la celda
-            cell.textContent = newValue || '';
+            var displayValue = newValue || '';
+            // Para fecha vence (col 8): el input type=date retorna YYYY-MM-DD, mostrar como DD/MM/YYYY
+            if (cellIndex === 8 && newValue && newValue.indexOf('-') !== -1) {
+                var dp = newValue.split('-');
+                if (dp.length === 3) displayValue = dp[2] + '/' + dp[1] + '/' + dp[0];
+            }
+            cell.textContent = displayValue;
             
             // 🔥 CORRECIÓN: Limpiar inmediatamente el estado de edición
             row.classList.remove('editing', 'saving');
@@ -1114,15 +1404,23 @@ function eliminar(tipo, consecutivo, producto, seq){
             }, function (data) {
                 console.log(data);
                 
-                if (data.includes("success") || data.includes("Eliminado correctamente")) {
+                if (data.trim() === "success" || data.includes("success") || data.includes("Eliminado correctamente")) {
                     swal({
                         title: "¡Eliminado!",
                         text: "El producto ha sido eliminado correctamente",
                         type: "success",
                         confirmButtonClass: "btn-success"
                     }, function(){
-                        $('#tb-doc').DataTable().ajax.reload();
+                        // Recargar la tabla y totales después de confirmar
+                        $('#tb-doc').DataTable().ajax.reload(null, false);
                         actualizarTodosLosTotales(tipo, consecutivo);
+                        
+                        // Si la tabla queda vacía, forzar un redibujado completo
+                        setTimeout(() => {
+                            if ($('#tb-doc').DataTable().rows().count() === 0) {
+                                $('#tb-doc').DataTable().draw();
+                            }
+                        }, 500);
                     });
                 } else {
                     swal({
@@ -1155,9 +1453,95 @@ $(document).on("click", "#btnlote", function(){
     guardarLote();
 });
 
+function prepararModalAgregar() {
+    window.modoAgregar = true;
+    document.getElementById("idproducto").removeAttribute("readonly");
+    document.getElementById("idproducto").value = '';
+    document.getElementById("cantidad").value = '';
+    document.getElementById("Valor_Unitario").value = '';
+    document.getElementById("lote").value = '';
+    document.querySelector("#modalagregar .modal-title").textContent = "Agregar Producto";
+    document.getElementById("btneditar").textContent = "Agregar";
+}
+
+function cargarPrecioProducto() {
+    const idProducto = document.getElementById("idproducto").value;
+    if (!idProducto) return;
+
+    $.ajax({
+        url: CONFIG.endpoints.salidas.get_precio_producto,
+        type: "POST",
+        data: { idProducto: idProducto },
+        dataType: "json",
+        success: function(response) {
+            if (response.status === "success") {
+                document.getElementById("Valor_Unitario").value = response.precio;
+            } else {
+                document.getElementById("Valor_Unitario").value = '';
+                swal("Advertencia!", "No se encontró precio para el producto " + idProducto, "warning");
+            }
+        },
+        error: function() {
+            document.getElementById("Valor_Unitario").value = '';
+            swal("Error!", "No se pudo consultar el precio del producto.", "error");
+        }
+    });
+}
+
+function guardarModalProducto() {
+    if (window.modoAgregar) {
+        agregarProductoManual();
+    } else {
+        editarProducto();
+    }
+}
+
+function agregarProductoManual() {
+    const tipo = getUrlParameter('tipo');
+    const consecutivo = getUrlParameter('consecutivo');
+    const idProducto = document.getElementById("idproducto").value;
+    const cantidad = document.getElementById("cantidad").value;
+    const valorUnitario = document.getElementById("Valor_Unitario").value || 0;
+    const lote = document.getElementById("lote").value || '0';
+    const hoy = new Date();
+    const fechaVence = hoy.getFullYear() + '-' + String(hoy.getMonth()+1).padStart(2,'0') + '-' + String(hoy.getDate()).padStart(2,'0');
+
+    if (!validarCampoRequerido(idProducto, "Código de Producto") ||
+        !validarCampoRequerido(cantidad, "Cantidad")) {
+        return false;
+    }
+
+    $.ajax({
+        url: CONFIG.endpoints.salidas.agregar_linea_manual,
+        type: "POST",
+        data: { tipo: tipo, numdoc: consecutivo, idProducto: idProducto, cantidad: cantidad,
+                valorUnitario: valorUnitario, lote: lote, fechaVence: fechaVence },
+        dataType: "json",
+        success: function(response) {
+            if (response.status === "success") {
+                $('#modalagregar').modal('hide');
+                $('#tb-doc').DataTable().ajax.reload();
+                actualizarTodosLosTotales(tipo, consecutivo);
+                window.modoAgregar = false;
+            } else {
+                swal("Error!", response.message, "error");
+            }
+        },
+        error: function() {
+            swal("Error!", "Ha ocurrido un error al agregar el producto.", "error");
+        }
+    });
+}
+
+$(document).on("blur", "#idproducto", function() {
+    if (window.modoAgregar) {
+        cargarPrecioProducto();
+    }
+});
+
 $(document).on("click", "#btneditar", function(event) {
     event.preventDefault();
-    editarProducto();
+    guardarModalProducto();
 });
 
 $(document).on("click", "#btnguardar", function() {

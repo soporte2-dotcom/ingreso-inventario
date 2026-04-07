@@ -63,6 +63,7 @@
             if( $registros === false ){
                 echo "Error al ejecutar consulta.\n";
             }  else {
+                $resultado = array();
                 while($stmt= sqlsrv_fetch_array($registros)) {
                     $resultado[] = $stmt;                   
                 }
@@ -83,6 +84,7 @@
             if( $registros === false ){
                 echo "Error al ejecutar consulta.\n";
             }  else {
+                $resultado = array();
                 while($stmt= sqlsrv_fetch_array($registros)) {
                     $resultado[] = $stmt;                   
                 }
@@ -97,15 +99,13 @@
             if( $registros === false ){
                 echo "Error al ejecutar consulta.\n";
             }  else {
+                $resultado = array();
                 while($stmt= sqlsrv_fetch_array($registros)) {
                     $resultado[] = $stmt;                   
                 }
                 return $resultado;
             }
         }
-
-
-        /***         ENTRADAS         ***/
 
         /**
          * Obtiene el valor actual del consecutivo para un tipo de documento
@@ -269,15 +269,104 @@
         }
 
 
-        public function guardar_salida($tipo, $numdoc, $nit1, $direccion1, $nit2, $direccion2, $despacho, $notas, $dotacion = false){
+        public function get_farm_info($idTipo) {
+            require_once(dirname(__FILE__) . '/../config/conexiondev.php');
+            $cnDev = new ConectarDev();
+            if (!$cnDev->getConecta()) {
+                return json_encode(array("status" => "error", "message" => "No se pudo conectar a la base de datos DEV"));
+            }
+            $sql = "SELECT TOP 1 nitCompany, dayEntryPrebail FROM cvapptblmasterfarms WHERE docConsumption = ?";
+            $params = array($idTipo);
+            $stmt = sqlsrv_query($cnDev->getConecta(), $sql, $params);
+            if ($stmt === false) {
+                return json_encode(array("status" => "not_found"));
+            }
+            $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+            if (!$row) {
+                return json_encode(array("status" => "not_found"));
+            }
+            return json_encode(array(
+                "status" => "success",
+                "nitCompany" => $row["nitCompany"],
+                "dayEntryPrebail" => $row["dayEntryPrebail"]
+            ));
+        }
+
+        public function insert_doc_manual($tipo, $nit1, $dir1, $nit2, $dir2, $fecha_factura, $usuario) {
+            $cn = new Conectarserver;
+            try {
+                sqlsrv_begin_transaction($cn->getConecta());
+
+                $sql = "INSERT INTO Documentos(sw, tipo, modelo, Numero_Documento, Numero_Docto_Base,
+                nit_Cedula, codigo_direccion, Fecha_Hora_Factura, Fecha_Hora_Vencimiento, Fecha_orden_Venta,
+                condicion, valor_total, valor_aplicado, Retencion_1, Retencion_2, Retencion_3, retencion_causada, retencion_iva, retencion_ica,
+                retencion_descuento, descuento_pie, DescuentoOrdenVenta, descuento_1, descuento_2, descuento_3, costo, IdVendedor, anulado, usuario,
+                notas, pc, fecha_hora, duracion, bodega, Valor_impuesto, Impuesto_Consumo, impuesto_deporte, concepto, vencimiento_presup,
+                exportado, prefijo, moneda, CentroDeCostosDoc, valor_mercancia, abono, Comision_Vendedor, Tasa_Moneda_Ext, Tomador, Tasa_Fija_o_Variable, Punto_FOB,
+                Fletes_Moneda_Ext, Miselaneos_Moneda_Ext, Cargo_Por_Fletes, Impuesto_Por_Fletes, Total_Items, Nombre_Cliente, Ordenado_Por, Telefono_De_Envio_1,
+                Telefono_De_Envio_2, Factura_Impresa, IdFormaEnvio, IdTransportador, nit_Cedula_2, codigo_direccion_2, Numero_Docto_Base_2, Tipo_Docto_Base,
+                Tipo_Docto_Base_2, IdActividadEconomica, TarifaReteFuenteCree, Valor_ReteCree, IdVehiculo)
+
+                (SELECT td.tipo AS sw, '$tipo' AS tipo, '$tipo' AS modelo, (c.siguiente+1) AS Numero_Documento, '' AS Numero_Docto_Base,
+                '$nit1' AS nit_Cedula, '$dir1' AS codigo_direccion, CONVERT(datetime,'$fecha_factura',120) AS Fecha_Hora_Factura, GETDATE() AS Fecha_Hora_Vencimiento, GETDATE() AS Fecha_orden_Venta,
+                t.condicion AS condicion, 0 AS valor_total, 0 AS valor_aplicado, 0 AS Retencion_1, 0 AS Retencion_2, 0 AS Retencion_3,
+                0 AS retencion_causada, 0 AS retencion_iva, 0 AS retencion_ica, 0 AS retencion_descuento, 0 AS descuento_pie, 0 AS DescuentoOrdenVenta,
+                0 AS descuento_1, 0 AS descuento_2, 0 AS descuento_3, 0 AS costo, 0 AS IdVendedor, 'N' AS anulado, '$usuario' AS usuario,
+                '' AS notas, HOST_NAME() AS pc, GETDATE() AS fecha_hora, 0 AS duracion, td.IdBodega AS bodega,
+                0 AS Valor_impuesto, 0 AS Impuesto_Consumo, 0 AS impuesto_deporte, '' AS concepto, GETDATE() AS vencimiento_presup,
+                'N' AS exportado, '0' AS prefijo, 1 AS moneda, 0 AS CentroDeCostosDoc, 0 AS valor_mercancia, 0 AS abono, 0 AS Comision_Vendedor,
+                1 AS Tasa_Moneda_Ext, '' AS Tomador, 'V' AS Tasa_Fija_o_Variable, 0 AS Punto_FOB,
+                0 AS Fletes_Moneda_Ext, 0 AS Miselaneos_Moneda_Ext, 0 AS Cargo_Por_Fletes, 0 AS Impuesto_Por_Fletes, 0 AS Total_Items,
+                t.nombre AS Nombre_Cliente, '' AS Ordenado_Por, '' AS Telefono_De_Envio_1, '' AS Telefono_De_Envio_2, 'N' AS Factura_Impresa,
+                0 AS IdFormaEnvio, 0 AS IdTransportador,
+                '$nit2' AS nit_Cedula_2, '$dir2' AS codigo_direccion_2, '' AS Numero_Docto_Base_2, '0' AS Tipo_Docto_Base,
+                '2' AS Tipo_Docto_Base_2, '0' AS IdActividadEconomica, 0 AS TarifaReteFuenteCree, 0 AS Valor_ReteCree, '1' AS IdVehiculo
+
+                FROM TblTerceros t, TblTipoDoctos td, consecutivos c
+                WHERE c.tipo = '$tipo' AND td.idTipoDoctos = '$tipo' AND t.nit_cedula = '$nit1')";
+
+                $registros = sqlsrv_prepare($cn->getConecta(), $sql);
+                if (sqlsrv_execute($registros) === false) {
+                    throw new Exception("Error al insertar documento: " . print_r(sqlsrv_errors(), true));
+                }
+
+                $sql2 = "UPDATE Consecutivos SET siguiente = siguiente+1 WHERE tipo = '$tipo'";
+                $registros = sqlsrv_prepare($cn->getConecta(), $sql2);
+                if (sqlsrv_execute($registros) === false) {
+                    throw new Exception("Error al actualizar consecutivo: " . print_r(sqlsrv_errors(), true));
+                }
+
+                sqlsrv_commit($cn->getConecta());
+
+                return json_encode(array(
+                    "status" => "success",
+                    "message" => "Documento manual registrado correctamente",
+                    "tipo" => $tipo,
+                    "consecutivo" => $this->obtener_consecutivo_actual($tipo)
+                ));
+
+            } catch (Exception $e) {
+                if (isset($cn) && $cn->getConecta()) {
+                    sqlsrv_rollback($cn->getConecta());
+                }
+                $this->registrar_error("Error en insert_doc_manual: " . $e->getMessage());
+                return json_encode(array(
+                    "status" => "error",
+                    "message" => $e->getMessage()
+                ));
+            }
+        }
+
+        public function guardar_salida($tipo, $numdoc, $nit1, $direccion1, $nit2, $direccion2, $despacho, $notas, $dotacion = false, $fecha_factura = ''){
             $cn = new Conectarserver;
 
             $idVendedorSql = $dotacion ? ", IdVendedor = 12" : "";
+            $fechaSql = $fecha_factura ? ", Fecha_Hora_Factura = CONVERT(datetime,'$fecha_factura',120)" : "";
 
             $sql = "UPDATE Documentos SET
                 nit_Cedula = '$nit1', codigo_direccion = '$direccion1',
                 nit_Cedula_2 = '$nit2', codigo_direccion_2 = '$direccion2',
-                Numero_Docto_Base = '$despacho', notas = '$notas', exportado = 'S' $idVendedorSql,
+                Numero_Docto_Base = '$despacho', notas = '$notas', exportado = 'S' $idVendedorSql $fechaSql,
                 Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = $tipo AND Numero_documento = $numdoc),
                 valor_total = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $numdoc),
                 costo = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $numdoc),
@@ -439,7 +528,7 @@
 
             try {
 
-                $sql_validar = "SELECT COUNT(*) AS existe FROM Documentos_Ped
+                $sql_validar = "SELECT COUNT(*) AS existe, MAX(CAST(anulado AS int)) AS anulado FROM Documentos_Ped
                 WHERE numero_pedido = ? AND sw = '10'";
 
                 $params = array($numero);
@@ -455,6 +544,13 @@
                     return json_encode(array(
                         "status" => "error",
                         "message" => "La Orden de Salida '$numero' no existe"
+                    ));
+                }
+
+                if ($row['anulado'] == 0) {
+                    return json_encode(array(
+                        "status" => "error",
+                        "message" => "La Orden de Salida '$numero' está anulada y no puede ser procesada"
                     ));
                 }
 
@@ -509,7 +605,7 @@
                 0 AS Cantidad_Pendiente, dp.cantidad AS Cantidad_Orden, dp.valor_unitario AS Costo_Unitario, dp.valor_unitario AS Valor_Unitario,
                 ((dp.porcentaje_iva/100) * dp.valor_unitario) AS Valor_Impuesto, dp.porcentaje_iva AS Porcentaje_Impuesto, dp.porcentaje_descuento AS Porcentaje_Descuento_1,
                 dp.porc_dcto_2 AS Porcentaje_Descuento_2, dp.porc_dcto_3 AS Porcentaje_Descuento_3, dp.IdVendedor AS IdVendedor, 0 AS Comision_Vendedor, 0 AS Valor_Comision_Vendedor,
-                td.IdBodega AS IdBodega, td.IdBodegaOrigen AS Bodega, 'S' AS Maneja_Inventario, '' AS Tomador, 1 AS IdMoneda, 1 AS Tasa_Moneda_Ext, '0' AS CentroDeCostosDoc,
+                td.IdBodega AS IdBodega, 'S' AS Maneja_Inventario, '' AS Tomador, 1 AS IdMoneda, 1 AS Tasa_Moneda_Ext, '0' AS CentroDeCostosDoc,
                 ' ' AS Nota_Linea, '1' AS Unidades, GETDATE() AS Fecha_Vence, 'N' AS Exportado, dp.valor_unitario AS Costo_Unitario_Inicial,
                 dp.Porcentaje_ReteFuente AS Porcentaje_ReteFuente, 0 AS Envase, 0 AS Numero_Lote_Destino, '' AS serial, 0 AS Impuesto_Consumo, 0 AS Porcentaje_ReteFuente_2,
                 0 AS Porcentaje_ReteFuente_3, 0 AS Porcentaje_ReteFuente_4, 0 AS Emp_1, 0 AS Emp_2, 0 AS Emp_3, 0 AS Emp_4, 0 AS Emp_5, 0 AS Emp_6,
@@ -553,6 +649,65 @@
                     "message" => $e->getMessage()
                 ));
             }
+        }
+
+        public function get_precio_producto($idProducto) {
+            $cn = new Conectarserver;
+            $sql = "SELECT TOP 1 Precio_Marcado FROM Producto_Pre WHERE idProducto = ? ORDER BY Fecha DESC";
+            $params = array((int)$idProducto);
+            $stmt = sqlsrv_query($cn->getConecta(), $sql, $params);
+            if ($stmt === false || ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) === false || $row === null) {
+                return json_encode(array("status" => "error", "message" => "No se encontró precio para el producto"));
+            }
+            return json_encode(array("status" => "success", "precio" => $row['Precio_Marcado']));
+        }
+
+        public function agregar_linea_manual($tipo, $numdoc, $idProducto, $cantidad, $valorUnitario, $lote, $fechaVence) {
+            $cn = new Conectarserver;
+
+            $sql_seq = "SELECT ISNULL(MAX(seq), 0) + 1 AS next_seq FROM Documentos_Lin WHERE tipo = '$tipo' AND Numero_documento = '$numdoc'";
+            $stmt = sqlsrv_query($cn->getConecta(), $sql_seq);
+            if ($stmt === false) {
+                return json_encode(array("status" => "error", "message" => "Error al obtener secuencia"));
+            }
+            $row_seq = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+            $seq = $row_seq ? (int)$row_seq['next_seq'] : 1;
+
+            $fechaVence = $fechaVence ?: date('Y-m-d');
+
+            $sql = "INSERT INTO Documentos_Lin (sw, tipo, seq, modelo, Numero_Documento, Numero_Docto_Base, Numero_Lote,
+            Nit_Cedula, Codigo_Direccion, Fecha_Documento, IdProducto, IdUnidad, Factor_Conversion,
+            Cantidad_Facturada, Cantidad_Pendiente, Cantidad_Orden, Costo_Unitario, Valor_Unitario,
+            Valor_Impuesto, Porcentaje_Impuesto, Porcentaje_Descuento_1, Porcentaje_Descuento_2, Porcentaje_Descuento_3,
+            IdVendedor, Comision_Vendedor, Valor_Comision_Vendedor, IdBodega, Maneja_Inventario, Tomador,
+            IdMoneda, Tasa_Moneda_Ext, CentroDeCostosDoc, Nota_Linea, Unidades, Fecha_Vence, Exportado,
+            Costo_Unitario_Inicial, Porcentaje_ReteFuente, Envase, Numero_Lote_Destino, serial, Impuesto_Consumo,
+            Porcentaje_ReteFuente_2, Porcentaje_ReteFuente_3, Porcentaje_ReteFuente_4,
+            Emp_1, Emp_2, Emp_3, Emp_4, Emp_5, Emp_6, Emp_7, Emp_8,
+            Tara_1, Tara_2, Tara_3, Tara_4, Tara_5, Tara_6, Tara_7, Tara_8)
+
+            SELECT td.tipo, '$tipo', $seq, p.contable, $numdoc, '', '$lote',
+            d.nit_Cedula, d.codigo_direccion, GETDATE(), $idProducto, 1, 1,
+            $cantidad, 0, $cantidad, $valorUnitario, $valorUnitario,
+            0, 0, 0, 0, 0,
+            0, 0, 0, td.IdBodega, 'S', '',
+            1, 1, '0', ' ', 1, '$fechaVence', 'N',
+            $valorUnitario, 0, 0, 0, '', 0,
+            0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0
+
+            FROM TblTipoDoctos td, TblProducto p, Documentos d
+            WHERE td.idTipoDoctos = '$tipo' AND p.IdProducto = $idProducto
+            AND d.tipo = '$tipo' AND d.Numero_documento = $numdoc";
+
+            $stmt = sqlsrv_prepare($cn->getConecta(), $sql);
+            if (sqlsrv_execute($stmt) === false) {
+                $this->registrar_error("Error en agregar_linea_manual: " . print_r(sqlsrv_errors(), true));
+                return json_encode(array("status" => "error", "message" => "Error al agregar la línea: " . print_r(sqlsrv_errors(), true)));
+            }
+
+            return json_encode(array("status" => "success", "message" => "Línea agregada correctamente"));
         }
 
     }

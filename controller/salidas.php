@@ -5,6 +5,28 @@
 
     switch($_GET["op"]){
    
+        case "get_farm_info":
+            echo $salidas->get_farm_info($_POST["idTipo"]);
+        break;
+
+        case "insert_doc_manual":
+            $dir1m = $_POST["dir1"] ?? '';
+            if(strpos($dir1m, ",") !== false) $dir1m = explode(",", $dir1m)[0];
+            $dir2m = $_POST["dir2"] ?? '';
+            if(strpos($dir2m, ",") !== false) $dir2m = explode(",", $dir2m)[0];
+            date_default_timezone_set("America/Bogota");
+            $fecha_raw = $_POST["fecha_factura"] ?? date('Y-m-d');
+            $fecha_manual = $fecha_raw . ' ' . date("H:i:s");
+            $resultado = $salidas->insert_doc_manual(
+                $_POST["idTipo"],
+                $_POST["nit1"], $dir1m,
+                $_POST["nit2"], $dir2m,
+                $fecha_manual,
+                $_SESSION["Id_Usuario"]
+            );
+            echo $resultado;
+        break;
+
         case "insert_doc_salida":
             if(($_POST["docref"] ?? 0) == 0){
                 $resultado = $salidas->insert_doc_salida($_POST["idTipo"], $_POST["numero"], $_SESSION["Id_Usuario"]);
@@ -22,18 +44,37 @@
             if(strpos($dir2, ",") !== false) $dir2 = explode(",", $dir2)[0];
 
             $dotacion = isset($_POST["dotacion_epp"]) && $_POST["dotacion_epp"] == '1';
+            date_default_timezone_set("America/Bogota");
+            $fecha_factura_raw = $_POST["fecha_factura2_iso"] ?? '';
+            $fecha_factura = $fecha_factura_raw ? $fecha_factura_raw . ' ' . date("H:i:s") : '';
 
             $salidas->guardar_salida(
                 $_POST["tipo"], $_POST["numdoc"],
                 $_POST["nit1"], $dir1,
                 $_POST["nit2"], $dir2,
                 $_POST["traslfact1"] ?? '', $_POST["notas"] ?? '',
-                $dotacion
+                $dotacion, $fecha_factura
             );
         break;
 
         case "update_lote_salida":
             $salidas->update_lote_salida($_POST["tipo"], $_POST["numdoc"], $_POST["lote1"]);
+        break;
+
+        case "get_precio_producto":
+            echo $salidas->get_precio_producto($_POST["idProducto"]);
+        break;
+
+        case "agregar_linea_manual":
+            $resultado = $salidas->agregar_linea_manual(
+                $_POST["tipo"], $_POST["numdoc"],
+                $_POST["idProducto"],
+                $_POST["cantidad"],
+                $_POST["valorUnitario"] ?? 0,
+                $_POST["lote"] ?? '0',
+                $_POST["fechaVence"] ?? date('Y-m-d')
+            );
+            echo $resultado;
         break;
 
         case "listar_salidas":
@@ -112,7 +153,7 @@
                 $sub_array[] = number_format($row["Porcentaje_Descuento_1"], 2);
                 $sub_array[] = number_format($row["Valor_Unitario"], 2);
                 $sub_array[] = $row["Numero_Lote"];
-                $sub_array[] = $row["Fecha_Vence"] ? date_format($row["Fecha_Vence"], "Y-m-d") : '';
+                $sub_array[] = $row["Fecha_Vence"] ? date_format($row["Fecha_Vence"], "d/m/Y") : '';
                 $sub_array[] = $row["Nota_Linea"];
                 $sub_array[] = $row["Unidades"];
 

@@ -360,6 +360,20 @@ try {
             echo $html;
             break;
 
+        case "combo_tipos_doc_originales":
+            $usuario_id_orig = $_SESSION["Id_Usuario"];
+            $tipos_orig = $permisos->get_tipos_documento_salidas_permitidos($usuario_id_orig);
+            $html_orig = "<option value='' disabled selected>Seleccione tipo...</option>";
+            if (is_array($tipos_orig)) {
+                foreach ($tipos_orig as $t_orig) {
+                    if (strpos($t_orig['TipoDoctos'], 'Dev') !== 0) {
+                        $html_orig .= "<option value='" . $t_orig['idTipoDoctos'] . "'>" . htmlspecialchars($t_orig['TipoDoctos']) . "</option>";
+                    }
+                }
+            }
+            echo $html_orig;
+            break;
+
         default:
             echo "Operación no válida";
             break;

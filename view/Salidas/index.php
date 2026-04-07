@@ -97,28 +97,36 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 						</fieldset>
 					</div>
 
+					<div class="col-lg-2" style="display: none" id="div_fecha_factura">
+						<fieldset class="form-group">
+							<label class="form-label semibold" id="txt_fecha_factura">Facturado el:</label>
+							<input type="text" name="fecha_factura" id="fecha_factura" class="form-control" autocomplete="off"/>
+					<input type="hidden" name="fecha_factura_iso" id="fecha_factura_iso" value="<?php echo date('Y-m-d') ?>"/>
+						</fieldset>
+					</div>
+
 				</div>
 
-				<div class="row">
+				<div class="row" id="row_docref">
 
 					<div class="col-lg-3">
 						<fieldset class="form-group">
 							<label class="form-label semibold" id="txt_docref">¿Tiene documento referencia?</label>
 							<select id="docref" name="docref" class="form-control" onchange="showInp()" required>
 								<option value="0">Orden de Salida (OS)</option>
-								<option value="1">Traslado / Otros</option>								
+								<option value="2">Manual</option>
 							</select>
 						</fieldset>
 					</div>
+				</div>
 
+				<!-- Fila devolución: tipo del documento original -->
+				<div class="row" id="div_devolucion" style="display:none">
 					<div class="col-lg-3">
 						<fieldset class="form-group">
-							<label class="form-label semibold" style="display: none" id="txt_tipoDocRef">Documento</label>
-							<select id="tipoDocRef" style="display: none" name="tipoDocRef" class="form-control" required>
-								<option value="0">Sin Documento</option>
-								<option value="938">Traslado Almacen</option>
-								<option value="215">Traslado Almacen Acopi</option>
-								<option value="155">Traslado Planta Balanceado</option>
+							<label class="form-label semibold">Tipo Doc. Original</label>
+							<select id="tipoDocOrig" name="tipoDocOrig" class="form-control">
+								<option value="" disabled selected>Seleccione tipo...</option>
 							</select>
 						</fieldset>
 					</div>
@@ -144,8 +152,9 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 				<div class="row">
 
 					
-					<input type="hidden" name="tipo" id="tipo" class="form-control" />				
+					<input type="hidden" name="tipo" id="tipo" class="form-control" />
 					<input type="hidden" name="sw" id="sw" class="form-control" />
+					<input type="hidden" name="tipoDocRef" id="tipoDocRef" value="" />
 
 					<div class="col-lg-4">
 						<fieldset class="form-group">
@@ -166,8 +175,16 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 							<label class="form-label semibold" style="display: none" id="txt_fecha1">Fecha</label>
 							<input type="text" style="display: none" id="fecha1" class="form-control" value="<?php echo $DateAndTime ?>" readonly />
 						</fieldset>
-					</div>				
-											
+					</div>
+
+					<div class="col-lg-2">
+						<fieldset class="form-group">
+							<label class="form-label semibold" style="display: none" id="txt_fecha_factura2">Facturado el:</label>
+							<input type="text" style="display: none" name="fecha_factura2" id="fecha_factura2" class="form-control" autocomplete="off"/>
+						<input type="hidden" name="fecha_factura2_iso" id="fecha_factura2_iso"/>
+						</fieldset>
+					</div>
+
 				</div>
 				
 				<div class="col-lg-12" id="hr1" style="display: none">
@@ -301,7 +318,13 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 
 				<div class="row">
 					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
-						<button type="button" id="btnlot" name="action"  class="lot d-flex w-15 btn btn-rounded btn-inline btn-.bg-primary" data-toggle="modal" data-target="#lot" style="display: none"> Lote</button>
+						<button type="button" id="btnlot" name="action" class="lot d-flex w-15 btn btn-rounded btn-inline btn-.bg-primary" data-toggle="modal" data-target="#lot" style="display: none"> Lote</button>
+					</div>
+					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
+						<button type="button" id="btnagregar" class="d-flex w-15 btn btn-rounded btn-inline btn-info" style="display: none"
+								data-toggle="modal" data-target="#modalagregar" onclick="prepararModalAgregar()">
+							<i class="fa fa-plus"></i> Agregar
+						</button>
 					</div>
 				</div>
 
@@ -390,16 +413,13 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 												</div>
 												<div class="col-lg-12 col-md-12 col-sm-12">
 													<label>Valor Unitario</label>
-													<input class="form-control" type="text" name="Valor_Unitario" id="Valor_Unitario">
+													<input class="form-control" type="text" name="Valor_Unitario" id="Valor_Unitario" readonly>
 												</div>
 												<div class="col-lg-12 col-md-12 col-sm-12">
 													<label>Lote</label>
 													<input class="form-control" type="text" name="lote" id="lote" maxlength="18">
 												</div>
-												<div class="col-lg-12 col-md-12 col-sm-12">
-													<label>Fecha de Vencimiento</label>
-													<input class="form-control" type="date" name="fecha_vence" id="fecha_vence">
-												</div>
+												<input type="hidden" name="fecha_vence" id="fecha_vence">
 											</div>
 										</div>
 										<div class="modal-footer">
@@ -445,7 +465,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="salidas.js?v=3"></script>
+	<script type="text/javascript" src="salidas.js?v=15"></script>
 
 	<script>
         document.addEventListener("DOMContentLoaded", function() {

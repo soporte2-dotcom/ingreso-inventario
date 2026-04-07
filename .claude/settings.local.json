@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-Content \"C:\\\\xampp\\\\php\\\\logs\\\\php_error_log\" -Tail 10)",
+      "Read(//xampp/php/logs/**)",
+      "Read(//c/xampp/**)",
+      "Bash(chmod 777 C:/xampp/htdocs/ingresoinventario/logs)"
+    ]
+  }
+}
