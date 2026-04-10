@@ -221,10 +221,10 @@
         
         public function listar_docdetalle_x_id($tipo, $consecutivo){
             $cn = new Conectarserver;
-            $sql="SELECT d.tipo, d.Numero_Documento, d.seq, d.IdProducto, p.Producto, u.Unidad, d.Cantidad_Facturada, d.Porcentaje_Descuento_1, d.Valor_Unitario, d.Numero_Lote, d.Fecha_Vence, d.Nota_Linea, d.Unidades,  o.exportado
-            FROM Documentos_Lin d, TblProducto p, TblUnidad u, Documentos o 
-            WHERE d.IdProducto = p.IdProducto AND d.IdUnidad = u.idUnidad 
-                AND  d.tipo = '$tipo' AND d.Numero_documento = '$consecutivo' 
+            $sql="SELECT d.tipo, d.Numero_Documento, d.seq, d.IdProducto, p.Producto, u.Unidad, d.Cantidad_Facturada, d.Porcentaje_Descuento_1, d.Porcentaje_Impuesto, d.Valor_Unitario, d.Numero_Lote, d.Fecha_Vence, d.Nota_Linea, d.Unidades, o.exportado
+            FROM Documentos_Lin d, TblProducto p, TblUnidad u, Documentos o
+            WHERE d.IdProducto = p.IdProducto AND d.IdUnidad = u.idUnidad
+                AND  d.tipo = '$tipo' AND d.Numero_documento = '$consecutivo'
                 AND  o.tipo = d.tipo AND o.Numero_documento = d.Numero_documento
             ORDER BY d.seq ASC";
             $registros = sqlsrv_query($cn->getConecta(), $sql);
@@ -254,6 +254,53 @@
             }
         }
 
+        public function delete_masivo($tipo, $consecutivo, $seqs, $productos) {
+            $cn = new Conectarserver;
+
+            $seqArr     = array_filter(array_map('trim', explode(',', $seqs)));
+            $prodArr    = array_filter(array_map('trim', explode(',', $productos)));
+
+            if (empty($seqArr)) return "error: sin secuencias";
+
+            $errores = 0;
+            foreach ($seqArr as $i => $seq) {
+                $producto = isset($prodArr[$i]) ? $prodArr[$i] : null;
+                $sql = "DELETE FROM Documentos_Lin WHERE tipo = ? AND Numero_documento = ? AND seq = ?";
+                $params = [$tipo, $consecutivo, (int)$seq];
+                if ($producto !== null) {
+                    $sql .= " AND IdProducto = ?";
+                    $params[] = (int)$producto;
+                }
+                $stmt = sqlsrv_prepare($cn->getConecta(), $sql, $params);
+                if (!sqlsrv_execute($stmt)) $errores++;
+            }
+
+            if ($errores > 0) return "error: fallaron $errores eliminaciones";
+
+            // Actualizar totales del documento una sola vez al final
+            $sqlUpdate = "UPDATE Documentos SET
+                Total_Items    = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = ? AND Numero_documento = ?),
+                valor_total    = (SELECT ISNULL(SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
+                costo          = (SELECT ISNULL(SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
+                valor_aplicado = (SELECT ISNULL(SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
+                descuento_1    = (SELECT ISNULL(SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (d.Porcentaje_Descuento_1 / 100), 2)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
+                Valor_impuesto = (SELECT ISNULL(SUM(((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?)
+                WHERE tipo = ? AND Numero_Documento = ?";
+
+            $paramsUpdate = [];
+            for ($i = 0; $i < 6; $i++) {
+                $paramsUpdate[] = $tipo;
+                $paramsUpdate[] = $consecutivo;
+            }
+            $paramsUpdate[] = $tipo;
+            $paramsUpdate[] = $consecutivo;
+
+            $stmtU = sqlsrv_prepare($cn->getConecta(), $sqlUpdate, $paramsUpdate);
+            sqlsrv_execute($stmtU);
+
+            return "success";
+        }
+
         public function delete_id($tipo, $consecutivo, $producto, $seq) {
             $cn = new Conectarserver;
             
@@ -268,16 +315,11 @@
                 
                 $sqlUpdate = "UPDATE Documentos SET 
                     Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = ? AND Numero_documento = ?),
-                    valor_total = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
-                    FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
-                    costo = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
-                    FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
-                    valor_aplicado = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
-                    FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
-                    descuento_1 = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (d.Porcentaje_Descuento_1 / 100), 2)) 
-                    FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
-                    Valor_impuesto = (SELECT SUM(((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100))
-                    FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?)
+                    valor_total = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?),
+                    costo = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?),
+                    valor_aplicado = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?),
+                    descuento_1 = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?),
+                    Valor_impuesto = (SELECT ISNULL(SUM(((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?)
                     WHERE tipo = ? AND Numero_Documento = ?";
 
                 $paramsUpdate = array();
@@ -369,10 +411,15 @@
             }
             
             if ($fecha_vence !== null && $fecha_vence !== '') {
-                // Normalizar fecha a formato YYYY-MM-DD para evitar inversión día/mes
-                $fecha_parsed = date_create($fecha_vence);
+                // Intentar primero d/m/Y (formato de visualización de la tabla),
+                // luego Y-m-d (ISO, desde JS o Excel). date_create() no se usa porque
+                // interpreta 09/04/2026 como m/d/Y (septiembre 4) en vez de d/m/Y (abril 9).
+                $fecha_parsed = DateTime::createFromFormat('d/m/Y', $fecha_vence);
+                if (!$fecha_parsed) {
+                    $fecha_parsed = DateTime::createFromFormat('Y-m-d', $fecha_vence);
+                }
                 if ($fecha_parsed) {
-                    $fecha_vence = date_format($fecha_parsed, 'Y-m-d');
+                    $fecha_vence = $fecha_parsed->format('Y-m-d');
                 }
                 $updates[] = "Fecha_Vence = CONVERT(DATE, ?, 23)";
                 $params[] = $fecha_vence;
@@ -446,16 +493,11 @@
             
             $sql = "UPDATE Documentos SET 
                 Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = ? AND Numero_documento = ?),
-                valor_total = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
-                FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
-                costo = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
-                FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
-                valor_aplicado = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
-                FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
-                descuento_1 = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (d.Porcentaje_Descuento_1 / 100), 2)) 
-                FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
-                Valor_impuesto = (SELECT SUM(((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100))
-                FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?)
+                valor_total = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?),
+                costo = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?),
+                valor_aplicado = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?),
+                descuento_1 = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?),
+                Valor_impuesto = (SELECT ISNULL(SUM(((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?)
                 WHERE tipo = ? AND Numero_Documento = ?";
 
             $params = array();
@@ -476,15 +518,19 @@
         public function total_entrada($tipo, $consecutivo){
             $cn = new Conectarserver;
 
-            $sql="SELECT SUM(base) as total FROM FacturacionElect3 WHERE tipo = $tipo AND Numero_documento = $consecutivo ";
+            // Subtotal bruto (qty * precio) calculado en vivo desde Documentos_Lin
+            // para que siempre refleje el estado real sin depender de tablas cacheadas.
+            $sql = "SELECT ISNULL(SUM(dl.Cantidad_Facturada * dl.Valor_Unitario), 0) AS total
+                    FROM Documentos_Lin dl
+                    WHERE dl.tipo = $tipo AND dl.Numero_documento = $consecutivo";
 
             $registros = sqlsrv_query($cn->getConecta(), $sql);
-            if( $registros === false ){
+            if ($registros === false) {
                 echo "Error al ejecutar consulta.\n";
-            }  else {
+            } else {
                 $resultado = array();
-                while($stmt= sqlsrv_fetch_array($registros)) {
-                    $resultado[] = $stmt;                   
+                while ($stmt = sqlsrv_fetch_array($registros)) {
+                    $resultado[] = $stmt;
                 }
                 return $resultado;
             }
@@ -493,15 +539,32 @@
         public function totales($tipo, $consecutivo){
             $cn = new Conectarserver;
 
-            $sql="SELECT * FROM Documentos WHERE tipo = $tipo AND Numero_documento = $consecutivo ";
+            // Calcula IVA, descuento y total en vivo desde Documentos_Lin
+            // para que siempre refleje el estado real independientemente del
+            // UPDATE en la cabecera (Documentos).
+            $sql = "SELECT
+                        ISNULL(SUM(
+                            ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100.0), 2)
+                            + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100.0))
+                              * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100.0)
+                        ), 0) AS valor_total,
+                        ISNULL(SUM(
+                            ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (ISNULL(dl.Porcentaje_Descuento_1, 0) / 100.0), 2)
+                        ), 0) AS descuento_1,
+                        ISNULL(SUM(
+                            ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100.0))
+                            * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100.0)
+                        ), 0) AS Valor_impuesto
+                    FROM Documentos_Lin dl
+                    WHERE dl.tipo = $tipo AND dl.Numero_documento = $consecutivo";
 
             $registros = sqlsrv_query($cn->getConecta(), $sql);
-            if( $registros === false ){
+            if ($registros === false) {
                 echo "Error al ejecutar consulta.\n";
-            }  else {
+            } else {
                 $resultado = array();
-                while($stmt= sqlsrv_fetch_array($registros)) {
-                    $resultado[] = $stmt;                   
+                while ($stmt = sqlsrv_fetch_array($registros)) {
+                    $resultado[] = $stmt;
                 }
                 return $resultado;
             }

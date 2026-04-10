@@ -4,6 +4,7 @@ var rol_id = $('#rol_id').val();
 
 let editingRow = null;
 let originalData = {};
+let documentoExportado = false;
 
 // Configuración centralizada
 const CONFIG = {
@@ -30,7 +31,8 @@ const CONFIG = {
             total_cantidad: "documento.php?op=total_cantidad",
             mostrarXproducto: "documento.php?op=mostrarXproducto",
             duplicar_linea: "documento.php?op=duplicar_linea",
-            eliminar: "documento.php?op=eliminar"
+            eliminar: "documento.php?op=eliminar",
+            eliminar_masivo: "documento.php?op=eliminar_masivo"
         }
     }
 };
@@ -326,7 +328,7 @@ function configurarInterfazParaDocumentoExistente(data) {
     const elementosMostrar = [
         "txt_tipodoc", "txt_numdoc", "txt_fecha1", "txt_pedido1", 
         "txt_traslfact1", "txt_remision", "tipodoc", "numdoc", 
-        "fecha1", "pedido1", "traslfact1", "remision", "btnlot", "btnguardar"
+        "fecha1", "pedido1", "traslfact1", "remision", "btnlot", "btneliminarsel", "btnguardar"
     ];
     
     elementosMostrar.forEach(id => {
@@ -349,13 +351,13 @@ function mostrarCamposEntrada() {
         "nit1", "nombre1", "direccion1", "telefono1",
         "hr1", "hr2", "hr3",
         "txt_nit3", "txt_nombre3", "txt_direccion3", "txt_telefono3",
-        "nit3", "nombre3", "direccion3", "telefono3", "btnlot"
+        "nit3", "nombre3", "direccion3", "telefono3", "btnlot", "btneliminarsel"
     ];
-    
+
     camposEntrada.forEach(id => {
         document.getElementById(id).style.display = "inline-block";
     });
-    
+
     document.getElementById("traslfact1").disabled = false;
 }
 
@@ -365,7 +367,7 @@ function mostrarCamposTraslado() {
         "nit2", "nombre2", "direccion2",
         "txt_nit1", "txt_nombre1", "txt_direccion1", "txt_telefono1",
         "txt_nit2", "txt_nombre2", "txt_direccion2",
-        "hr1", "hr2", "hr3", "btnlot"
+        "hr1", "hr2", "hr3", "btnlot", "btneliminarsel"
     ];
     
     camposTraslado.forEach(id => {
@@ -375,10 +377,14 @@ function mostrarCamposTraslado() {
 
 function configurarEstadoExportado(exportado) {
     if(exportado === 'S') {
-        $("#btnguardar, #btnlot").prop('disabled', true).addClass('btn-disabled');
+        documentoExportado = true;
+        $("#btnguardar, #btnlot, #btneliminarsel").prop('disabled', true).addClass('btn-disabled');
         $("#btnguardar").html('Documento Exportado')
                        .attr('title', 'No se puede modificar un documento exportado');
+        // Quitar clase editable de todas las celdas ya renderizadas
+        $('#tb-doc tbody td.editable-cell').removeClass('editable-cell');
     } else {
+        documentoExportado = false;
         $("#btnguardar").prop('disabled', false)
                        .removeClass('btn-disabled')
                        .html('Guardar')
@@ -518,11 +524,16 @@ function listardetalle(tipo, consecutivo){
         "iDisplayLength": 70,
         "autoWidth": false,
         "createdRow": function(row, data, dataIndex) {
-            $('td', row).eq(4).addClass('editable-cell'); // Cantidad
-            $('td', row).eq(7).addClass('editable-cell'); // Lote
-            $('td', row).eq(8).addClass('editable-cell'); // Fecha Venc
-            $('td', row).eq(9).addClass('editable-cell'); // Nota
-            $('td', row).eq(10).addClass('editable-cell'); // Unidades
+            if (!documentoExportado) {
+                $('td', row).eq(4).addClass('editable-cell');  // Cantidad
+                $('td', row).eq(5).addClass('editable-cell');  // % Desc
+                // col 6 = % IVA (solo lectura, no editable)
+                $('td', row).eq(7).addClass('editable-cell');  // Valor
+                $('td', row).eq(8).addClass('editable-cell');  // Lote
+                $('td', row).eq(9).addClass('editable-cell');  // Fecha Venc
+                $('td', row).eq(10).addClass('editable-cell'); // Nota
+                $('td', row).eq(11).addClass('editable-cell'); // Unidades
+            }
         },
         "language": {
             "sProcessing": "Procesando...",
@@ -576,6 +587,7 @@ function agregarEventosEdicionInline() {
 
 // Función separada para manejar doble clic
 function manejarDobleClic(e) {
+    if (documentoExportado) return;
     if (e.target.classList.contains('editable-cell')) {
         console.log('Doble clic en celda editable');
         iniciarEdicionNativa(e.target);
@@ -584,6 +596,7 @@ function manejarDobleClic(e) {
 
 // Función separada para manejar eliminación global
 function manejarEliminarGlobal(e) {
+    if (documentoExportado) return;
     if (e.target.closest('.btn-eliminar')) {
         e.preventDefault();
         const row = e.target.closest('tr');
@@ -621,27 +634,27 @@ function iniciarEdicionNativa(cell) {
     
     let input;
     switch(cellIndex) {
-        case 4: // Cantidad
-        case 5: // % Desc
-        case 6: // Valor
-        case 10: // Unidades
+        case 4:  // Cantidad
+        case 5:  // % Desc
+        case 7:  // Valor
+        case 11: // Unidades
             input = document.createElement('input');
             input.type = 'number';
             input.value = currentValue;
-            input.step = cellIndex === 6 ? '0.01' : '1';
+            input.step = cellIndex === 7 ? '0.01' : '1';
             break;
-        case 8: // Fecha Venc
+        case 9: // Fecha Venc
             input = document.createElement('input');
             input.type = 'date';
             input.value = currentValue;
             break;
-        case 9: // Nota - permitir vacío
+        case 10: // Nota - permitir vacío
             input = document.createElement('input');
             input.type = 'text';
             input.value = currentValue;
             input.placeholder = "Nota opcional...";
             break;
-        default: // Lote y otros campos
+        default: // Lote (col 8) y otros campos
             input = document.createElement('input');
             input.type = 'text';
             input.value = currentValue;
@@ -657,7 +670,7 @@ function iniciarEdicionNativa(cell) {
     input.focus();
     input.select();
 
-    const actionsCell = row.cells[11];
+    const actionsCell = row.cells[12];
     actionsCell.innerHTML = `
         <div class="edit-actions">
             <button type="button" class="btn btn-success btn-sm btn-action btn-guardar" title="Guardar cambios">
@@ -741,8 +754,8 @@ function guardarEdicionNativa(row) {
     const newValue = input.value.trim();
     const cellIndex = originalData.index;
 
-    // Validación básica - EXCLUIR el campo de notas (índice 9)
-    if (!newValue && cellIndex !== 9) { // El campo 9 es "Nota"
+    // Validación básica - EXCLUIR el campo de notas (índice 10)
+    if (!newValue && cellIndex !== 10) { // El campo 10 es "Nota"
         swal("Advertencia!", "El campo no puede estar vacío", "warning");
         input.focus();
         return;
@@ -764,13 +777,14 @@ function guardarEdicionNativa(row) {
     formData.append('seq', seq); 
     
     switch(cellIndex) {
-        case 4: formData.append('cantidad', newValue); break;
-        case 5: formData.append('descuento', newValue); break;
-        case 6: formData.append('valor', newValue); break;
-        case 7: formData.append('lote', newValue); break;
-        case 8: formData.append('fecha_vence', newValue); break;
-        case 9: formData.append('nota', newValue); break; // Nota puede ser vacía
-        case 10: formData.append('unidades', newValue); break;
+        case 4:  formData.append('cantidad',    newValue); break;
+        case 5:  formData.append('descuento',   newValue); break;
+        // case 6: % IVA - no editable
+        case 7:  formData.append('valor',       newValue); break;
+        case 8:  formData.append('lote',        newValue); break;
+        case 9:  formData.append('fecha_vence', newValue); break;
+        case 10: formData.append('nota',        newValue); break; // Nota puede ser vacía
+        case 11: formData.append('unidades',    newValue); break;
     }
 
     fetch(CONFIG.baseUrl + CONFIG.endpoints.documento.update_prod_doc, {
@@ -813,8 +827,8 @@ function limpiarEstadoEdicionNativa() {
     console.log('🧹 Limpiando estado de edición (nativo)...');
     
     if (editingRow) {
-        const actionsCell = editingRow.cells[11];
-        
+        const actionsCell = editingRow.cells[12];
+
         // 🔥 IMPORTANTE: Limpiar eventos antes de modificar el HTML
         const botonesAnteriores = actionsCell.querySelectorAll('button');
         botonesAnteriores.forEach(btn => {
@@ -977,7 +991,7 @@ function eliminar(tipo, consecutivo, producto, seq){
     if (row) {
         nombreProducto = row.cells[2].textContent.trim();
         cantidad = row.cells[4].textContent.trim();
-        lote = row.cells[7].textContent.trim();
+        lote = row.cells[8].textContent.trim();
     }
     
     const mensaje = `
@@ -1047,6 +1061,80 @@ function eliminar(tipo, consecutivo, producto, seq){
                 });
             });
         }
+    });
+}
+
+function eliminarSeleccionados() {
+    const tipo        = getUrlParameter('tipo');
+    const consecutivo = getUrlParameter('consecutivo');
+
+    const seleccionados = [];
+    document.querySelectorAll('#tb-doc tbody input[type=checkbox]:checked').forEach(function(cb) {
+        const row = cb.closest('tr');
+        if (!row) return;
+        seleccionados.push({
+            seq:      row.cells[0].textContent.trim(),
+            producto: row.cells[1].textContent.trim(),
+            nombre:   row.cells[2].textContent.trim(),
+            cantidad: row.cells[4].textContent.trim()
+        });
+    });
+
+    if (seleccionados.length === 0) {
+        swal("Advertencia!", "Debe seleccionar al menos un producto para eliminar", "warning");
+        return;
+    }
+
+    var lista = seleccionados.map(function(p) {
+        return '<li><b>' + p.producto + '</b> – ' + p.nombre + ' (Cant: ' + p.cantidad + ')</li>';
+    }).join('');
+
+    var mensaje = '<div style="text-align:left;padding:8px;">' +
+        '<p>Se eliminarán <b>' + seleccionados.length + '</b> producto(s):</p>' +
+        '<ul style="max-height:160px;overflow-y:auto;padding-left:18px;">' + lista + '</ul>' +
+        '<br><p style="color:#d9534f;font-weight:bold;">&#9888; Esta acción no se puede deshacer</p>' +
+        '</div>';
+
+    swal({
+        title:              '¿Eliminar productos seleccionados?',
+        text:               mensaje,
+        html:               true,
+        type:               'warning',
+        showCancelButton:   true,
+        confirmButtonClass: 'btn-danger',
+        confirmButtonText:  'Sí, eliminar',
+        cancelButtonText:   'Cancelar',
+        closeOnConfirm:     false
+    }, function(isConfirm) {
+        if (!isConfirm) return;
+
+        swal({ title: 'Eliminando...', text: 'Por favor espere', type: 'info', showConfirmButton: false });
+
+        var seqs     = seleccionados.map(function(p) { return p.seq; }).join(',');
+        var productos = seleccionados.map(function(p) { return p.producto; }).join(',');
+
+        $.post(CONFIG.baseUrl + CONFIG.endpoints.documento.eliminar_masivo, {
+            tipo:        tipo,
+            consecutivo: consecutivo,
+            seqs:        seqs,
+            productos:   productos
+        }, function(data) {
+            if (data.trim() === 'success') {
+                swal({
+                    title: '¡Eliminados!',
+                    text:  seleccionados.length + ' producto(s) eliminado(s) correctamente',
+                    type:  'success',
+                    confirmButtonClass: 'btn-success'
+                }, function() {
+                    $('#tb-doc').DataTable().ajax.reload(null, false);
+                    actualizarTodosLosTotales(tipo, consecutivo);
+                });
+            } else {
+                swal('Error', 'No se pudieron eliminar los productos. Respuesta: ' + data, 'error');
+            }
+        }).fail(function() {
+            swal('Error', 'Error de conexión. No se pudieron eliminar los productos.', 'error');
+        });
     });
 }
 

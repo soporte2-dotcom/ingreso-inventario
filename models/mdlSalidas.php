@@ -169,6 +169,15 @@
 
                 sqlsrv_begin_transaction($cn->getConecta()); // Iniciar la transacción
 
+                // Obtener el siguiente consecutivo de forma segura
+                $sql_num = "SELECT (siguiente + 1) AS numDoc FROM Consecutivos WHERE tipo = '$tipo'";
+                $stmt_num = sqlsrv_query($cn->getConecta(), $sql_num);
+                if ($stmt_num === false) {
+                    throw new Exception("Error al obtener consecutivo: " . print_r(sqlsrv_errors(), true));
+                }
+                $row_num = sqlsrv_fetch_array($stmt_num, SQLSRV_FETCH_ASSOC);
+                $numDoc = $row_num['numDoc'];
+
                 $sql="INSERT INTO Documentos(sw, tipo, modelo, Numero_Documento, Numero_Docto_Base,
                 nit_Cedula, codigo_direccion, Fecha_Hora_Factura,Fecha_Hora_Vencimiento,Fecha_orden_Venta,
                 condicion,valor_total, valor_aplicado, Retencion_1,Retencion_2, Retencion_3, retencion_causada, retencion_iva,retencion_ica,
@@ -179,7 +188,7 @@
                 Telefono_De_Envio_2, Factura_Impresa, IdFormaEnvio, IdTransportador, nit_Cedula_2, codigo_direccion_2, Numero_Docto_Base_2, Tipo_Docto_Base, 
                 Tipo_Docto_Base_2, IdActividadEconomica, TarifaReteFuenteCree, Valor_ReteCree, IdVehiculo)
                 
-                (SELECT td.tipo AS sw, '$tipo' AS tipo, '$tipo' AS modelo, (c.siguiente+1) AS Numero_Documento, '' AS Numero_Docto_Base,
+                (SELECT td.tipo AS sw, '$tipo' AS tipo, '$tipo' AS modelo, $numDoc AS Numero_Documento, '' AS Numero_Docto_Base,
                 dp.nit AS nit_Cedula, dp.direccion_factura AS codigo_direccion,  GETDATE() AS Fecha_Hora_Factura, GETDATE() AS Fecha_Hora_Vencimiento, GETDATE() AS Fecha_orden_Venta,
                 t.condicion AS condicion, dp.valor_total AS valor_total, dp.valor_total AS valor_aplicado, dp.Retencion_1 AS Retencion_1, 0 AS Retencion_2, 0 AS Retencion_3, 
                 0 AS retencion_causada, 0 AS retencion_iva, 0 AS retencion_ica, 0 AS retencion_descuento, 0 AS descuento_pie, 0 AS DescuentoOrdenVenta, 0 AS descuento_1, 0 AS descuento_2,
@@ -187,13 +196,13 @@
                 0 AS duracion, td.IdBodega AS bodega, 0 AS Valor_impuesto, 0 AS Impuesto_Consumo, 0 AS impuesto_deporte, dp.concepto AS concepto, GETDATE() AS vencimiento_presup, 
                 'N' AS exportado, '0' AS prefijo, dp.moneda AS moneda, 0 AS CentroDeCostosDoc, 0 AS valor_mercancia, 0 AS abono, 0 AS Comision_Vendedor, 
                 1 AS Tasa_Moneda_Ext, '' AS Tomador, 'V' AS Tasa_Fija_o_Variable, dir.idLista AS Punto_FOB,
-                0 AS Fletes_Moneda_Ext, 0 AS Miselaneos_Moneda_Ext, 0 AS Cargo_Por_Fletes, 0 AS Impuesto_Por_Fletes, 2 AS Total_Items, t.nombre AS Nombre_Cliente, 
+                0 AS Fletes_Moneda_Ext, 0 AS Miselaneos_Moneda_Ext, 0 AS Cargo_Por_Fletes, 0 AS Impuesto_Por_Fletes, 0 AS Total_Items, t.nombre AS Nombre_Cliente, 
                 SUBSTRING(dp.Contacto_Compras,0,20) AS Ordenado_Por, dp.telefono1 AS Telefono_De_Envio_1, '' AS Telefono_De_Envio_2, 'N' AS Factura_Impresa, dp.IdFormaEnvio AS IdFormaEnvio, dp.IdTRansportador AS IdTransportador, 
                 dp.nit_destino AS nit_Cedula_2, dp.direccion_entrega AS codigo_direccion_2, '$numero' AS Numero_Docto_Base_2, '0' AS Tipo_Docto_Base, 
                 '9' AS Tipo_Docto_Base_2, '0' AS IdActividadEconomica, 0 AS TarifaReteFuenteCree, 0 AS Valor_ReteCree, '1' AS IdVehiculo           
                 
-                FROM Documentos_Ped dp, TblTerceros t, TblTipoDoctos td, Terceros_Dir dir, consecutivos c      
-                WHERE c.tipo = '$tipo' AND td.idTipoDoctos = '$tipo' AND
+                FROM Documentos_Ped dp, TblTerceros t, TblTipoDoctos td, Terceros_Dir dir
+                WHERE td.idTipoDoctos = '$tipo' AND
                 dp.nit = t.nit_cedula AND dir.codigo_direccion = dp.direccion_factura AND dir.nit = dp.nit AND
                 dp.numero_pedido = '$numero' AND dp.sw = '9') ";
 
@@ -212,32 +221,52 @@
                 Porcentaje_ReteFuente_3, Porcentaje_ReteFuente_4, Emp_1, Emp_2, Emp_3, Emp_4, Emp_5, Emp_6,
                 Emp_7, Emp_8, Tara_1, Tara_2, Tara_3, Tara_4, Tara_5, Tara_6, Tara_7, Tara_8)
                 
-                (SELECT td.tipo AS sw, '$tipo' AS tipo, dp.Linea AS seq, p.contable AS Modelo, (c.siguiente+1) AS Numero_Documento,
+                (SELECT td.tipo AS sw, '$tipo' AS tipo, dp.Linea AS seq, p.contable AS Modelo, $numDoc AS Numero_Documento,
                 '' AS Numero_Docto_Base, '0' AS Numero_Lote, dp.IdCliente AS Nit_Cedula, dp.DireccionFactura AS codigo_direccion,  GETDATE() AS Fecha_Documento,
                 dp.IdProducto AS IdProducto, dp.und AS IdUnidad, '1' AS Factor_Conversion,  dp.cantidad AS Cantidad_Facturada,
                 0 AS Cantidad_Pendiente, dp.cantidad AS Cantidad_Orden, dp.valor_unitario AS Costo_Unitario, dp.valor_unitario AS Valor_Unitario, 
-                ((dp.porcentaje_iva/100) * dp.valor_unitario) AS Valor_Impuesto, dp.porcentaje_iva AS Porcentaje_Impuesto, dp.porcentaje_descuento AS Porcentaje_Descuento_1,
-                dp.porc_dcto_2 AS Porcentaje_Descuento_2, dp.porc_dcto_3 AS Porcentaje_Descuento_3, dp.IdVendedor AS IdVendedor, 0 AS Comision_Vendedor, 0 AS Valor_Comision_Vendedor,
+                ((ISNULL(dp.porcentaje_iva, 0)/100) * dp.valor_unitario) AS Valor_Impuesto, ISNULL(dp.porcentaje_iva, 0) AS Porcentaje_Impuesto, ISNULL(dp.porcentaje_descuento, 0) AS Porcentaje_Descuento_1,
+                ISNULL(dp.porc_dcto_2, 0) AS Porcentaje_Descuento_2, ISNULL(dp.porc_dcto_3, 0) AS Porcentaje_Descuento_3, dp.IdVendedor AS IdVendedor, 0 AS Comision_Vendedor, 0 AS Valor_Comision_Vendedor,
                 td.IdBodega AS IdBodega, 'S' AS Maneja_Inventario, '' AS Tomador, 1 AS IdMoneda, 1 AS Tasa_Moneda_Ext, '0' AS CentroDeCostosDoc,
                 ' ' AS Nota_Linea, '1' AS Unidades, GETDATE() AS Fecha_Vence, 'N' AS Exportado, dp.valor_unitario AS Costo_Unitario_Inicial,
                 dp.Porcentaje_ReteFuente AS Porcentaje_ReteFuente, 0 AS Envase, 0 AS Numero_Lote_Destino, '' AS serial, 0 AS Impuesto_Consumo, 0 AS Porcentaje_ReteFuente_2,
                 0 AS Porcentaje_ReteFuente_3, 0 AS Porcentaje_ReteFuente_4, 0 AS Emp_1, 0 AS Emp_2, 0 AS Emp_3, 0 AS Emp_4, 0 AS Emp_5, 0 AS Emp_6,
                 0 AS Emp_7, 0 AS Emp_8, 0 AS Tara_1, 0 AS Tara_2, 0 AS Tara_3, 0 AS Tara_4, 0 AS Tara_5, 0 AS Tara_6, 0 AS Tara_7, 0 AS Tara_8
                                                                 
-                FROM  consecutivos c, Documentos_Lin_Ped dp, TblTipoDoctos td, TblProducto p
-                                        
-                WHERE c.tipo = '$tipo' AND td.idTipoDoctos = c.tipo AND p.IdProducto = dp.IdProducto
+                FROM  Documentos_Lin_Ped dp, TblTipoDoctos td, TblProducto p
+                WHERE td.idTipoDoctos = '$tipo' AND p.IdProducto = dp.IdProducto
                 AND dp.numero_pedido = '$numero' AND dp.sw = 9)";
                
-                $registros =  sqlsrv_prepare($cn->getConecta(), $sql1);            
-                if(sqlsrv_execute($registros) === false) {
+                $registros_lin =  sqlsrv_prepare($cn->getConecta(), $sql1);            
+                if(sqlsrv_execute($registros_lin) === false) {
                     throw new Exception("Error al insertar detalle del documento: " . print_r(sqlsrv_errors(), true));
                 }
 
-                $sql2="UPDATE Consecutivos SET siguiente = siguiente+1 WHERE tipo = '$tipo' ";                
-                $registros =  sqlsrv_prepare($cn->getConecta(), $sql2);
-                if(sqlsrv_execute($registros) === false) {
+                // Actualizar totales en cabecera como suma del detalle
+                $sql_totales = "UPDATE Documentos SET 
+                    Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = '$tipo' AND Numero_documento = $numDoc),
+                    Valor_impuesto = (SELECT ISNULL(SUM(((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = '$tipo' AND dl.Numero_documento = $numDoc),
+                    valor_total = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = '$tipo' AND dl.Numero_documento = $numDoc),
+                    valor_aplicado = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = '$tipo' AND dl.Numero_documento = $numDoc),
+                    costo = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = '$tipo' AND dl.Numero_documento = $numDoc)
+                    WHERE tipo = '$tipo' AND Numero_Documento = $numDoc";
+                
+                $registros_tot = sqlsrv_prepare($cn->getConecta(), $sql_totales);
+                if(sqlsrv_execute($registros_tot) === false) {
+                    throw new Exception("Error al actualizar totales en cabecera: " . print_r(sqlsrv_errors(), true));
+                }
+
+                $sql2="UPDATE Consecutivos SET siguiente = siguiente + 1 WHERE tipo = '$tipo'";
+                $registros_con =  sqlsrv_prepare($cn->getConecta(), $sql2);
+                if(sqlsrv_execute($registros_con) === false) {
                     throw new Exception("Error al actualizar consecutivo: " . print_r(sqlsrv_errors(), true));
+                }
+
+                // Marcar el pedido de origen como despachado
+                $sql_despacho = "UPDATE Documentos_Ped SET despacho = 'S' WHERE numero_pedido = ? AND sw = '9'";
+                $stmt_despacho = sqlsrv_prepare($cn->getConecta(), $sql_despacho, array($numero));
+                if(sqlsrv_execute($stmt_despacho) === false) {
+                    throw new Exception("Error al actualizar despacho del pedido: " . print_r(sqlsrv_errors(), true));
                 }
 
                 sqlsrv_commit($cn->getConecta()); // Confirmar la transacción si todo ha ido bien
@@ -387,9 +416,30 @@
             sqlsrv_execute($registros);
         }
 
-        public function update_lote_salida($tipo, $numdoc, $lote){
+        public function update_notas_etapa($tipo, $numdoc, $notas) {
             $cn = new Conectarserver;
-            $sql = "UPDATE Documentos_Lin SET Numero_Lote = ? WHERE tipo = ? AND Numero_documento = ?";
+            $sql = "UPDATE Documentos SET notas = ? WHERE tipo = ? AND Numero_Documento = ?";
+            $params = array($notas, $tipo, $numdoc);
+            $stmt = sqlsrv_query($cn->getConecta(), $sql, $params);
+            if ($stmt === false) {
+                echo json_encode(['status' => 'error', 'message' => 'Error al actualizar etapa']);
+            } else {
+                echo json_encode(['status' => 'success', 'message' => 'Etapa asignada correctamente']);
+            }
+        }
+
+        public function update_lote_salida($tipo, $numdoc, $lote, $seqs = ''){
+            $cn = new Conectarserver;
+
+            $seqFilter = '';
+            if (!empty($seqs)) {
+                $seqArray = array_filter(array_map('intval', explode(',', $seqs)));
+                if (!empty($seqArray)) {
+                    $seqFilter = " AND seq IN (" . implode(',', $seqArray) . ")";
+                }
+            }
+
+            $sql = "UPDATE Documentos_Lin SET Numero_Lote = ? WHERE tipo = ? AND Numero_documento = ?" . $seqFilter;
             $params = array($lote, $tipo, $numdoc);
             $stmt = sqlsrv_query($cn->getConecta(), $sql, $params);
             if($stmt === false){
@@ -399,7 +449,7 @@
             }
         }
 
-        public function insert_salida_traslado($tipo, $numero, $tiporef, $usuario){
+        public function insert_devolucion($tipo, $numero, $tiporef, $usuario){
             $cn = new Conectarserver;
 
             try {
@@ -439,10 +489,10 @@
                 d.nit_Cedula AS nit_Cedula, d.codigo_direccion AS codigo_direccion,  GETDATE() AS Fecha_Hora_Factura, GETDATE() AS Fecha_Hora_Vencimiento, GETDATE() AS Fecha_orden_Venta,
                 d.condicion AS condicion, d.valor_total AS valor_total, 0 AS valor_aplicado, d.Retencion_1 AS Retencion_1, d.Retencion_2 AS Retencion_2, d.Retencion_3 AS Retencion_3, 0 AS retencion_causada, 0 AS retencion_iva,
                 0 AS retencion_ica, 0 AS retencion_descuento, 0 AS descuento_pie, 0 AS DescuentoOrdenVenta, d.descuento_1 AS descuento_1, d.descuento_2 AS descuento_2, d.descuento_3 AS descuento_3,
-                0 AS costo, d.IdVendedor AS IdVendedor, 'N' AS anulado, '$usuario' AS usuario,
+                d.costo AS costo, d.IdVendedor AS IdVendedor, 'N' AS anulado, '$usuario' AS usuario,
                 d.notas AS notas, HOST_NAME() AS pc, GETDATE() AS fecha_hora, 0 AS duracion, td.IdBodega AS bodega, 0 AS Valor_impuesto, 0 AS Impuesto_Consumo,
                 0 AS impuesto_deporte, d.concepto AS concepto, GETDATE() AS vencimiento_presup,
-                'N' AS exportado, '0' AS prefijo, d.moneda AS moneda, 0 AS CentroDeCostosDoc, 0 AS valor_mercancia, 0 AS abono, 0 AS Comision_Vendedor,
+                'S' AS exportado, '0' AS prefijo, d.moneda AS moneda, 0 AS CentroDeCostosDoc, 0 AS valor_mercancia, 0 AS abono, 0 AS Comision_Vendedor,
                 1 AS Tasa_Moneda_Ext, '' AS Tomador, 'V' AS Tasa_Fija_o_Variable, d.Punto_FOB AS Punto_FOB,
                 0 AS Fletes_Moneda_Ext, 0 AS Miselaneos_Moneda_Ext, 0 AS Cargo_Por_Fletes, 0 AS Impuesto_Por_Fletes, d.Total_Items AS Total_Items, d.Nombre_Cliente AS Nombre_Cliente,
                 SUBSTRING(d.Ordenado_Por,0,20) AS Ordenado_Por, d.Telefono_De_Envio_1 AS Telefono_De_Envio_1, d.Telefono_De_Envio_2 AS Telefono_De_Envio_2, 'N' AS Factura_Impresa, d.IdFormaEnvio AS IdFormaEnvio, d.IdTRansportador AS IdTransportador,
@@ -468,10 +518,10 @@
                 Emp_7, Emp_8, Tara_1, Tara_2, Tara_3, Tara_4, Tara_5, Tara_6, Tara_7, Tara_8)
 
                 (SELECT td.tipo AS sw, '$tipo' AS tipo, dl.seq AS seq, p.contable AS Modelo, (c.siguiente+1) AS Numero_Documento,
-                '' AS Numero_Docto_Base, '0' AS Numero_Lote, dl.Nit_Cedula AS Nit_Cedula, dl.codigo_direccion AS codigo_direccion,  GETDATE() AS Fecha_Documento,
+                '' AS Numero_Docto_Base, dl.Numero_Lote AS Numero_Lote, dl.Nit_Cedula AS Nit_Cedula, dl.codigo_direccion AS codigo_direccion,  GETDATE() AS Fecha_Documento,
                 dl.IdProducto AS IdProducto, dl.IdUnidad AS IdUnidad, '1' AS Factor_Conversion, Cantidad_Facturada AS Cantidad_Facturada,
                 (dl.Cantidad_Facturada)* -1 AS Cantidad_Pendiente, dl.Cantidad_Orden AS Cantidad_Orden,
-                dl.Costo_Unitario AS Costo_Unitario, dl.valor_unitario AS Valor_Unitario, 0 AS Valor_Impuesto, dl.Porcentaje_Impuesto AS Porcentaje_Impuesto,
+                dl.Costo_Unitario AS Costo_Unitario, dl.valor_unitario AS Valor_Unitario, (dl.Porcentaje_Impuesto / 100.0 * dl.valor_unitario) AS Valor_Impuesto, dl.Porcentaje_Impuesto AS Porcentaje_Impuesto,
                 dl.Porcentaje_Descuento_1 AS Porcentaje_Descuento_1, dl.Porcentaje_Descuento_2 AS Porcentaje_Descuento_2,
                 dl.Porcentaje_Descuento_3 AS Porcentaje_Descuento_3, dl.IdVendedor AS IdVendedor, 0 AS Comision_Vendedor, 0 AS Valor_Comision_Vendedor,
                 td.IdBodega AS IdBodega, 'S' AS Maneja_Inventario, '' AS Tomador, 1 AS IdMoneda, 1 AS Tasa_Moneda_Ext, '0' AS CentroDeCostosDoc,
@@ -485,7 +535,7 @@
 
                 FROM  consecutivos c, Documentos_Lin dl, Documentos d, TblTerceros t, TblTipoDoctos td, TblProducto p, TblRetencion r
 
-                WHERE c.tipo = $tipo AND dl.Numero_documento = '$numero' AND dl.tipo = '$tiporef'
+                WHERE c.tipo = '$tipo' AND dl.Numero_documento = '$numero' AND dl.tipo = '$tiporef'
                 AND td.idTipoDoctos = c.tipo AND d.Numero_documento=dl.Numero_Documento AND d.tipo = dl.tipo
                 AND dl.Nit_Cedula=t.nit_cedula
                 AND p.IdProducto = dl.IdProducto
@@ -494,6 +544,21 @@
                 $registros = sqlsrv_prepare($cn->getConecta(), $sql1);
                 if(sqlsrv_execute($registros) === false) {
                     throw new Exception("Error al insertar detalle del documento: " . print_r(sqlsrv_errors(), true));
+                }
+
+                // Actualizar Valor_impuesto en cabecera como suma de impuestos del detalle
+                $sql_imp = "UPDATE Documentos SET
+                    Valor_impuesto = (
+                        SELECT ISNULL(SUM(dl.Valor_Impuesto), 0)
+                        FROM Documentos_Lin dl
+                        WHERE dl.tipo = '$tipo'
+                          AND dl.Numero_documento = (SELECT siguiente+1 FROM Consecutivos WHERE tipo = '$tipo')
+                    )
+                    WHERE tipo = '$tipo'
+                      AND Numero_Documento = (SELECT siguiente+1 FROM Consecutivos WHERE tipo = '$tipo')";
+                $registros = sqlsrv_prepare($cn->getConecta(), $sql_imp);
+                if(sqlsrv_execute($registros) === false) {
+                    throw new Exception("Error al actualizar Valor_impuesto en cabecera: " . print_r(sqlsrv_errors(), true));
                 }
 
                 $sql2="UPDATE Consecutivos SET siguiente = siguiente+1 WHERE tipo = '$tipo' ";
@@ -515,7 +580,7 @@
                 if (isset($cn) && $cn->getConecta()) {
                     sqlsrv_rollback($cn->getConecta());
                 }
-                $this->registrar_error("Error en insert_salida_traslado: " . $e->getMessage());
+                $this->registrar_error("Error en insert_devolucion: " . $e->getMessage());
                 return json_encode(array(
                     "status" => "error",
                     "message" => $e->getMessage()
@@ -556,6 +621,15 @@
 
                 sqlsrv_begin_transaction($cn->getConecta());
 
+                // Obtener el siguiente consecutivo de forma segura
+                $sql_num = "SELECT (siguiente + 1) AS numDoc FROM Consecutivos WHERE tipo = '$tipo'";
+                $stmt_num = sqlsrv_query($cn->getConecta(), $sql_num);
+                if ($stmt_num === false) {
+                    throw new Exception("Error al obtener consecutivo: " . print_r(sqlsrv_errors(), true));
+                }
+                $row_num = sqlsrv_fetch_array($stmt_num, SQLSRV_FETCH_ASSOC);
+                $numDoc = $row_num['numDoc'];
+
                 $sql="INSERT INTO Documentos(sw, tipo, modelo, Numero_Documento, Numero_Docto_Base,
                 nit_Cedula, codigo_direccion, Fecha_Hora_Factura,Fecha_Hora_Vencimiento,Fecha_orden_Venta,
                 condicion,valor_total, valor_aplicado, Retencion_1,Retencion_2, Retencion_3, retencion_causada, retencion_iva,retencion_ica,
@@ -566,7 +640,7 @@
                 Telefono_De_Envio_2, Factura_Impresa, IdFormaEnvio, IdTransportador, nit_Cedula_2, codigo_direccion_2, Numero_Docto_Base_2, Tipo_Docto_Base,
                 Tipo_Docto_Base_2, IdActividadEconomica, TarifaReteFuenteCree, Valor_ReteCree, IdVehiculo)
 
-                (SELECT td.tipo AS sw, '$tipo' AS tipo, '$tipo' AS modelo, (c.siguiente+1) AS Numero_Documento, '' AS Numero_Docto_Base,
+                (SELECT td.tipo AS sw, '$tipo' AS tipo, '$tipo' AS modelo, $numDoc AS Numero_Documento, '' AS Numero_Docto_Base,
                 dp.nit AS nit_Cedula, dp.direccion_factura AS codigo_direccion,  GETDATE() AS Fecha_Hora_Factura, GETDATE() AS Fecha_Hora_Vencimiento, GETDATE() AS Fecha_orden_Venta,
                 t.condicion AS condicion, dp.valor_total AS valor_total, dp.valor_total AS valor_aplicado, dp.Retencion_1 AS Retencion_1, 0 AS Retencion_2, 0 AS Retencion_3,
                 0 AS retencion_causada, 0 AS retencion_iva, 0 AS retencion_ica, 0 AS retencion_descuento, 0 AS descuento_pie, 0 AS DescuentoOrdenVenta, 0 AS descuento_1, 0 AS descuento_2,
@@ -574,13 +648,13 @@
                 0 AS duracion, td.IdBodega AS bodega, 0 AS Valor_impuesto, 0 AS Impuesto_Consumo, 0 AS impuesto_deporte, dp.concepto AS concepto, GETDATE() AS vencimiento_presup,
                 'N' AS exportado, '0' AS prefijo, dp.moneda AS moneda, 0 AS CentroDeCostosDoc, 0 AS valor_mercancia, 0 AS abono, 0 AS Comision_Vendedor,
                 1 AS Tasa_Moneda_Ext, '' AS Tomador, 'V' AS Tasa_Fija_o_Variable, dir.idLista AS Punto_FOB,
-                0 AS Fletes_Moneda_Ext, 0 AS Miselaneos_Moneda_Ext, 0 AS Cargo_Por_Fletes, 0 AS Impuesto_Por_Fletes, 2 AS Total_Items, t.nombre AS Nombre_Cliente,
+                0 AS Fletes_Moneda_Ext, 0 AS Miselaneos_Moneda_Ext, 0 AS Cargo_Por_Fletes, 0 AS Impuesto_Por_Fletes, 0 AS Total_Items, t.nombre AS Nombre_Cliente,
                 SUBSTRING(dp.Contacto_Compras,0,20) AS Ordenado_Por, dp.telefono1 AS Telefono_De_Envio_1, '' AS Telefono_De_Envio_2, 'N' AS Factura_Impresa, dp.IdFormaEnvio AS IdFormaEnvio, dp.IdTRansportador AS IdTransportador,
                 dp.nit_destino AS nit_Cedula_2, dp.direccion_entrega AS codigo_direccion_2, '$numero' AS Numero_Docto_Base_2, '0' AS Tipo_Docto_Base,
                 '10' AS Tipo_Docto_Base_2, '0' AS IdActividadEconomica, 0 AS TarifaReteFuenteCree, 0 AS Valor_ReteCree, '1' AS IdVehiculo
 
-                FROM Documentos_Ped dp, TblTerceros t, TblTipoDoctos td, Terceros_Dir dir, consecutivos c
-                WHERE c.tipo = '$tipo' AND td.idTipoDoctos = '$tipo' AND
+                FROM Documentos_Ped dp, TblTerceros t, TblTipoDoctos td, Terceros_Dir dir
+                WHERE td.idTipoDoctos = '$tipo' AND
                 dp.nit = t.nit_cedula AND dir.codigo_direccion = dp.direccion_factura AND dir.nit = dp.nit AND
                 dp.numero_pedido = '$numero' AND dp.sw = '10') ";
 
@@ -599,32 +673,53 @@
                 Porcentaje_ReteFuente_3, Porcentaje_ReteFuente_4, Emp_1, Emp_2, Emp_3, Emp_4, Emp_5, Emp_6,
                 Emp_7, Emp_8, Tara_1, Tara_2, Tara_3, Tara_4, Tara_5, Tara_6, Tara_7, Tara_8)
 
-                (SELECT td.tipo AS sw, '$tipo' AS tipo, dp.Linea AS seq, p.contable AS Modelo, (c.siguiente+1) AS Numero_Documento,
+                (SELECT td.tipo AS sw, '$tipo' AS tipo, dp.Linea AS seq, p.contable AS Modelo, $numDoc AS Numero_Documento,
                 '' AS Numero_Docto_Base, '0' AS Numero_Lote, dp.IdCliente AS Nit_Cedula, dp.DireccionFactura AS codigo_direccion,  GETDATE() AS Fecha_Documento,
                 dp.IdProducto AS IdProducto, dp.und AS IdUnidad, '1' AS Factor_Conversion,  dp.cantidad AS Cantidad_Facturada,
                 0 AS Cantidad_Pendiente, dp.cantidad AS Cantidad_Orden, dp.valor_unitario AS Costo_Unitario, dp.valor_unitario AS Valor_Unitario,
-                ((dp.porcentaje_iva/100) * dp.valor_unitario) AS Valor_Impuesto, dp.porcentaje_iva AS Porcentaje_Impuesto, dp.porcentaje_descuento AS Porcentaje_Descuento_1,
-                dp.porc_dcto_2 AS Porcentaje_Descuento_2, dp.porc_dcto_3 AS Porcentaje_Descuento_3, dp.IdVendedor AS IdVendedor, 0 AS Comision_Vendedor, 0 AS Valor_Comision_Vendedor,
+                ((ISNULL(dp.porcentaje_iva, 0)/100) * dp.valor_unitario) AS Valor_Impuesto, ISNULL(dp.porcentaje_iva, 0) AS Porcentaje_Impuesto, ISNULL(dp.porcentaje_descuento, 0) AS Porcentaje_Descuento_1,
+                ISNULL(dp.porc_dcto_2, 0) AS Porcentaje_Descuento_2, ISNULL(dp.porc_dcto_3, 0) AS Porcentaje_Descuento_3, dp.IdVendedor AS IdVendedor, 0 AS Comision_Vendedor, 0 AS Valor_Comision_Vendedor,
                 td.IdBodega AS IdBodega, 'S' AS Maneja_Inventario, '' AS Tomador, 1 AS IdMoneda, 1 AS Tasa_Moneda_Ext, '0' AS CentroDeCostosDoc,
                 ' ' AS Nota_Linea, '1' AS Unidades, GETDATE() AS Fecha_Vence, 'N' AS Exportado, dp.valor_unitario AS Costo_Unitario_Inicial,
                 dp.Porcentaje_ReteFuente AS Porcentaje_ReteFuente, 0 AS Envase, 0 AS Numero_Lote_Destino, '' AS serial, 0 AS Impuesto_Consumo, 0 AS Porcentaje_ReteFuente_2,
                 0 AS Porcentaje_ReteFuente_3, 0 AS Porcentaje_ReteFuente_4, 0 AS Emp_1, 0 AS Emp_2, 0 AS Emp_3, 0 AS Emp_4, 0 AS Emp_5, 0 AS Emp_6,
                 0 AS Emp_7, 0 AS Emp_8, 0 AS Tara_1, 0 AS Tara_2, 0 AS Tara_3, 0 AS Tara_4, 0 AS Tara_5, 0 AS Tara_6, 0 AS Tara_7, 0 AS Tara_8
 
-                FROM  consecutivos c, Documentos_Lin_Ped dp, TblTipoDoctos td, TblProducto p
+                FROM  Documentos_Lin_Ped dp, TblTipoDoctos td, TblProducto p
 
-                WHERE c.tipo = '$tipo' AND td.idTipoDoctos = c.tipo AND p.IdProducto = dp.IdProducto
+                WHERE td.idTipoDoctos = '$tipo' AND p.IdProducto = dp.IdProducto
                 AND dp.numero_pedido = '$numero' AND dp.sw = 10)";
 
-                $registros =  sqlsrv_prepare($cn->getConecta(), $sql1);
-                if(sqlsrv_execute($registros) === false) {
+                $registros_lin =  sqlsrv_prepare($cn->getConecta(), $sql1);
+                if(sqlsrv_execute($registros_lin) === false) {
                     throw new Exception("Error al insertar detalle del documento: " . print_r(sqlsrv_errors(), true));
                 }
 
-                $sql2="UPDATE Consecutivos SET siguiente = siguiente+1 WHERE tipo = '$tipo' ";
-                $registros =  sqlsrv_prepare($cn->getConecta(), $sql2);
-                if(sqlsrv_execute($registros) === false) {
+                // Actualizar totales en cabecera como suma del detalle
+                $sql_totales = "UPDATE Documentos SET 
+                    Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = '$tipo' AND Numero_documento = $numDoc),
+                    Valor_impuesto = (SELECT ISNULL(SUM(((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = '$tipo' AND dl.Numero_documento = $numDoc),
+                    valor_total = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = '$tipo' AND dl.Numero_documento = $numDoc),
+                    valor_aplicado = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = '$tipo' AND dl.Numero_documento = $numDoc),
+                    costo = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = '$tipo' AND dl.Numero_documento = $numDoc)
+                    WHERE tipo = '$tipo' AND Numero_Documento = $numDoc";
+                
+                $registros_tot = sqlsrv_prepare($cn->getConecta(), $sql_totales);
+                if(sqlsrv_execute($registros_tot) === false) {
+                    throw new Exception("Error al actualizar totales en cabecera: " . print_r(sqlsrv_errors(), true));
+                }
+
+                $sql2="UPDATE Consecutivos SET siguiente = siguiente + 1 WHERE tipo = '$tipo'";
+                $registros_con =  sqlsrv_prepare($cn->getConecta(), $sql2);
+                if(sqlsrv_execute($registros_con) === false) {
                     throw new Exception("Error al actualizar consecutivo: " . print_r(sqlsrv_errors(), true));
+                }
+
+                // Marcar el pedido de origen como despachado
+                $sql_despacho = "UPDATE Documentos_Ped SET despacho = 'S' WHERE numero_pedido = ? AND sw = '10'";
+                $stmt_despacho = sqlsrv_prepare($cn->getConecta(), $sql_despacho, array($numero));
+                if(sqlsrv_execute($stmt_despacho) === false) {
+                    throw new Exception("Error al actualizar despacho del pedido: " . print_r(sqlsrv_errors(), true));
                 }
 
                 sqlsrv_commit($cn->getConecta());
@@ -651,19 +746,125 @@
             }
         }
 
-        public function get_precio_producto($idProducto) {
+        public function get_info_producto($idProducto, $tipo, $numdoc, $nit = '', $direccion = '') {
             $cn = new Conectarserver;
-            $sql = "SELECT TOP 1 Precio_Marcado FROM Producto_Pre WHERE idProducto = ? ORDER BY Fecha DESC";
-            $params = array((int)$idProducto);
-            $stmt = sqlsrv_query($cn->getConecta(), $sql, $params);
-            if ($stmt === false || ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) === false || $row === null) {
-                return json_encode(array("status" => "error", "message" => "No se encontró precio para el producto"));
+
+            // Limpiar dirección: puede llegar como "12,..." desde el select del formulario
+            if (strpos($direccion, ',') !== false) {
+                $direccion = explode(',', $direccion)[0];
             }
-            return json_encode(array("status" => "success", "precio" => $row['Precio_Marcado']));
+            $direccion = trim($direccion);
+            $nit       = trim($nit);
+
+            // 1. Nombre e impuesto del producto
+            $sqlProd = "SELECT p.Producto, ISNULL(i.PorcentajeImpuesto, 0) AS PorcentajeImpuesto
+                        FROM TblProducto p
+                        LEFT JOIN TblImpuesto i ON p.Impuesto_venta = i.IdImpuesto
+                        WHERE p.IdProducto = ?";
+            $stmt = sqlsrv_query($cn->getConecta(), $sqlProd, array((int)$idProducto));
+            if ($stmt === false || ($rowProd = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) === null) {
+                return json_encode(array("status" => "error", "message" => "Producto no encontrado"));
+            }
+
+            $ID_LISTA_DEFAULT = 50;
+
+            // 2a. IdLista desde Terceros_Dir con nit+dirección del formulario
+            $idListaReal = null; // null = no encontrado en BD
+            if ($nit !== '' && $direccion !== '') {
+                $sqlLista = "SELECT TOP 1 idLista FROM Terceros_Dir
+                             WHERE nit = ? AND codigo_direccion = ?";
+                $stmtLista = sqlsrv_query($cn->getConecta(), $sqlLista, array($nit, (int)$direccion));
+                if ($stmtLista !== false) {
+                    $rowLista = sqlsrv_fetch_array($stmtLista, SQLSRV_FETCH_ASSOC);
+                    if ($rowLista) $idListaReal = $rowLista['idLista']; // puede ser null si la col es NULL
+                }
+            }
+
+            // 2b. Fallback vía Documentos
+            if ($idListaReal === null && $tipo && $numdoc) {
+                $sqlLista2 = "SELECT TOP 1 td.idLista
+                              FROM Documentos d
+                              INNER JOIN Terceros_Dir td ON td.nit = d.nit_Cedula
+                                  AND td.codigo_direccion = d.codigo_direccion
+                              WHERE d.tipo = ? AND d.Numero_documento = ?";
+                $stmtLista2 = sqlsrv_query($cn->getConecta(), $sqlLista2, array($tipo, $numdoc));
+                if ($stmtLista2 !== false) {
+                    $rowLista2 = sqlsrv_fetch_array($stmtLista2, SQLSRV_FETCH_ASSOC);
+                    if ($rowLista2) $idListaReal = $rowLista2['idLista'];
+                }
+            }
+
+            // 2c. Determinar lista efectiva: la del cliente si existe y > 0, si no la predeterminada
+            $idLista = ($idListaReal !== null && (int)$idListaReal > 0)
+                       ? (int)$idListaReal
+                       : $ID_LISTA_DEFAULT;
+
+            // 3. Precio en la lista efectiva del cliente
+            // Columnas reales en Producto_Pre: precio (valor), IdPrecio (id de lista)
+            $precio     = 0;
+            $listaUsada = $idLista;
+            $sqlPrecio  = "SELECT TOP 1 precio FROM Producto_Pre
+                           WHERE IdProducto = ? AND IdPrecio = ? ORDER BY Fecha DESC";
+            $stmtPrecio = sqlsrv_query($cn->getConecta(), $sqlPrecio, array((int)$idProducto, $idLista));
+            if ($stmtPrecio !== false) {
+                $rowPrecio = sqlsrv_fetch_array($stmtPrecio, SQLSRV_FETCH_ASSOC);
+                if ($rowPrecio) $precio = (float)$rowPrecio['precio'];
+            }
+
+            // 3b. Si no hay precio en la lista del cliente, intentar con la predeterminada (si era distinta)
+            if ($precio == 0 && $idLista !== $ID_LISTA_DEFAULT) {
+                $stmtFb = sqlsrv_query($cn->getConecta(), $sqlPrecio, array((int)$idProducto, $ID_LISTA_DEFAULT));
+                if ($stmtFb !== false) {
+                    $rowFb = sqlsrv_fetch_array($stmtFb, SQLSRV_FETCH_ASSOC);
+                    if ($rowFb) { $precio = (float)$rowFb['precio']; $listaUsada = $ID_LISTA_DEFAULT; }
+                }
+            }
+
+            // 3c. Último recurso: precio más reciente del producto en CUALQUIER lista
+            if ($precio == 0) {
+                $sqlGlobal  = "SELECT TOP 1 precio, IdPrecio FROM Producto_Pre
+                               WHERE IdProducto = ? ORDER BY Fecha DESC";
+                $stmtGlobal = sqlsrv_query($cn->getConecta(), $sqlGlobal, array((int)$idProducto));
+                if ($stmtGlobal !== false) {
+                    $rowGlobal = sqlsrv_fetch_array($stmtGlobal, SQLSRV_FETCH_ASSOC);
+                    if ($rowGlobal) {
+                        $precio     = (float)$rowGlobal['precio'];
+                        $listaUsada = (int)$rowGlobal['IdPrecio'];
+                    }
+                }
+            }
+
+            // Diagnóstico: qué listas (IdPrecio) tiene este producto en Producto_Pre
+            $listasDisponibles = array();
+            $sqlListas  = "SELECT DISTINCT IdPrecio FROM Producto_Pre WHERE IdProducto = ? ORDER BY IdPrecio";
+            $stmtListas = sqlsrv_query($cn->getConecta(), $sqlListas, array((int)$idProducto));
+            if ($stmtListas !== false) {
+                while ($r = sqlsrv_fetch_array($stmtListas, SQLSRV_FETCH_ASSOC)) {
+                    $listasDisponibles[] = (int)$r['IdPrecio'];
+                }
+            }
+
+            return json_encode(array(
+                "status"              => "success",
+                "nombre"              => $rowProd['Producto'],
+                "porcentaje_impuesto" => (float)$rowProd['PorcentajeImpuesto'],
+                "precio"              => $precio,
+                // campos de diagnóstico (para F12 → consola)
+                "_debug" => array(
+                    "idLista_cliente"     => $idListaReal,
+                    "idLista_usado"       => $listaUsada,
+                    "listas_disponibles"  => $listasDisponibles,
+                    "nit_recibido"        => $nit,
+                    "dir_recibida"        => $direccion,
+                )
+            ));
         }
 
-        public function agregar_linea_manual($tipo, $numdoc, $idProducto, $cantidad, $valorUnitario, $lote, $fechaVence) {
+        public function agregar_linea_manual($tipo, $numdoc, $idProducto, $cantidad, $valorUnitario, $lote, $fechaVence, $porcentajeImpuesto = 0, $nota = '') {
             $cn = new Conectarserver;
+
+            $porcentajeImpuesto = (float)$porcentajeImpuesto;
+            $valorImpuesto      = round(($porcentajeImpuesto / 100) * (float)$valorUnitario, 2);
 
             $sql_seq = "SELECT ISNULL(MAX(seq), 0) + 1 AS next_seq FROM Documentos_Lin WHERE tipo = '$tipo' AND Numero_documento = '$numdoc'";
             $stmt = sqlsrv_query($cn->getConecta(), $sql_seq);
@@ -674,6 +875,7 @@
             $seq = $row_seq ? (int)$row_seq['next_seq'] : 1;
 
             $fechaVence = $fechaVence ?: date('Y-m-d');
+            $notaEscapada = str_replace("'", "''", $nota);
 
             $sql = "INSERT INTO Documentos_Lin (sw, tipo, seq, modelo, Numero_Documento, Numero_Docto_Base, Numero_Lote,
             Nit_Cedula, Codigo_Direccion, Fecha_Documento, IdProducto, IdUnidad, Factor_Conversion,
@@ -687,11 +889,11 @@
             Tara_1, Tara_2, Tara_3, Tara_4, Tara_5, Tara_6, Tara_7, Tara_8)
 
             SELECT td.tipo, '$tipo', $seq, p.contable, $numdoc, '', '$lote',
-            d.nit_Cedula, d.codigo_direccion, GETDATE(), $idProducto, 1, 1,
+            d.nit_Cedula, d.codigo_direccion, GETDATE(), $idProducto, ISNULL(p.unidad_inventario, 1), 1,
             $cantidad, 0, $cantidad, $valorUnitario, $valorUnitario,
-            0, 0, 0, 0, 0,
+            $valorImpuesto, $porcentajeImpuesto, 0, 0, 0,
             0, 0, 0, td.IdBodega, 'S', '',
-            1, 1, '0', ' ', 1, '$fechaVence', 'N',
+            1, 1, '0', '$notaEscapada', 1, CONVERT(DATE, '$fechaVence', 23), 'N',
             $valorUnitario, 0, 0, 0, '', 0,
             0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
@@ -701,13 +903,286 @@
             WHERE td.idTipoDoctos = '$tipo' AND p.IdProducto = $idProducto
             AND d.tipo = '$tipo' AND d.Numero_documento = $numdoc";
 
-            $stmt = sqlsrv_prepare($cn->getConecta(), $sql);
-            if (sqlsrv_execute($stmt) === false) {
+            $registros = sqlsrv_prepare($cn->getConecta(), $sql);
+            if (sqlsrv_execute($registros) === false) {
                 $this->registrar_error("Error en agregar_linea_manual: " . print_r(sqlsrv_errors(), true));
                 return json_encode(array("status" => "error", "message" => "Error al agregar la línea: " . print_r(sqlsrv_errors(), true)));
             }
 
+            // Actualizar totales en cabecera después de agregar la línea
+            $sql_totales = "UPDATE Documentos SET 
+                Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = '$tipo' AND Numero_documento = $numdoc),
+                Valor_impuesto = (SELECT ISNULL(SUM(((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = '$tipo' AND dl.Numero_documento = $numdoc),
+                valor_total = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = '$tipo' AND dl.Numero_documento = $numdoc),
+                valor_aplicado = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = '$tipo' AND dl.Numero_documento = $numdoc),
+                costo = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = '$tipo' AND dl.Numero_documento = $numdoc)
+                WHERE tipo = '$tipo' AND Numero_Documento = $numdoc";
+            
+            $registros_tot = sqlsrv_prepare($cn->getConecta(), $sql_totales);
+            sqlsrv_execute($registros_tot);
+
             return json_encode(array("status" => "success", "message" => "Línea agregada correctamente"));
+        }
+
+        private function limpiar_namespaces_xml($xml) {
+            // 1. Quitar declaraciones de namespace: xmlns="..." y xmlns:prefix="..."
+            $xml = preg_replace('/\s+xmlns(?::\w+)?="[^"]*"/', '', $xml);
+            // 2. Quitar atributos con prefijo de namespace: mc:Ignorable="...", x14ac:dyDescent="...", xr:uid="..."
+            $xml = preg_replace('/\s+\w+:\w+="[^"]*"/', '', $xml);
+            return $xml;
+        }
+
+        private function leer_xlsx($filePath) {
+            if (!class_exists('ZipArchive')) {
+                return ['error' => 'ZipArchive no disponible en el servidor'];
+            }
+            $zip = new ZipArchive();
+            if ($zip->open($filePath) !== true) {
+                return ['error' => 'No se pudo abrir el archivo Excel'];
+            }
+
+            libxml_use_internal_errors(true); // suprimir warnings de namespace en stderr/output
+
+            // Shared strings
+            $sharedStrings = [];
+            $ssRaw = $zip->getFromName('xl/sharedStrings.xml');
+            if ($ssRaw) {
+                $ssRaw = $this->limpiar_namespaces_xml($ssRaw);
+                $ss    = simplexml_load_string($ssRaw, 'SimpleXMLElement', LIBXML_NOERROR | LIBXML_NOWARNING);
+                if ($ss) {
+                    foreach ($ss->si as $si) {
+                        $text = '';
+                        if (isset($si->r)) {
+                            foreach ($si->r as $r) {
+                                $text .= (string)$r->t;
+                            }
+                        }
+                        if ($text === '' && isset($si->t)) {
+                            $text = (string)$si->t;
+                        }
+                        $sharedStrings[] = $text;
+                    }
+                }
+            }
+
+            $sheetRaw = $zip->getFromName('xl/worksheets/sheet1.xml');
+            $zip->close();
+            if (!$sheetRaw) {
+                return ['error' => 'No se encontró la hoja de cálculo (sheet1)'];
+            }
+
+            $sheetRaw = $this->limpiar_namespaces_xml($sheetRaw);
+            $sheet    = simplexml_load_string($sheetRaw, 'SimpleXMLElement', LIBXML_NOERROR | LIBXML_NOWARNING);
+            if (!$sheet || !isset($sheet->sheetData)) {
+                return ['error' => 'No se pudo leer el contenido de la hoja'];
+            }
+
+            $rows = [];
+            foreach ($sheet->sheetData->row as $rowNode) {
+                $rowData = [];
+                foreach ($rowNode->c as $cell) {
+                    $ref = (string)$cell['r'];
+                    preg_match('/^([A-Z]+)/', $ref, $m);
+                    $colLetter = $m[1];
+                    $colIndex  = 0;
+                    for ($k = 0; $k < strlen($colLetter); $k++) {
+                        $colIndex = $colIndex * 26 + (ord($colLetter[$k]) - 64);
+                    }
+                    $colIndex--; // 0-based
+
+                    while (count($rowData) < $colIndex) {
+                        $rowData[] = '';
+                    }
+
+                    $type  = (string)$cell['t'];
+                    $value = isset($cell->v) ? (string)$cell->v : '';
+                    if ($type === 's') {
+                        $idx   = (int)$value;
+                        $value = isset($sharedStrings[$idx]) ? $sharedStrings[$idx] : '';
+                    }
+                    $rowData[] = trim($value);
+                }
+                $rows[] = $rowData;
+            }
+            return $rows;
+        }
+
+        public function cargar_masiva_excel($tipo, $numdoc, $nit, $direccion, $filePath) {
+            $rows = $this->leer_xlsx($filePath);
+            if (isset($rows['error'])) {
+                return json_encode(['status' => 'error', 'message' => $rows['error']]);
+            }
+            if (count($rows) < 2) {
+                return json_encode(['status' => 'error', 'message' => 'El archivo no contiene datos (solo encabezado o vacío)']);
+            }
+
+            $cn         = new Conectarserver;
+            $resultados = [];
+            $procesados = []; // duplicados dentro del mismo archivo
+
+            $ID_LISTA_DEFAULT = 50;
+
+            // Obtener idLista del cliente una sola vez
+            $idListaReal = null;
+            if ($nit !== '' && $direccion !== '') {
+                $sqlL = "SELECT TOP 1 idLista FROM Terceros_Dir WHERE nit = ? AND codigo_direccion = ?";
+                $stL  = sqlsrv_query($cn->getConecta(), $sqlL, [$nit, (int)$direccion]);
+                if ($stL !== false) {
+                    $rL = sqlsrv_fetch_array($stL, SQLSRV_FETCH_ASSOC);
+                    if ($rL) $idListaReal = $rL['idLista'];
+                }
+            }
+            if ($idListaReal === null && $tipo && $numdoc) {
+                $sqlL2 = "SELECT TOP 1 td.idLista FROM Documentos d
+                          INNER JOIN Terceros_Dir td ON td.nit = d.nit_Cedula AND td.codigo_direccion = d.codigo_direccion
+                          WHERE d.tipo = ? AND d.Numero_documento = ?";
+                $stL2  = sqlsrv_query($cn->getConecta(), $sqlL2, [$tipo, $numdoc]);
+                if ($stL2 !== false) {
+                    $rL2 = sqlsrv_fetch_array($stL2, SQLSRV_FETCH_ASSOC);
+                    if ($rL2) $idListaReal = $rL2['idLista'];
+                }
+            }
+            $idLista = ($idListaReal !== null && (int)$idListaReal > 0) ? (int)$idListaReal : $ID_LISTA_DEFAULT;
+
+            // Conexión DEV para lotes (se abre una vez)
+            $cnDev = null;
+            require_once(dirname(__FILE__) . '/../config/conexiondev.php');
+            $devConn = new ConectarDev();
+            if ($devConn->getConecta()) $cnDev = $devConn->getConecta();
+
+            // Procesar desde fila 2 (índice 1), fila 1 es encabezado
+            for ($i = 1; $i < count($rows); $i++) {
+                $row        = $rows[$i];
+                $idProducto = trim($row[0] ?? '');
+                $cantidad   = trim($row[1] ?? '');
+                $nota       = trim($row[2] ?? '');
+                $lote       = trim($row[3] ?? '');
+
+                if ($idProducto === '' && $cantidad === '') continue; // fila vacía
+
+                $resultado = [
+                    'fila'       => $i + 1,
+                    'idProducto' => $idProducto,
+                    'cantidad'   => $cantidad,
+                    'lote'       => $lote,
+                    'status'     => 'error',
+                    'mensaje'    => ''
+                ];
+
+                if ($idProducto === '') {
+                    $resultado['mensaje'] = 'IdProducto vacío';
+                    $resultados[] = $resultado; continue;
+                }
+                if (!is_numeric($cantidad) || (float)$cantidad <= 0) {
+                    $resultado['mensaje'] = 'Cantidad debe ser un número mayor a 0';
+                    $resultados[] = $resultado; continue;
+                }
+
+                $clave = $idProducto . '|' . $lote;
+                if (in_array($clave, $procesados)) {
+                    $resultado['mensaje'] = 'Producto+Lote duplicado dentro del archivo';
+                    $resultados[] = $resultado; continue;
+                }
+
+                // Validar producto
+                $sqlProd = "SELECT p.Producto, ISNULL(i.PorcentajeImpuesto, 0) AS PorcentajeImpuesto
+                            FROM TblProducto p
+                            LEFT JOIN TblImpuesto i ON p.Impuesto_venta = i.IdImpuesto
+                            WHERE p.IdProducto = ?";
+                $stProd  = sqlsrv_query($cn->getConecta(), $sqlProd, [(int)$idProducto]);
+                if ($stProd === false) {
+                    $resultado['mensaje'] = 'Error al consultar producto';
+                    $resultados[] = $resultado; continue;
+                }
+                $rProd = sqlsrv_fetch_array($stProd, SQLSRV_FETCH_ASSOC);
+                if (!$rProd) {
+                    $resultado['mensaje'] = 'Producto no existe en el sistema';
+                    $resultados[] = $resultado; continue;
+                }
+                $porcentajeImpuesto = (float)$rProd['PorcentajeImpuesto'];
+                $nombreProducto     = $rProd['Producto'];
+
+                // Validar lote (si fue ingresado)
+                if ($lote !== '' && $cnDev !== null) {
+                    $sqlLote = "SELECT COUNT(*) AS cnt FROM cvapptblfarmbatch WHERE numberBatch = ? AND statusBatch = 'S'";
+                    $stLote  = sqlsrv_query($cnDev, $sqlLote, [$lote]);
+                    if ($stLote !== false) {
+                        $rLote = sqlsrv_fetch_array($stLote, SQLSRV_FETCH_ASSOC);
+                        if (!$rLote || (int)$rLote['cnt'] === 0) {
+                            $resultado['mensaje'] = 'Lote "' . $lote . '" no válido o inactivo';
+                            $resultados[] = $resultado; continue;
+                        }
+                    }
+                }
+
+                // Precio
+                $precio    = 0;
+                $sqlPrec   = "SELECT TOP 1 precio FROM Producto_Pre WHERE IdProducto = ? AND IdPrecio = ? ORDER BY Fecha DESC";
+                $stPrec    = sqlsrv_query($cn->getConecta(), $sqlPrec, [(int)$idProducto, $idLista]);
+                if ($stPrec !== false) {
+                    $rPrec = sqlsrv_fetch_array($stPrec, SQLSRV_FETCH_ASSOC);
+                    if ($rPrec) $precio = (float)$rPrec['precio'];
+                }
+                if ($precio == 0 && $idLista !== $ID_LISTA_DEFAULT) {
+                    $stFb = sqlsrv_query($cn->getConecta(), $sqlPrec, [(int)$idProducto, $ID_LISTA_DEFAULT]);
+                    if ($stFb !== false) {
+                        $rFb = sqlsrv_fetch_array($stFb, SQLSRV_FETCH_ASSOC);
+                        if ($rFb) $precio = (float)$rFb['precio'];
+                    }
+                }
+                if ($precio == 0) {
+                    $sqlGlob = "SELECT TOP 1 precio FROM Producto_Pre WHERE IdProducto = ? ORDER BY Fecha DESC";
+                    $stGlob  = sqlsrv_query($cn->getConecta(), $sqlGlob, [(int)$idProducto]);
+                    if ($stGlob !== false) {
+                        $rGlob = sqlsrv_fetch_array($stGlob, SQLSRV_FETCH_ASSOC);
+                        if ($rGlob) $precio = (float)$rGlob['precio'];
+                    }
+                }
+
+                $loteVal  = $lote !== '' ? $lote : '0';
+                $insertar = $this->agregar_linea_manual(
+                    $tipo, $numdoc, $idProducto, (float)$cantidad,
+                    $precio, $loteVal, date('Y-m-d'), $porcentajeImpuesto, $nota
+                );
+                $ins = json_decode($insertar, true);
+                if ($ins && $ins['status'] === 'success') {
+                    $procesados[] = $clave;
+                    $resultado['status']  = 'ok';
+                    $resultado['mensaje'] = htmlspecialchars($nombreProducto) .
+                        ' | Precio: $' . number_format($precio, 2, ',', '.');
+                } else {
+                    $resultado['mensaje'] = 'Error al insertar línea: ' . ($ins['message'] ?? 'desconocido');
+                }
+                $resultados[] = $resultado;
+            }
+
+            $ok    = count(array_filter($resultados, function($r) { return $r['status'] === 'ok'; }));
+            $error = count(array_filter($resultados, function($r) { return $r['status'] === 'error'; }));
+
+            return json_encode([
+                'status'     => 'success',
+                'ok'         => $ok,
+                'error'      => $error,
+                'resultados' => $resultados
+            ]);
+        }
+
+        public function combo_lotes() {
+            require_once(dirname(__FILE__) . '/../config/conexiondev.php');
+            $cnDev = new ConectarDev();
+            if (!$cnDev->getConecta()) {
+                return "<option value=''>Error de conexión DEV</option>";
+            }
+            $sql = "SELECT DISTINCT numberBatch FROM cvapptblfarmbatch WHERE statusBatch = 'S' ORDER BY numberBatch ASC";
+            $stmt = sqlsrv_query($cnDev->getConecta(), $sql);
+            if ($stmt === false) {
+                return "<option value=''>Error en consulta lotes</option>";
+            }
+            $html = "<option value='' disabled selected>Seleccione Lote...</option>";
+            while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+                $html .= "<option value='".$row['numberBatch']."'>".$row['numberBatch']."</option>";
+            }
+            return $html;
         }
 
     }

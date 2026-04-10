@@ -25,7 +25,13 @@ const CONFIG = {
             guardar_salida: "salidas.php?op=guardar_salida",
             update_lote_salida: "../../controller/salidas.php?op=update_lote_salida",
             agregar_linea_manual: "../../controller/salidas.php?op=agregar_linea_manual",
-            get_precio_producto: "../../controller/salidas.php?op=get_precio_producto"
+            get_info_producto: "../../controller/salidas.php?op=get_info_producto",
+            combo_lotes: "salidas.php?op=combo_lotes",
+            cargar_masiva_excel: "../../controller/salidas.php?op=cargar_masiva_excel",
+            update_notas_etapa: "../../controller/salidas.php?op=update_notas_etapa"
+        },
+        etapas: {
+            listar_activas: "../../controller/etapas.php?op=listar_activas"
         },
         documento: {
             insert_doc_entrada: "documento.php?op=insert_doc_entrada",
@@ -40,7 +46,8 @@ const CONFIG = {
             total_cantidad: "documento.php?op=total_cantidad",
             mostrarXproducto: "documento.php?op=mostrarXproducto",
             duplicar_linea: "documento.php?op=duplicar_linea",
-            eliminar: "documento.php?op=eliminar"
+            eliminar: "documento.php?op=eliminar",
+            eliminar_masivo: "documento.php?op=eliminar_masivo"
         }
     }
 };
@@ -135,6 +142,14 @@ function inicializarCombos() {
     const isoHoy = $('#fecha_factura_iso').val() || moment().format('YYYY-MM-DD');
     inicializarDatepicker('#fecha_factura', '#fecha_factura_iso', isoHoy);
     inicializarDatepicker('#fecha_factura2', '#fecha_factura2_iso', null);
+    inicializarComboLotes();
+}
+
+function inicializarComboLotes() {
+    $.post(CONFIG.baseUrl + CONFIG.endpoints.salidas.combo_lotes, function(data) {
+        $("#lote").html(data);
+        $("#lote1").html(data);
+    });
 }
 
 function inicializarEventos() {
@@ -355,6 +370,7 @@ function crearDocumento() {
     // Devolución
     if (esDev) {
         const tipoDocOrig = $("#tipoDocOrig").val();
+        const tipoDocOrigTexto = $("#tipoDocOrig option:selected").text().trim();
         const numeroDev = document.getElementById("numero").value;
 
         if (!validarCampoRequerido(tipoDocOrig, "Tipo Documento Original") ||
@@ -362,38 +378,54 @@ function crearDocumento() {
             return false;
         }
 
-        document.getElementById("tipoDocRef").value = tipoDocOrig;
+        swal({
+            title: "Confirmar Devolución",
+            text: "Está a punto de generar una devolución total al documento:\n\n" +
+                  tipoDocOrigTexto + "  N° " + numeroDev + "\n\n" +
+                  "Esta acción es definitiva e irreversible. ¿Desea continuar?",
+            type: "warning",
+            showCancelButton: true,
+            confirmButtonColor: "#d33",
+            confirmButtonText: "Sí, generar devolución",
+            cancelButtonText: "Cancelar",
+            closeOnConfirm: false
+        }, function(confirmed) {
+            if (!confirmed) return;
 
-        $.blockUI({ message: '<h2>Cargando favor Espere...</h2>' });
+            document.getElementById("tipoDocRef").value = tipoDocOrig;
 
-        const formDataDev = new FormData($("#doc_form")[0]);
+            $.blockUI({ message: '<h2>Generando devolución, por favor espere...</h2>' });
 
-        $.ajax({
-            url: CONFIG.endpoints.salidas.insert_doc_salida,
-            type: "POST",
-            data: formDataDev,
-            contentType: false,
-            processData: false,
-            dataType: "json",
-            success: function(response) {
-                $.unblockUI();
-                if (response.status === "success") {
-                    swal({ title: "Correcto!", text: response.message, type: "success" }, function() {
-                        window.location.href = 'index.php?tipo=' + response.tipo + '&consecutivo=' + response.consecutivo;
-                    });
-                } else {
-                    swal("Error!", response.message, "error");
+            const formDataDev = new FormData($("#doc_form")[0]);
+
+            $.ajax({
+                url: CONFIG.endpoints.salidas.insert_doc_salida,
+                type: "POST",
+                data: formDataDev,
+                contentType: false,
+                processData: false,
+                dataType: "json",
+                success: function(response) {
+                    $.unblockUI();
+                    if (response.status === "success") {
+                        swal({ title: "Devolución Registrada", text: response.message, type: "success" }, function() {
+                            window.location.href = 'index.php?tipo=' + response.tipo + '&consecutivo=' + response.consecutivo;
+                        });
+                    } else {
+                        swal("Error!", response.message, "error");
+                        $("#btncrear").prop('disabled', false);
+                    }
+                },
+                error: function() {
+                    $.unblockUI();
+                    swal("Error!", "Ha ocurrido un error al procesar la solicitud.", "error");
                     $("#btncrear").prop('disabled', false);
                 }
-            },
-            error: function() {
-                $.unblockUI();
-                swal("Error!", "Ha ocurrido un error al procesar la solicitud.", "error");
-                $("#btncrear").prop('disabled', false);
-            }
+            });
+
+            $("#btncrear").prop('disabled', true);
         });
 
-        $("#btncrear").prop('disabled', true);
         return false;
     }
 
@@ -451,22 +483,84 @@ function crearDocumento() {
 }
 
 function guardarLote() {
-    const tipo = getUrlParameter('tipo');
+    const tipo        = getUrlParameter('tipo');
     const consecutivo = getUrlParameter('consecutivo');
-    const lote = $('#lote1').val();
+    const lote        = $('#lote1').val();
 
     if (!lote) {
         swal("Advertencia!", "Debe ingresar un número de lote", "warning");
         return;
     }
 
+    const seqsSeleccionados = [];
+    document.querySelectorAll('#tb-doc tbody input[type=checkbox]:checked').forEach(function(cb) {
+        const row = cb.closest('tr');
+        if (row) seqsSeleccionados.push(row.cells[0].textContent.trim());
+    });
+
+    if (seqsSeleccionados.length === 0) {
+        swal("Advertencia!", "Debe seleccionar al menos un producto para asignar el lote", "warning");
+        return;
+    }
+
     $.post(CONFIG.endpoints.salidas.update_lote_salida,
-        { tipo: tipo, numdoc: consecutivo, lote1: lote },
+        { tipo: tipo, numdoc: consecutivo, lote1: lote, seqs: seqsSeleccionados.join(',') },
         function() {
-            swal("Correcto!", "Lote asignado a todas las líneas", "success");
+            swal("Correcto!", "Lote asignado a " + seqsSeleccionados.length + " producto(s) seleccionado(s)", "success");
             $("#lot").modal('hide');
             $('#tb-doc').DataTable().ajax.reload();
             $('#lote1').val('');
+        }
+    );
+}
+
+function cargarComboEtapas() {
+    $('#etapa_select').html('<option value="">Cargando...</option>');
+    $.ajax({
+        url: CONFIG.endpoints.etapas.listar_activas,
+        type: 'GET',
+        dataType: 'json',
+        success: function(data) {
+            if (!Array.isArray(data) || data.length === 0) {
+                $('#etapa_select').html('<option value="">-- Sin etapas activas --</option>');
+                return;
+            }
+            var options = '<option value="">-- Seleccione una etapa --</option>';
+            $.each(data, function(i, etapa) {
+                options += '<option value="' + etapa.id + '" data-nombre="' + etapa.nombre + '">' + etapa.nombre + '</option>';
+            });
+            $('#etapa_select').html(options);
+        },
+        error: function(xhr, status, err) {
+            $('#etapa_select').html('<option value="">-- Error al cargar --</option>');
+            console.error('Error cargando etapas:', status, err, xhr.responseText);
+        }
+    });
+}
+
+function guardarEtapa() {
+    const tipo        = getUrlParameter('tipo');
+    const consecutivo = getUrlParameter('consecutivo');
+    const selected    = $('#etapa_select option:selected');
+    const etapaId     = selected.val();
+    const etapaNombre = selected.data('nombre');
+
+    if (!etapaId) {
+        swal("Advertencia!", "Debe seleccionar una etapa", "warning");
+        return;
+    }
+
+    $.post(CONFIG.endpoints.salidas.update_notas_etapa,
+        { tipo: tipo, numdoc: consecutivo, notas: etapaNombre },
+        function(resp) {
+            var r = typeof resp === 'string' ? JSON.parse(resp) : resp;
+            if (r.status === 'success') {
+                $('#notas').val(etapaNombre);
+                swal("Correcto!", "Etapa \"" + etapaNombre + "\" asignada correctamente", "success");
+                $("#modaletapas").modal('hide');
+            } else {
+                swal("Error!", r.message || "No se pudo guardar la etapa", "error");
+            }
         }
     );
 }
@@ -641,7 +735,7 @@ function configurarInterfazParaDocumentoExistente(data) {
         "txt_tipodoc", "txt_numdoc", "txt_fecha1", "txt_pedido1",
         "txt_traslfact1", "txt_fecha_factura2",
         "tipodoc", "numdoc", "fecha1", "pedido1", "traslfact1", "fecha_factura2",
-        "div_dotacion", "btnlot", "btnguardar"
+        "div_dotacion", "btnlot", "btnetapas", "btneliminarsel", "btnguardar"
     ];
     
     elementosMostrar.forEach(id => {
@@ -655,6 +749,7 @@ function configurarInterfazParaDocumentoExistente(data) {
         mostrarCamposTraslado();
         if (data.Tipo_Docto_Base_2 == '2') {
             document.getElementById("btnagregar").style.display = "inline-block";
+            document.getElementById("btnexcel").style.display   = "inline-block";
         }
     }
 
@@ -667,7 +762,7 @@ function mostrarCamposEntrada() {
         "nit1", "nombre1", "direccion1", "telefono1",
         "hr1", "hr2", "hr3",
         "txt_nit3", "txt_nombre3", "txt_direccion3", "txt_telefono3",
-        "nit3", "nombre3", "direccion3", "telefono3", "btnlot"
+        "nit3", "nombre3", "direccion3", "telefono3", "btnlot", "btneliminarsel"
     ];
     
     camposEntrada.forEach(id => {
@@ -683,7 +778,7 @@ function mostrarCamposTraslado() {
         "nit2", "nombre2", "direccion2",
         "txt_nit1", "txt_nombre1", "txt_direccion1", "txt_telefono1",
         "txt_nit2", "txt_nombre2", "txt_direccion2",
-        "hr1", "hr2", "hr3", "btnlot"
+        "hr1", "hr2", "hr3", "btnlot", "btneliminarsel"
     ];
 
     camposTraslado.forEach(id => {
@@ -695,7 +790,7 @@ function mostrarCamposTraslado() {
 
 function configurarEstadoExportado(exportado) {
     if(exportado === 'S') {
-        $("#btnguardar, #btnlot").prop('disabled', true).addClass('btn-disabled');
+        $("#btnguardar, #btnlot, #btnetapas, #btneliminarsel").prop('disabled', true).addClass('btn-disabled');
         $("#btnguardar").html('Documento Exportado')
                        .attr('title', 'No se puede modificar un documento exportado');
 
@@ -705,6 +800,8 @@ function configurarEstadoExportado(exportado) {
                                  'traslfact1', 'dotacion_epp', 'notas', 'fecha_factura2'];
         const el_btnagregar = document.getElementById("btnagregar");
         if (el_btnagregar) el_btnagregar.disabled = true;
+        const el_btnexcel = document.getElementById("btnexcel");
+        if (el_btnexcel) el_btnexcel.disabled = true;
         camposEditables.forEach(id => {
             const el = document.getElementById(id);
             if(el) el.disabled = true;
@@ -881,8 +978,8 @@ function listardetalle(tipo, consecutivo){
         "autoWidth": false,
         "createdRow": function(row, data, dataIndex) {
             $('td', row).eq(4).addClass('editable-cell'); // Cantidad
-            $('td', row).eq(7).addClass('editable-cell'); // Lote
-            $('td', row).eq(9).addClass('editable-cell'); // Nota
+            $('td', row).eq(8).addClass('editable-cell'); // Lote  (desplazado por %IVA en col 6)
+            $('td', row).eq(10).addClass('editable-cell'); // Nota (desplazado por %IVA en col 6)
         },
         "language": {
             "sProcessing": "Procesando...",
@@ -996,16 +1093,15 @@ function iniciarEdicionNativa(cell) {
     switch(cellIndex) {
         case 4: // Cantidad
         case 5: // % Desc
-        case 6: // Valor
+        case 7: // Valor  (col 6 = %IVA readonly, no editable)
             input = document.createElement('input');
             input.type = 'number';
             input.value = currentValue;
-            input.step = cellIndex === 6 ? '0.01' : '1';
+            input.step = cellIndex === 7 ? '0.01' : '1';
             break;
-        case 8: // Fecha Vence - usar input type=date para evitar inversión día/mes
+        case 9: // Fecha Vence
             input = document.createElement('input');
             input.type = 'date';
-            // currentValue viene en formato DD/MM/YYYY — convertir a YYYY-MM-DD para el input
             var partsDate = currentValue.split('/');
             if (partsDate.length === 3) {
                 input.value = partsDate[2] + '-' + partsDate[1] + '-' + partsDate[0];
@@ -1013,7 +1109,7 @@ function iniciarEdicionNativa(cell) {
                 input.value = currentValue;
             }
             break;
-        case 9: // Nota - permitir vacío
+        case 10: // Nota - permitir vacío
             input = document.createElement('input');
             input.type = 'text';
             input.value = currentValue;
@@ -1035,7 +1131,7 @@ function iniciarEdicionNativa(cell) {
     input.focus();
     input.select();
 
-    const actionsCell = row.cells[11];
+    const actionsCell = row.cells[12];
     actionsCell.innerHTML = `
         <div class="edit-actions">
             <button type="button" class="btn btn-success btn-sm btn-action btn-guardar" title="Guardar cambios">
@@ -1142,13 +1238,14 @@ function guardarEdicionNativa(row) {
     formData.append('seq', seq); 
     
     switch(cellIndex) {
-        case 4: formData.append('cantidad', newValue); break;
-        case 5: formData.append('descuento', newValue); break;
-        case 6: formData.append('valor', newValue); break;
-        case 7: formData.append('lote', newValue); break;
-        case 8: formData.append('fecha_vence', newValue); break;
-        case 9: formData.append('nota', newValue); break; // Nota puede ser vacía
-        case 10: formData.append('unidades', newValue); break;
+        case 4:  formData.append('cantidad',     newValue); break;
+        case 5:  formData.append('descuento',    newValue); break;
+        // case 6: %IVA — readonly, no se edita
+        case 7:  formData.append('valor',        newValue); break;
+        case 8:  formData.append('lote',         newValue); break;
+        case 9:  formData.append('fecha_vence',  newValue); break;
+        case 10: formData.append('nota',         newValue); break;
+        case 11: formData.append('unidades',     newValue); break;
     }
 
     fetch(CONFIG.baseUrl + CONFIG.endpoints.documento.update_prod_doc, {
@@ -1197,7 +1294,7 @@ function limpiarEstadoEdicionNativa() {
     console.log('🧹 Limpiando estado de edición (nativo)...');
     
     if (editingRow) {
-        const actionsCell = editingRow.cells[11];
+        const actionsCell = editingRow.cells[12];
         
         // 🔥 IMPORTANTE: Limpiar eventos antes de modificar el HTML
         const botonesAnteriores = actionsCell.querySelectorAll('button');
@@ -1254,6 +1351,7 @@ function cancelarEdicionNativa() {
 
 // FUNCIONES DE GESTIÓN DE REGISTROS
 function editar(tipo, consecutivo, producto){
+    window.modoAgregar = false;
     $('#mdltitulo').html('Editar Registro');   
 
     $.post(CONFIG.baseUrl + CONFIG.endpoints.documento.mostrarXproducto, 
@@ -1361,7 +1459,7 @@ function eliminar(tipo, consecutivo, producto, seq){
     if (row) {
         nombreProducto = row.cells[2].textContent.trim();
         cantidad = row.cells[4].textContent.trim();
-        lote = row.cells[7].textContent.trim();
+        lote = row.cells[8].textContent.trim();
     }
     
     const mensaje = `
@@ -1442,6 +1540,80 @@ function eliminar(tipo, consecutivo, producto, seq){
     });
 }
 
+function eliminarSeleccionados() {
+    const tipo        = getUrlParameter('tipo');
+    const consecutivo = getUrlParameter('consecutivo');
+
+    const seleccionados = [];
+    document.querySelectorAll('#tb-doc tbody input[type=checkbox]:checked').forEach(function(cb) {
+        const row = cb.closest('tr');
+        if (!row) return;
+        seleccionados.push({
+            seq:      row.cells[0].textContent.trim(),
+            producto: row.cells[1].textContent.trim(),
+            nombre:   row.cells[2].textContent.trim(),
+            cantidad: row.cells[4].textContent.trim()
+        });
+    });
+
+    if (seleccionados.length === 0) {
+        swal("Advertencia!", "Debe seleccionar al menos un producto para eliminar", "warning");
+        return;
+    }
+
+    let lista = seleccionados.map(function(p) {
+        return '<li><b>' + p.producto + '</b> – ' + p.nombre + ' (Cant: ' + p.cantidad + ')</li>';
+    }).join('');
+
+    const mensaje = '<div style="text-align:left;padding:8px;">' +
+        '<p>Se eliminarán <b>' + seleccionados.length + '</b> producto(s):</p>' +
+        '<ul style="max-height:160px;overflow-y:auto;padding-left:18px;">' + lista + '</ul>' +
+        '<br><p style="color:#d9534f;font-weight:bold;">&#9888; Esta acción no se puede deshacer</p>' +
+        '</div>';
+
+    swal({
+        title: "¿Eliminar productos seleccionados?",
+        text: mensaje,
+        html: true,
+        type: "warning",
+        showCancelButton: true,
+        confirmButtonClass: "btn-danger",
+        confirmButtonText: "Sí, eliminar",
+        cancelButtonText: "No, cancelar",
+        closeOnConfirm: false
+    }, function(isConfirm) {
+        if (!isConfirm) return;
+
+        swal({ title: "Eliminando...", text: "Por favor espere", type: "info", showConfirmButton: false });
+
+        const seqs     = seleccionados.map(function(p) { return p.seq; }).join(',');
+        const productos = seleccionados.map(function(p) { return p.producto; }).join(',');
+
+        $.post(CONFIG.baseUrl + CONFIG.endpoints.documento.eliminar_masivo, {
+            tipo: tipo,
+            consecutivo: consecutivo,
+            seqs: seqs,
+            productos: productos
+        }, function(data) {
+            if (data.trim() === 'success') {
+                swal({
+                    title: "¡Eliminados!",
+                    text: seleccionados.length + " producto(s) eliminado(s) correctamente",
+                    type: "success",
+                    confirmButtonClass: "btn-success"
+                }, function() {
+                    $('#tb-doc').DataTable().ajax.reload(null, false);
+                    actualizarTodosLosTotales(tipo, consecutivo);
+                });
+            } else {
+                swal("Error", "No se pudieron eliminar los productos. Respuesta: " + data, "error");
+            }
+        }).fail(function() {
+            swal("Error", "Error de conexión. No se pudieron eliminar los productos.", "error");
+        });
+    });
+}
+
 // EVENT HANDLERS
 $(document).on("click", "#btncrear", function(event) {
     event.preventDefault();
@@ -1453,37 +1625,80 @@ $(document).on("click", "#btnlote", function(){
     guardarLote();
 });
 
+$(document).on("click", "#btnguardaretapa", function(){
+    guardarEtapa();
+});
+
 function prepararModalAgregar() {
     window.modoAgregar = true;
     document.getElementById("idproducto").removeAttribute("readonly");
     document.getElementById("idproducto").value = '';
+    document.getElementById("nombre_producto").value = '';
     document.getElementById("cantidad").value = '';
     document.getElementById("Valor_Unitario").value = '';
+    document.getElementById("porcentaje_iva").value = '';
+    document.getElementById("porcentaje_impuesto").value = '0';
     document.getElementById("lote").value = '';
     document.querySelector("#modalagregar .modal-title").textContent = "Agregar Producto";
     document.getElementById("btneditar").textContent = "Agregar";
 }
 
-function cargarPrecioProducto() {
+function cargarInfoProducto() {
     const idProducto = document.getElementById("idproducto").value;
     if (!idProducto) return;
 
+    const tipo       = getUrlParameter('tipo');
+    const consecutivo = getUrlParameter('consecutivo');
+
+    // Nit del cliente (Facturar A para manuales/OS, nit3 para consumos)
+    const nit1El = document.getElementById("nit1");
+    const nit3El = document.getElementById("nit3");
+    let nit = (nit1El && nit1El.value.trim()) ? nit1El.value.trim()
+            : (nit3El ? nit3El.value.trim() : '');
+
+    // Dirección (puede venir como "12,nit" desde el select)
+    const dir1El = document.getElementById("direccion1");
+    const dir3El = document.getElementById("direccion3");
+    let dir = '';
+    if (dir1El && dir1El.value) dir = dir1El.value;
+    else if (dir3El && dir3El.value) dir = dir3El.value;
+    if (dir.indexOf(',') !== -1) dir = dir.split(',')[0];
+
+    const payload = { idProducto, tipo, numdoc: consecutivo, nit, direccion: dir };
+    console.log('[cargarInfoProducto] Enviando payload:', payload);
+
     $.ajax({
-        url: CONFIG.endpoints.salidas.get_precio_producto,
+        url: CONFIG.endpoints.salidas.get_info_producto,
         type: "POST",
-        data: { idProducto: idProducto },
+        data: payload,
         dataType: "json",
         success: function(response) {
+            console.log('[cargarInfoProducto] Respuesta del servidor:', response);
             if (response.status === "success") {
-                document.getElementById("Valor_Unitario").value = response.precio;
+                document.getElementById("nombre_producto").value  = response.nombre;
+                document.getElementById("Valor_Unitario").value   = response.precio;
+                document.getElementById("porcentaje_iva").value   = response.porcentaje_impuesto + '%';
+                document.getElementById("porcentaje_impuesto").value = response.porcentaje_impuesto;
+                console.log('[cargarInfoProducto] idLista usado:', response.idLista,
+                            '| precio:', response.precio,
+                            '| IVA:', response.porcentaje_impuesto + '%');
             } else {
-                document.getElementById("Valor_Unitario").value = '';
-                swal("Advertencia!", "No se encontró precio para el producto " + idProducto, "warning");
+                console.warn('[cargarInfoProducto] Error del servidor:', response.message);
+                document.getElementById("nombre_producto").value  = '';
+                document.getElementById("Valor_Unitario").value   = '';
+                document.getElementById("porcentaje_iva").value   = '';
+                document.getElementById("porcentaje_impuesto").value = '0';
+                swal("Advertencia!", response.message, "warning");
             }
         },
-        error: function() {
-            document.getElementById("Valor_Unitario").value = '';
-            swal("Error!", "No se pudo consultar el precio del producto.", "error");
+        error: function(xhr, status, errorThrown) {
+            console.error('[cargarInfoProducto] Error HTTP:', status, errorThrown);
+            console.error('[cargarInfoProducto] Respuesta cruda:', xhr.responseText);
+            document.getElementById("nombre_producto").value  = '';
+            document.getElementById("Valor_Unitario").value   = '';
+            document.getElementById("porcentaje_iva").value   = '';
+            document.getElementById("porcentaje_impuesto").value = '0';
+            swal("Error!", "Error al consultar el producto. Revisa la consola (F12) para más detalles.", "error");
         }
     });
 }
@@ -1497,12 +1712,13 @@ function guardarModalProducto() {
 }
 
 function agregarProductoManual() {
-    const tipo = getUrlParameter('tipo');
-    const consecutivo = getUrlParameter('consecutivo');
-    const idProducto = document.getElementById("idproducto").value;
-    const cantidad = document.getElementById("cantidad").value;
-    const valorUnitario = document.getElementById("Valor_Unitario").value || 0;
-    const lote = document.getElementById("lote").value || '0';
+    const tipo              = getUrlParameter('tipo');
+    const consecutivo       = getUrlParameter('consecutivo');
+    const idProducto        = document.getElementById("idproducto").value;
+    const cantidad          = document.getElementById("cantidad").value;
+    const valorUnitario     = document.getElementById("Valor_Unitario").value || 0;
+    const lote              = document.getElementById("lote").value || '0';
+    const porcentajeImpuesto = parseFloat(document.getElementById("porcentaje_impuesto").value) || 0;
     const hoy = new Date();
     const fechaVence = hoy.getFullYear() + '-' + String(hoy.getMonth()+1).padStart(2,'0') + '-' + String(hoy.getDate()).padStart(2,'0');
 
@@ -1511,13 +1727,17 @@ function agregarProductoManual() {
         return false;
     }
 
+    const payload = { tipo, numdoc: consecutivo, idProducto, cantidad,
+                      valorUnitario, lote, fechaVence, porcentajeImpuesto };
+    console.log('[agregarProductoManual] Enviando payload:', payload);
+
     $.ajax({
         url: CONFIG.endpoints.salidas.agregar_linea_manual,
         type: "POST",
-        data: { tipo: tipo, numdoc: consecutivo, idProducto: idProducto, cantidad: cantidad,
-                valorUnitario: valorUnitario, lote: lote, fechaVence: fechaVence },
+        data: payload,
         dataType: "json",
         success: function(response) {
+            console.log('[agregarProductoManual] Respuesta:', response);
             if (response.status === "success") {
                 $('#modalagregar').modal('hide');
                 $('#tb-doc').DataTable().ajax.reload();
@@ -1527,15 +1747,51 @@ function agregarProductoManual() {
                 swal("Error!", response.message, "error");
             }
         },
-        error: function() {
+        error: function(xhr, status, errorThrown) {
+            console.error('[agregarProductoManual] Error HTTP:', status, errorThrown);
+            console.error('[agregarProductoManual] Respuesta cruda:', xhr.responseText);
             swal("Error!", "Ha ocurrido un error al agregar el producto.", "error");
         }
     });
 }
 
+// Manejo de eventos de teclado en el modal de agregar producto para agilizar el ingreso
+$(document).on("keydown", "#idproducto", function(e) {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        if (window.modoAgregar) {
+            cargarInfoProducto();
+        }
+        $("#cantidad").focus();
+    }
+});
+
+$(document).on("keydown", "#cantidad", function(e) {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        $("#lote").focus();
+    }
+});
+
+$(document).on("keydown", "#lote", function(e) {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        $("#btneditar").click();
+    }
+});
+
 $(document).on("blur", "#idproducto", function() {
     if (window.modoAgregar) {
-        cargarPrecioProducto();
+        cargarInfoProducto();
+    }
+});
+
+// Auto-enfocar el primer campo al abrir el modal para agilizar el ingreso
+$('#modalagregar').on('shown.bs.modal', function () {
+    if (window.modoAgregar) {
+        $('#idproducto').focus();
+    } else {
+        $('#cantidad').focus();
     }
 });
 
@@ -1549,3 +1805,125 @@ $(document).on("click", "#btnguardar", function() {
 });
 
 init();
+
+// ─── CARGA MASIVA EXCEL ───────────────────────────────────────────────────────
+
+function resetModalExcel() {
+    document.getElementById('archivoExcel').value = '';
+    document.getElementById('excelResultados').style.display = 'none';
+    document.getElementById('tbExcelBody').innerHTML = '';
+    document.getElementById('excelResumen').innerHTML = '';
+
+    // Restaurar botones al estado inicial
+    var btnProcesar = document.getElementById('btnCargarExcel');
+    btnProcesar.disabled = false;
+    btnProcesar.style.display = 'inline-block';
+    btnProcesar.innerHTML = '<i class="fa fa-upload"></i> Procesar';
+
+    document.getElementById('btnNuevoArchivo').style.display = 'none';
+
+    var btnCerrar = document.getElementById('btnCerrarExcel');
+    btnCerrar.textContent = 'Cerrar';
+    btnCerrar.classList.remove('btn-success');
+    btnCerrar.classList.add('btn-secondary');
+}
+
+$('#modalexcel').on('hidden.bs.modal', function() {
+    resetModalExcel();
+});
+
+function cargarExcelMasivo() {
+    const tipo       = getUrlParameter('tipo');
+    const consecutivo = getUrlParameter('consecutivo');
+    const fileInput  = document.getElementById('archivoExcel');
+
+    if (!fileInput.files || fileInput.files.length === 0) {
+        swal("Advertencia!", "Seleccione un archivo Excel (.xlsx) primero.", "warning");
+        return;
+    }
+
+    const file = fileInput.files[0];
+    if (!file.name.toLowerCase().endsWith('.xlsx')) {
+        swal("Advertencia!", "Solo se aceptan archivos con extensión .xlsx", "warning");
+        return;
+    }
+
+    const nit       = (document.getElementById('nit1')        || document.getElementById('nit3'))?.value || '';
+    const direccion = (document.getElementById('direccion1')  || document.getElementById('direccion3'))?.value || '';
+    const dirLimpia = direccion.indexOf(',') !== -1 ? direccion.split(',')[0] : direccion;
+
+    const formData = new FormData();
+    formData.append('archivo',   file);
+    formData.append('tipo',      tipo);
+    formData.append('numdoc',    consecutivo);
+    formData.append('nit',       nit);
+    formData.append('direccion', dirLimpia);
+
+    const btnProcesar = document.getElementById('btnCargarExcel');
+    btnProcesar.disabled = true;
+    btnProcesar.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Procesando...';
+
+    $.ajax({
+        url:         CONFIG.endpoints.salidas.cargar_masiva_excel,
+        type:        'POST',
+        data:        formData,
+        processData: false,
+        contentType: false,
+        dataType:    'json',
+        success: function(response) {
+            btnProcesar.disabled = false;
+            btnProcesar.innerHTML = '<i class="fa fa-upload"></i> Procesar';
+
+            if (response.status === 'error') {
+                swal("Error!", response.message, "error");
+                return;
+            }
+
+            // Mostrar resumen
+            const ok    = response.ok    || 0;
+            const error = response.error || 0;
+            const resumenClass = error > 0 ? (ok > 0 ? 'alert-warning' : 'alert-danger') : 'alert-success';
+            document.getElementById('excelResumen').innerHTML =
+                `<div class="alert ${resumenClass} py-2 mb-0">
+                    <strong>Resultado:</strong>
+                    <span class="badge badge-success ml-2">${ok} agregados</span>
+                    <span class="badge badge-danger ml-1">${error} con error</span>
+                </div>`;
+
+            // Llenar tabla
+            const tbody = document.getElementById('tbExcelBody');
+            tbody.innerHTML = '';
+            (response.resultados || []).forEach(function(r) {
+                const statusBadge = r.status === 'ok'
+                    ? '<span class="badge badge-success">OK</span>'
+                    : '<span class="badge badge-danger">Error</span>';
+                const tr = document.createElement('tr');
+                tr.className = r.status === 'ok' ? 'table-success' : 'table-danger';
+                tr.innerHTML = `<td>${r.fila}</td><td>${r.idProducto}</td><td>${r.cantidad}</td><td>${r.lote || '-'}</td><td>${statusBadge}</td><td>${r.mensaje}</td>`;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('excelResultados').style.display = 'block';
+
+            // Cambiar botones: ocultar "Procesar", mostrar "Cargar otro" y cambiar "Cerrar" → "Listo"
+            btnProcesar.style.display = 'none';
+            document.getElementById('btnNuevoArchivo').style.display = 'inline-block';
+            var btnCerrar = document.getElementById('btnCerrarExcel');
+            btnCerrar.innerHTML = '<i class="fa fa-check"></i> Listo';
+            btnCerrar.classList.remove('btn-secondary');
+            btnCerrar.classList.add('btn-success');
+
+            // Refrescar detalle si hubo al menos un OK
+            if (ok > 0) {
+                listardetalle(tipo, consecutivo);
+                actualizarTodosLosTotales(tipo, consecutivo);
+            }
+        },
+        error: function(xhr, status, errorThrown) {
+            btnProcesar.disabled = false;
+            btnProcesar.innerHTML = '<i class="fa fa-upload"></i> Procesar';
+            console.error('[cargarExcelMasivo] Error HTTP:', status, errorThrown, xhr.responseText);
+            swal("Error!", "Error de comunicación con el servidor.", "error");
+        }
+    });
+}

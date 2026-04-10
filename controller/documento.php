@@ -90,6 +90,18 @@
                 $documento->delete_id($_POST["tipo"], $_POST["consecutivo"],  $_POST["producto"], $_POST["seq"]);
         break;
 
+        case "eliminar_masivo":
+            $tipo        = $_POST["tipo"]        ?? '';
+            $consecutivo = $_POST["consecutivo"] ?? '';
+            $seqs        = $_POST["seqs"]        ?? '';
+            $productos   = $_POST["productos"]   ?? '';
+            if ($tipo && $consecutivo && $seqs) {
+                echo $documento->delete_masivo($tipo, $consecutivo, $seqs, $productos);
+            } else {
+                echo "error: parámetros incompletos";
+            }
+        break;
+
         /*** ENTRADAS ***/  
 
         case "insert_doc_entrada":
@@ -222,6 +234,7 @@
                 $sub_array[] = $row["Unidad"];
                 $sub_array[] = number_format($row["Cantidad_Facturada"], 2);
                 $sub_array[] = number_format($row["Porcentaje_Descuento_1"], 2);
+                $sub_array[] = number_format($row["Porcentaje_Impuesto"], 2);
                 $sub_array[] = number_format($row["Valor_Unitario"], 2);
                 $sub_array[] = $row["Numero_Lote"];
                 $sub_array[] = $row["Fecha_Vence"] ? date_format($row["Fecha_Vence"], "d/m/Y") : '';

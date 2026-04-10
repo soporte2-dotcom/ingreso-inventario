@@ -288,6 +288,11 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
 						<button type="button" id="btnlot" name="action"  class="lot d-flex w-15 btn btn-rounded btn-inline btn-.bg-primary" data-toggle="modal" data-target="#lot" style="display: none"> Lote</button>
 					</div>
+					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
+						<button type="button" id="btneliminarsel" class="d-flex w-15 btn btn-rounded btn-inline btn-danger" style="display: none" onclick="eliminarSeleccionados()">
+							<i class="fa fa-trash"></i> Eliminar sel.
+						</button>
+					</div>
 				</div>
 
 				<div class="container-fluid">
@@ -302,6 +307,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 											<th class="text-center">U medida</th>
 											<th class="text-center">Cantidad</th>
 											<th class="text-center">% Desc</th>
+											<th class="text-center">% Iva</th>
 											<th class="text-center">Valor</th>
 											<th class="text-center">Lote</th>
 											<th class="text-center">Fecha Venc</th>
@@ -430,7 +436,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="nuevodoc.js?v=21"></script>
+	<script type="text/javascript" src="nuevodoc.js?v=24"></script>
 
 	<script>
         document.addEventListener("DOMContentLoaded", function() {

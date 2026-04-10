@@ -4,7 +4,10 @@
       "Bash(Get-Content \"C:\\\\xampp\\\\php\\\\logs\\\\php_error_log\" -Tail 10)",
       "Read(//xampp/php/logs/**)",
       "Read(//c/xampp/**)",
-      "Bash(chmod 777 C:/xampp/htdocs/ingresoinventario/logs)"
+      "Bash(chmod 777 C:/xampp/htdocs/ingresoinventario/logs)",
+      "Bash(grep -v '^\\\\.$')",
+      "Bash(./mysql/bin/mysql.exe -u root -e \"USE permisos_tecno; SELECT COUNT\\(*\\) as total FROM etapas; SELECT * FROM etapas LIMIT 5;\")",
+      "Bash(php:*)"
     ]
   }
 }

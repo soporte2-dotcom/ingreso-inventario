@@ -115,6 +115,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 							<select id="docref" name="docref" class="form-control" onchange="showInp()" required>
 								<option value="0">Orden de Salida (OS)</option>
 								<option value="2">Manual</option>
+								<option value="3" style="display:none">Devolución</option>
 							</select>
 						</fieldset>
 					</div>
@@ -321,9 +322,26 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 						<button type="button" id="btnlot" name="action" class="lot d-flex w-15 btn btn-rounded btn-inline btn-.bg-primary" data-toggle="modal" data-target="#lot" style="display: none"> Lote</button>
 					</div>
 					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
+						<button type="button" id="btnetapas" class="d-flex w-15 btn btn-rounded btn-inline btn-warning" style="display: none"
+								data-toggle="modal" data-target="#modaletapas" onclick="cargarComboEtapas()">
+							<i class="fa fa-list"></i> Etapas
+						</button>
+					</div>
+					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
+						<button type="button" id="btneliminarsel" class="d-flex w-15 btn btn-rounded btn-inline btn-danger" style="display: none" onclick="eliminarSeleccionados()">
+							<i class="fa fa-trash"></i> Eliminar sel.
+						</button>
+					</div>
+					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
 						<button type="button" id="btnagregar" class="d-flex w-15 btn btn-rounded btn-inline btn-info" style="display: none"
 								data-toggle="modal" data-target="#modalagregar" onclick="prepararModalAgregar()">
 							<i class="fa fa-plus"></i> Agregar
+						</button>
+					</div>
+					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
+						<button type="button" id="btnexcel" class="d-flex w-15 btn btn-rounded btn-inline btn-success" style="display: none"
+								data-toggle="modal" data-target="#modalexcel">
+							<i class="fa fa-file-excel-o"></i> Cargar Excel
 						</button>
 					</div>
 				</div>
@@ -340,6 +358,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 											<th class="text-center">U medida</th>
 											<th class="text-center">Cantidad</th>
 											<th class="text-center">% Desc</th>
+											<th class="text-center">% IVA</th>
 											<th class="text-center">Valor</th>
 											<th class="text-center">Lote</th>
 											<th class="text-center">Fecha Venc</th>
@@ -392,11 +411,11 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 				</div>	
 
 							<!-- Modal Agregar-->
-							<div class="modal fade" id="modalagregar" tabindex="-1" role="dialog" aria-labelledby="modalagregar" aria-hidden="true" data-backdrop="static" data-keyboard="false">
+							<div class="modal fade" id="modalagregar" tabindex="-1" role="dialog" aria-labelledby="modalagregarTitle" aria-hidden="true" data-backdrop="static" data-keyboard="false">
 								<div class="modal-dialog" role="document">
 									<div class="modal-content">
 										<div class="modal-header">
-											<h5 class="modal-title" id="modalagregar">Producto</h5>
+											<h5 class="modal-title" id="modalagregarTitle">Producto</h5>
 											<button type="button" class="close" data-dismiss="modal" aria-label="Close">
 												<span aria-hidden="true">&times;</span>
 											</button>
@@ -408,6 +427,10 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 													<input class="form-control" type="number" name="idproducto" id="idproducto" readonly>
 												</div>
 												<div class="col-lg-12 col-md-12 col-sm-12">
+													<label>Nombre</label>
+													<input class="form-control" type="text" id="nombre_producto" readonly>
+												</div>
+												<div class="col-lg-12 col-md-12 col-sm-12">
 													<label>Cantidad</label>
 													<input class="form-control" type="text" name="cantidad" id="cantidad">
 												</div>
@@ -416,9 +439,14 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 													<input class="form-control" type="text" name="Valor_Unitario" id="Valor_Unitario" readonly>
 												</div>
 												<div class="col-lg-12 col-md-12 col-sm-12">
-													<label>Lote</label>
-													<input class="form-control" type="text" name="lote" id="lote" maxlength="18">
+													<label>% IVA</label>
+													<input class="form-control" type="text" id="porcentaje_iva" readonly>
 												</div>
+												<div class="col-lg-12 col-md-12 col-sm-12">
+													<label>Lote</label>
+													<select class="form-control" name="lote" id="lote" required></select>
+												</div>
+												<input type="hidden" id="porcentaje_impuesto" name="porcentaje_impuesto" value="0">
 												<input type="hidden" name="fecha_vence" id="fecha_vence">
 											</div>
 										</div>
@@ -446,7 +474,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 												
 												<div class="col-lg-12">
 													<label>Lote</label>
-													<input type="text" class="form-control" name="lote1" id="lote1">							
+													<select class="form-control" name="lote1" id="lote1" required></select>
 												</div>
 												
 											</div>
@@ -459,41 +487,129 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 								</div>
 							</div>
 							<!-- Fin modal lote -->
+
+							<!-- Modal Etapas -->
+							<div class="modal fade" id="modaletapas" tabindex="-1" role="dialog" aria-labelledby="modaletapasTitle" aria-hidden="true" data-backdrop="static" data-keyboard="false">
+								<div class="modal-dialog" role="document">
+									<div class="modal-content">
+										<div class="modal-header">
+											<h5 class="modal-title" id="modaletapasTitle"><i class="fa fa-list"></i> Seleccionar Etapa</h5>
+											<button type="button" class="close" data-dismiss="modal" aria-label="Close">
+												<span aria-hidden="true">&times;</span>
+											</button>
+										</div>
+										<div class="modal-body">
+											<div class="row">
+												<div class="col-lg-12">
+													<label class="font-weight-bold">Etapa</label>
+													<select class="form-control" id="etapa_select">
+														<option value="">-- Seleccione una etapa --</option>
+													</select>
+												</div>
+											</div>
+										</div>
+										<div class="modal-footer">
+											<button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+											<button type="button" class="btn btn-warning" id="btnguardaretapa">
+												<i class="fa fa-save"></i> Guardar
+											</button>
+										</div>
+									</div>
+								</div>
+							</div>
+							<!-- Fin modal Etapas -->
+
+							<!-- Modal Cargar Excel -->
+							<div class="modal fade" id="modalexcel" tabindex="-1" role="dialog" aria-labelledby="modalexcelTitle" aria-hidden="true" data-backdrop="static" data-keyboard="false">
+								<div class="modal-dialog modal-lg" role="document">
+									<div class="modal-content">
+										<div class="modal-header">
+											<h5 class="modal-title" id="modalexcelTitle"><i class="fa fa-file-excel-o"></i> Carga masiva de productos</h5>
+											<button type="button" class="close" data-dismiss="modal" aria-label="Close">
+												<span aria-hidden="true">&times;</span>
+											</button>
+										</div>
+										<div class="modal-body">
+											<div class="alert alert-info py-2 mb-3">
+												<strong>Formato esperado del archivo Excel (.xlsx):</strong><br>
+												Columna A: <b>idProducto</b> &nbsp;|&nbsp;
+												Columna B: <b>cantidad</b> &nbsp;|&nbsp;
+												Columna C: <b>nota</b> (opcional) &nbsp;|&nbsp;
+												Columna D: <b>lote</b> (opcional)<br>
+												<small>La primera fila debe ser el encabezado (se omite automáticamente).</small>
+											</div>
+											<div class="form-group">
+												<label class="font-weight-bold">Seleccionar archivo Excel:</label>
+												<input type="file" id="archivoExcel" class="form-control-file" accept=".xlsx">
+											</div>
+											<div id="excelResultados" style="display:none;">
+												<hr>
+												<div id="excelResumen" class="mb-2"></div>
+												<div style="max-height: 350px; overflow-y: auto;">
+													<table class="table table-sm table-bordered table-striped" id="tbExcelResultados">
+														<thead class="thead-dark">
+															<tr>
+																<th>Fila</th>
+																<th>IdProducto</th>
+																<th>Cantidad</th>
+																<th>Lote</th>
+																<th>Estado</th>
+																<th>Detalle</th>
+															</tr>
+														</thead>
+														<tbody id="tbExcelBody"></tbody>
+													</table>
+												</div>
+											</div>
+										</div>
+										<div class="modal-footer">
+											<button type="button" id="btnCerrarExcel" class="btn btn-secondary" data-dismiss="modal" onclick="resetModalExcel()">Cerrar</button>
+											<button type="button" id="btnNuevoArchivo" class="btn btn-info" style="display:none" onclick="resetModalExcel()">
+												<i class="fa fa-refresh"></i> Cargar otro archivo
+											</button>
+											<button type="button" id="btnCargarExcel" class="btn btn-success" onclick="cargarExcelMasivo()">
+												<i class="fa fa-upload"></i> Procesar
+											</button>
+										</div>
+									</div>
+								</div>
+							</div>
+							<!-- Fin modal Cargar Excel -->
 						</form>
 
 			</div>
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="salidas.js?v=15"></script>
+	<script type="text/javascript" src="salidas.js?v=34"></script>
 
 	<script>
-        document.addEventListener("DOMContentLoaded", function() {
-            document.getElementById('marcarTodo').addEventListener('click', function(e) {
-                e.preventDefault();
-                //seleccionarTodo();
-                checkAll();
-            });
-            document.getElementById('desmarcarTodo').addEventListener('click', function(e) {
-                e.preventDefault();
-                //desmarcarTodo();
-                uncheckAll();
-            });
-        });
+		document.addEventListener("DOMContentLoaded", function() {
+			document.getElementById('marcarTodo').addEventListener('click', function(e) {
+				e.preventDefault();
+				//seleccionarTodo();
+				checkAll();
+			});
+			document.getElementById('desmarcarTodo').addEventListener('click', function(e) {
+				e.preventDefault();
+				//desmarcarTodo();
+				uncheckAll();
+			});
+		});
     
             
-        function checkAll() {
-            document.querySelectorAll('#doc_form input[type=checkbox]').forEach(function(checkElement) {
-                checkElement.checked = true;
-            });
-        }
-    
-        function uncheckAll() {
-            document.querySelectorAll('#doc_form input[type=checkbox]').forEach(function(checkElement) {
-                checkElement.checked = false;
-            });
-        }
-    </script>
+		function checkAll() {
+			document.querySelectorAll('#tb-doc tbody input[type=checkbox]').forEach(function(checkElement) {
+				checkElement.checked = true;
+			});
+		}
+
+		function uncheckAll() {
+			document.querySelectorAll('#tb-doc tbody input[type=checkbox]').forEach(function(checkElement) {
+				checkElement.checked = false;
+			});
+		}
+	</script>
 		
 <style>
 .btn-disabled {

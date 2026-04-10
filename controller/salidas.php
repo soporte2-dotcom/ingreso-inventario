@@ -9,6 +9,10 @@
             echo $salidas->get_farm_info($_POST["idTipo"]);
         break;
 
+        case "combo_lotes":
+            echo $salidas->combo_lotes();
+        break;
+
         case "insert_doc_manual":
             $dir1m = $_POST["dir1"] ?? '';
             if(strpos($dir1m, ",") !== false) $dir1m = explode(",", $dir1m)[0];
@@ -31,7 +35,7 @@
             if(($_POST["docref"] ?? 0) == 0){
                 $resultado = $salidas->insert_doc_salida($_POST["idTipo"], $_POST["numero"], $_SESSION["Id_Usuario"]);
             } else {
-                $resultado = $salidas->insert_salida_traslado($_POST["idTipo"], $_POST["numero"], $_POST["tipoDocRef"], $_SESSION["Id_Usuario"]);
+                $resultado = $salidas->insert_devolucion($_POST["idTipo"], $_POST["numero"], $_POST["tipoDocRef"], $_SESSION["Id_Usuario"]);
             }
             echo $resultado;
         break;
@@ -58,11 +62,21 @@
         break;
 
         case "update_lote_salida":
-            $salidas->update_lote_salida($_POST["tipo"], $_POST["numdoc"], $_POST["lote1"]);
+            $salidas->update_lote_salida($_POST["tipo"], $_POST["numdoc"], $_POST["lote1"], $_POST["seqs"] ?? '');
         break;
 
-        case "get_precio_producto":
-            echo $salidas->get_precio_producto($_POST["idProducto"]);
+        case "update_notas_etapa":
+            $salidas->update_notas_etapa($_POST["tipo"], $_POST["numdoc"], $_POST["notas"]);
+        break;
+
+        case "get_info_producto":
+            echo $salidas->get_info_producto(
+                $_POST["idProducto"],
+                $_POST["tipo"]      ?? '',
+                $_POST["numdoc"]    ?? '',
+                $_POST["nit"]       ?? '',
+                $_POST["direccion"] ?? ''
+            );
         break;
 
         case "agregar_linea_manual":
@@ -72,7 +86,8 @@
                 $_POST["cantidad"],
                 $_POST["valorUnitario"] ?? 0,
                 $_POST["lote"] ?? '0',
-                $_POST["fechaVence"] ?? date('Y-m-d')
+                $_POST["fechaVence"] ?? date('Y-m-d'),
+                $_POST["porcentajeImpuesto"] ?? 0
             );
             echo $resultado;
         break;
@@ -137,6 +152,26 @@
                 echo json_encode($output);
 
             }   
+        break;
+
+        case "cargar_masiva_excel":
+            if (!isset($_FILES['archivo']) || $_FILES['archivo']['error'] !== UPLOAD_ERR_OK) {
+                echo json_encode(['status' => 'error', 'message' => 'No se recibió el archivo o hubo un error al subir']);
+                break;
+            }
+            $tmpPath  = $_FILES['archivo']['tmp_name'];
+            $origName = strtolower($_FILES['archivo']['name']);
+            if (pathinfo($origName, PATHINFO_EXTENSION) !== 'xlsx') {
+                echo json_encode(['status' => 'error', 'message' => 'Solo se aceptan archivos .xlsx']);
+                break;
+            }
+            echo $salidas->cargar_masiva_excel(
+                $_POST['tipo']      ?? '',
+                $_POST['numdoc']    ?? '',
+                $_POST['nit']       ?? '',
+                $_POST['direccion'] ?? '',
+                $tmpPath
+            );
         break;
 
         case "listar_detalle_salida":

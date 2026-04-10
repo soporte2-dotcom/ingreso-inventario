@@ -1,0 +1,54 @@
+[2026-04-09 21:22:56] Error en insert_doc_salida: Error al insertar detalle del documento: Array
+(
+    [0] => Array
+        (
+            [0] => 42S22
+            [SQLSTATE] => 42S22
+            [1] => 207
+            [code] => 207
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]El nombre de columna 'Precio_Marcado' no es válido.
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]El nombre de columna 'Precio_Marcado' no es válido.
+        )
+
+    [1] => Array
+        (
+            [0] => 42S22
+            [SQLSTATE] => 42S22
+            [1] => 207
+            [code] => 207
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]El nombre de columna 'Precio_Marcado' no es válido.
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]El nombre de columna 'Precio_Marcado' no es válido.
+        )
+
+    [2] => Array
+        (
+            [0] => 42S22
+            [SQLSTATE] => 42S22
+            [1] => 207
+            [code] => 207
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]El nombre de columna 'Precio_Marcado' no es válido.
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]El nombre de columna 'Precio_Marcado' no es válido.
+        )
+
+    [3] => Array
+        (
+            [0] => 42S22
+            [SQLSTATE] => 42S22
+            [1] => 207
+            [code] => 207
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]El nombre de columna 'Precio_Marcado' no es válido.
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]El nombre de columna 'Precio_Marcado' no es válido.
+        )
+
+    [4] => Array
+        (
+            [0] => 42000
+            [SQLSTATE] => 42000
+            [1] => 8180
+            [code] => 8180
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]No se puede preparar la instrucción o instrucciones.
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]No se puede preparar la instrucción o instrucciones.
+        )
+
+)
+
