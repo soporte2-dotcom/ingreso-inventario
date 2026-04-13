@@ -279,7 +279,21 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 						<div class="form-check form-check-inline">
   							<label class="form-label semibold" style="display: none" id="txt_remision">
   							<input class="form-check-input" style="display: none" type="checkbox" value="11" id="remision" name="remision"> Remision</label>
-						</div>						
+						</div>
+					</div>
+
+					<div class="col-lg-2">
+						<fieldset class="form-group">
+							<label class="form-label semibold" style="display: none" id="txt_transportador">Transportador</label>
+							<select id="idTransportador" name="idTransportador" style="display: none" class="form-control"></select>
+						</fieldset>
+					</div>
+
+					<div class="col-lg-2">
+						<fieldset class="form-group">
+							<label class="form-label semibold" style="display: none" id="txt_vehiculo">Placa</label>
+							<select id="idVehiculo" name="idVehiculo" style="display: none" class="form-control"></select>
+						</fieldset>
 					</div>
 
 				</div>
@@ -436,7 +450,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="nuevodoc.js?v=24"></script>
+	<script type="text/javascript" src="nuevodoc.js?v=25"></script>
 
 	<script>
         document.addEventListener("DOMContentLoaded", function() {

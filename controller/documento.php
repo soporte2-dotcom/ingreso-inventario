@@ -174,6 +174,8 @@
                     $output["exportado"] = $row["exportado"];
                     $output["IdVendedor"] = $row["IdVendedor"];
                     $output["Fecha_Hora_Factura"] = $row["Fecha_Hora_Factura"] ? date_format($row["Fecha_Hora_Factura"], "Y-m-d") : date("Y-m-d");
+                    $output["IdTransportador"] = $row["IdTransportador"];
+                    $output["IdVehiculo"] = $row["IdVehiculo"];
                 }
                 echo json_encode($output);
 
@@ -347,14 +349,17 @@
         break;
 
         case "guardar_entrada":
-            
+
             $direccion = $_POST["direccion3"];
 
             if (strpos($direccion, ",") !== false) {
-                    
+
                 $direccion = explode(",", $direccion);
 
-                $documento->save_entrada($_POST["tipo"],$_POST["numdoc"],$_POST["notas"],$_POST["remision"],$_POST["nit3"],$_POST["nombre3"],$direccion[0],$_POST["telefono3"],$_POST["traslfact1"]);                
+                $idTransportador = (isset($_POST["idTransportador"]) && $_POST["idTransportador"] !== '') ? $_POST["idTransportador"] : '1';
+                $idVehiculo      = (isset($_POST["idVehiculo"])      && $_POST["idVehiculo"]      !== '') ? $_POST["idVehiculo"]      : '1';
+
+                $documento->save_entrada($_POST["tipo"],$_POST["numdoc"],$_POST["notas"],$_POST["remision"],$_POST["nit3"],$_POST["nombre3"],$direccion[0],$_POST["telefono3"],$_POST["traslfact1"],$idTransportador,$idVehiculo);
             }
                                    
         break;
@@ -453,7 +458,15 @@
         }
         
         break;
-        
+
+        case "combo_transportador":
+            echo $documento->combo_transportador();
+        break;
+
+        case "combo_vehiculo":
+            echo $documento->combo_vehiculo();
+        break;
+
     }
 
 ?>

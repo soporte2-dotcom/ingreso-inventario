@@ -185,7 +185,8 @@
 
             $sql="SELECT d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
             d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1,
-            d.nit_Cedula_2, t.nombre AS nombre2, d.codigo_direccion_2, td2.direccion AS direccion2, d.notas, d.exportado, d.IdVendedor, d.Fecha_Hora_Factura
+            d.nit_Cedula_2, t.nombre AS nombre2, d.codigo_direccion_2, td2.direccion AS direccion2, d.notas, d.exportado, d.IdVendedor, d.Fecha_Hora_Factura,
+            d.IdTransportador, d.IdVehiculo
             FROM Documentos d, Terceros_Dir td, TblTipoDoctos tt, TblTerceros t, Terceros_Dir td2
             WHERE d.tipo = '$tipo' AND d.Numero_documento = '$consecutivo' AND tt.idTipoDoctos = d.tipo AND
             td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion AND
@@ -1120,11 +1121,11 @@
 
         }
 
-        public function save_entrada($tipo, $numdoc, $notas, $remision, $nit, $nombre, $direccion, $telefono, $traslfact){
+        public function save_entrada($tipo, $numdoc, $notas, $remision, $nit, $nombre, $direccion, $telefono, $traslfact, $idTransportador = 1, $idVehiculo = 1){
             $cn = new Conectarserver;
-            
+
             if(empty($remision)){
-                $sql="UPDATE Documentos SET nit_Cedula_2 = '$nit', codigo_direccion_2 = '$direccion', Numero_Docto_Base = '$traslfact', notas = '$notas', exportado = 'S',
+                $sql="UPDATE Documentos SET nit_Cedula_2 = '$nit', codigo_direccion_2 = '$direccion', Numero_Docto_Base = '$traslfact', notas = '$notas', exportado = 'S', IdTransportador = '$idTransportador', IdVehiculo = '$idVehiculo',
                 Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = $tipo AND Numero_documento = $numdoc),
                 valor_total = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
                 FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $numdoc),
@@ -1142,7 +1143,7 @@
                 FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $numdoc)
                 WHERE tipo = $tipo AND Numero_Documento = $numdoc";
             }else{
-                $sql="UPDATE Documentos SET nit_Cedula_2 = '$nit', codigo_direccion_2 = '$direccion', Numero_Docto_Base = '$traslfact', notas = '$notas', exportado = 'S', IdVendedor = '$remision',
+                $sql="UPDATE Documentos SET nit_Cedula_2 = '$nit', codigo_direccion_2 = '$direccion', Numero_Docto_Base = '$traslfact', notas = '$notas', exportado = 'S', IdVendedor = '$remision', IdTransportador = '$idTransportador', IdVehiculo = '$idVehiculo',
                 Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = $tipo AND Numero_documento = $numdoc),
                 valor_total = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
                 FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $numdoc),
@@ -1322,6 +1323,32 @@
                 error_log("💥 Stack trace: " . $e->getTraceAsString());
                 return false;
             }
+        }
+
+        public function combo_transportador(){
+            $cn = new Conectarserver;
+            $sql = "SELECT IdTransportador, Transportador FROM tblTransportador ORDER BY Transportador";
+            $registros = sqlsrv_query($cn->getConecta(), $sql);
+            $html = '<option value="1">-- Seleccione --</option>';
+            if($registros){
+                while($row = sqlsrv_fetch_array($registros, SQLSRV_FETCH_ASSOC)){
+                    $html .= '<option value="'.$row['IdTransportador'].'">'.$row['Transportador'].'</option>';
+                }
+            }
+            return $html;
+        }
+
+        public function combo_vehiculo(){
+            $cn = new Conectarserver;
+            $sql = "SELECT IdVehiculo, Vehiculo FROM TblVehiculo ORDER BY Vehiculo";
+            $registros = sqlsrv_query($cn->getConecta(), $sql);
+            $html = '<option value="1">-- Seleccione --</option>';
+            if($registros){
+                while($row = sqlsrv_fetch_array($registros, SQLSRV_FETCH_ASSOC)){
+                    $html .= '<option value="'.$row['IdVehiculo'].'">'.$row['Vehiculo'].'</option>';
+                }
+            }
+            return $html;
         }
 
     }

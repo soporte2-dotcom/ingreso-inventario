@@ -12,7 +12,7 @@ $(document).ready(function(){
     tabla = $('#doc_data').dataTable({
         "aProcessing": true,
         "aServerSide": true,
-        "ordering": true, // Habilitar ordenamiento
+        "ordering": false, 
         dom: 'Bfrtip',
         "searching": true,
         lengthChange: false,
@@ -49,7 +49,6 @@ $(document).ready(function(){
                 "className": "text-center"
             }
         ],
-        "order": [[0, "desc"]], // Ordenar por fecha descendente por defecto
         "bDestroy": true,
         "responsive": true,
         "bInfo": true,

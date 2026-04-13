@@ -70,7 +70,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 	
 	<?php require_once("../MainJs/js.php");?>
 	
-	<script type="text/javascript" src="consultar.js?v=3"></script>
+	<script type="text/javascript" src="consultar.js?v=5"></script>
 
   <style>
     /* Estilo para la columna exportado */

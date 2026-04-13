@@ -25,6 +25,8 @@ const CONFIG = {
             guardar_entrada: "documento.php?op=guardar_entrada",
             guardar_doc: "documento.php?op=guardar_doc",
             mostrar_entrada: "documento.php?op=mostrar_entrada",
+            combo_transportador: "documento.php?op=combo_transportador",
+            combo_vehiculo: "documento.php?op=combo_vehiculo",
             listar_detalle_entrada: "documento.php?op=listar_detalle_entrada",
             total_entrada: "documento.php?op=total_entrada",
             totales: "documento.php?op=totales",
@@ -91,6 +93,12 @@ function mostrarFeedbackExitoso(mensaje = "Cambio guardado correctamente") {
 function inicializarCombos() {
     $.post(CONFIG.baseUrl + CONFIG.endpoints.permisos, function(data) {
         $('#idTipo').html(data);
+    });
+    $.post(CONFIG.baseUrl + CONFIG.endpoints.documento.combo_transportador, function(data) {
+        $('#idTransportador').html(data);
+    });
+    $.post(CONFIG.baseUrl + CONFIG.endpoints.documento.combo_vehiculo, function(data) {
+        $('#idVehiculo').html(data);
     });
 }
 
@@ -326,9 +334,10 @@ function configurarInterfazParaDocumentoExistente(data) {
     document.getElementById("btncrear").style.display = "none";
 
     const elementosMostrar = [
-        "txt_tipodoc", "txt_numdoc", "txt_fecha1", "txt_pedido1", 
-        "txt_traslfact1", "txt_remision", "tipodoc", "numdoc", 
-        "fecha1", "pedido1", "traslfact1", "remision", "btnlot", "btneliminarsel", "btnguardar"
+        "txt_tipodoc", "txt_numdoc", "txt_fecha1", "txt_pedido1",
+        "txt_traslfact1", "txt_remision", "tipodoc", "numdoc",
+        "fecha1", "pedido1", "traslfact1", "remision", "btnlot", "btneliminarsel", "btnguardar",
+        "txt_transportador", "idTransportador", "txt_vehiculo", "idVehiculo"
     ];
     
     elementosMostrar.forEach(id => {
@@ -484,6 +493,8 @@ function listardetalle(tipo, consecutivo){
         $('#direccion2').val(data.direccion2);
         $('#notas').html(data.notas);
         $('#sw').val(data.Tipo_Docto_Base_2);
+        if(data.IdTransportador){ $('#idTransportador').val(data.IdTransportador); }
+        if(data.IdVehiculo){ $('#idVehiculo').val(data.IdVehiculo); }
 
         if(data !== null){
             configurarInterfazParaDocumentoExistente(data);
