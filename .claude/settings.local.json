@@ -7,7 +7,18 @@
       "Bash(chmod 777 C:/xampp/htdocs/ingresoinventario/logs)",
       "Bash(grep -v '^\\\\.$')",
       "Bash(./mysql/bin/mysql.exe -u root -e \"USE permisos_tecno; SELECT COUNT\\(*\\) as total FROM etapas; SELECT * FROM etapas LIMIT 5;\")",
-      "Bash(php:*)"
+      "Bash(php:*)",
+      "Bash(C:/xampp/mysql/bin/mysql.exe:*)",
+      "Bash(\"C:/xampp/mysql/bin/mysql.exe\" -u root -e \"USE permisos_tecno; INSERT INTO conceptosdevolucion \\(nombre, estado, createdAt, updateAt, idUserCreated, idUserModified\\) VALUES \\('Prueba sistema', 1, NOW\\(\\), NOW\\(\\), 'SA', 'SA'\\);\")",
+      "Bash(\"C:/xampp/mysql/bin/mysql.exe\" -u root -e \"USE permisos_tecno; SELECT * FROM conceptosdevolucion;\")",
+      "Bash(\"C:/xampp/mysql/bin/mysql.exe\" -u root -e \"USE permisos_tecno; DESCRIBE modulos_sistema;\")",
+      "Bash(\"C:/xampp/mysql/bin/mysql.exe\" -u root -e \"USE permisos_tecno; SELECT * FROM modulos_sistema ORDER BY orden_menu;\")",
+      "Bash(echo \"INSERT INTO modulos_sistema \\(nombre_modulo, ruta, icono, texto_menu, orden_menu, activo\\) VALUES \\('conceptos_devolucion', '..\\\\\\\\\\\\\\\\ConceptosDevolucion\\\\\\\\\\\\\\\\', 'glyphicon-tag', 'Conceptos Devolucion', 10, 'S'\\);\")",
+      "Bash(\"C:/xampp/mysql/bin/mysql.exe\" -u root --default-character-set=utf8 permisos_tecno)",
+      "Bash(\"C:/xampp/mysql/bin/mysql.exe\" -u root permisos_tecno -e \"SELECT id, nombre_modulo, ruta FROM modulos_sistema WHERE nombre_modulo='conceptos_devolucion';\")",
+      "Bash(\"C:/xampp/mysql/bin/mysql.exe\" -u root permisos_tecno -e \"UPDATE modulos_sistema SET ruta='..\\\\\\\\\\\\\\\\ConceptosDevolucion\\\\\\\\\\\\\\\\' WHERE nombre_modulo='conceptos_devolucion';\")",
+      "Bash(\"C:/xampp/mysql/bin/mysql.exe\" -u root permisos_tecno)",
+      "Bash(C:/xampp/php/php.exe:*)"
     ]
   }
 }

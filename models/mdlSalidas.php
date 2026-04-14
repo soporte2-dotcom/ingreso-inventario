@@ -7,7 +7,7 @@
 
         if($usuario == 'LAUREN' || $usuario == 'SA'){
 
-            $sql="SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
+            $sql="SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
                 d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, d.exportado, d.usuario
 
                 FROM Documentos d, Terceros_Dir td, TblTipoDoctos tt, TblTerceros t
@@ -21,7 +21,7 @@
 
         } else {
 
-            $sql="SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
+            $sql="SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
                 d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, d.exportado, d.usuario
 
                 FROM Documentos d, Terceros_Dir td, TblTipoDoctos tt, TblTerceros t
@@ -51,9 +51,7 @@
         public function listar_doc_x_id($tipo, $consecutivo){
             $cn = new Conectarserver;
 
-            $sql="SELECT d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2, 
-            d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, 
-            d.nit_Cedula_2, t.nombre AS nombre2, d.codigo_direccion_2, td2.direccion AS direccion2, d.notas, d.exportado
+            $sql="SELECT d.*, tt.TipoDoctos, td.direccion, td.telefono_1, t.nombre AS nombre2, td2.direccion AS direccion2
             FROM Documentos d, Terceros_Dir td, TblTipoDoctos tt, TblTerceros t, Terceros_Dir td2
             WHERE d.tipo = '$tipo' AND d.Numero_documento = '$consecutivo' AND tt.idTipoDoctos = d.tipo AND
             td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion AND
@@ -411,6 +409,37 @@
                 echo "Error al guardar la salida";
             }
 
+            // Recalcular exportado en Documentos_ped si este documento viene de una OS (Tipo_Docto_Base_2 = '10')
+            $sql_os = "SELECT Numero_Docto_Base_2 FROM Documentos
+                       WHERE tipo = $tipo AND Numero_Documento = $numdoc
+                       AND Tipo_Docto_Base_2 = '10'";
+            $stmt_os = sqlsrv_query($cn->getConecta(), $sql_os);
+            if ($stmt_os) {
+                $row_os = sqlsrv_fetch_array($stmt_os, SQLSRV_FETCH_ASSOC);
+                if ($row_os && !empty($row_os['Numero_Docto_Base_2'])) {
+                    $numero_os = $row_os['Numero_Docto_Base_2'];
+                    $sql_chk = "SELECT COUNT(*) AS con_pendiente
+                                FROM Documentos_Lin_Ped dlp
+                                LEFT JOIN (
+                                    SELECT dl.IdProducto, SUM(dl.Cantidad_Facturada) AS total_facturado
+                                    FROM Documentos d
+                                    JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
+                                    WHERE d.Numero_Docto_Base_2 = '$numero_os' AND d.Tipo_Docto_Base_2 = '10'
+                                    AND d.exportado = 'S'
+                                    GROUP BY dl.IdProducto
+                                ) f ON f.IdProducto = dlp.IdProducto
+                                WHERE dlp.numero_pedido = '$numero_os' AND dlp.sw = '10'
+                                AND (dlp.cantidad - ISNULL(f.total_facturado, 0)) > 0";
+                    $stmt_chk = sqlsrv_query($cn->getConecta(), $sql_chk);
+                    $row_chk = sqlsrv_fetch_array($stmt_chk, SQLSRV_FETCH_ASSOC);
+                    $exportado_ped = ($row_chk && $row_chk['con_pendiente'] == 0) ? 'S' : 'P';
+                    $sql_upd_ped = "UPDATE Documentos_Ped
+                                    SET exportado = '$exportado_ped'
+                                    WHERE numero_pedido = '$numero_os' AND sw = '10'";
+                    sqlsrv_query($cn->getConecta(), $sql_upd_ped);
+                }
+            }
+
             $sql2 = "(EXEC UPDATE_PRODUCTO_STO)";
             $registros = sqlsrv_prepare($cn->getConecta(), $sql2);
             sqlsrv_execute($registros);
@@ -449,7 +478,7 @@
             }
         }
 
-        public function insert_devolucion($tipo, $numero, $tiporef, $usuario){
+        public function insert_devolucion($tipo, $numero, $tiporef, $usuario, $idConcepto, $nombreConcepto){
             $cn = new Conectarserver;
 
             try {
@@ -497,7 +526,7 @@
                 0 AS Fletes_Moneda_Ext, 0 AS Miselaneos_Moneda_Ext, 0 AS Cargo_Por_Fletes, 0 AS Impuesto_Por_Fletes, d.Total_Items AS Total_Items, d.Nombre_Cliente AS Nombre_Cliente,
                 SUBSTRING(d.Ordenado_Por,0,20) AS Ordenado_Por, d.Telefono_De_Envio_1 AS Telefono_De_Envio_1, d.Telefono_De_Envio_2 AS Telefono_De_Envio_2, 'N' AS Factura_Impresa, d.IdFormaEnvio AS IdFormaEnvio, d.IdTRansportador AS IdTransportador,
                 d.nit_Cedula_2 AS nit_Cedula_2, d.codigo_direccion_2 AS codigo_direccion_2, d.Numero_Docto_Base_2 AS Numero_Docto_Base_2, '$tiporef' AS Tipo_Docto_Base,
-                '' AS Tipo_Docto_Base_2, d.IdActividadEconomica AS IdActividadEconomica, d.TarifaReteFuenteCree AS TarifaReteFuenteCree, d.Valor_ReteCree AS Valor_ReteCree, d.IdVehiculo AS IdVehiculo
+                d.Tipo_Docto_Base_2 AS Tipo_Docto_Base_2, d.IdActividadEconomica AS IdActividadEconomica, d.TarifaReteFuenteCree AS TarifaReteFuenteCree, d.Valor_ReteCree AS Valor_ReteCree, d.IdVehiculo AS IdVehiculo
 
                 FROM Documentos d, consecutivos c, TblTipoDoctos td
                 WHERE c.tipo = '$tipo' AND d.Numero_documento = '$numero' AND d.tipo = '$tiporef' AND td.idTipoDoctos = '$tipo')";
@@ -521,7 +550,7 @@
                 '' AS Numero_Docto_Base, dl.Numero_Lote AS Numero_Lote, dl.Nit_Cedula AS Nit_Cedula, dl.codigo_direccion AS codigo_direccion,  GETDATE() AS Fecha_Documento,
                 dl.IdProducto AS IdProducto, dl.IdUnidad AS IdUnidad, '1' AS Factor_Conversion, Cantidad_Facturada AS Cantidad_Facturada,
                 (dl.Cantidad_Facturada)* -1 AS Cantidad_Pendiente, dl.Cantidad_Orden AS Cantidad_Orden,
-                dl.Costo_Unitario AS Costo_Unitario, dl.valor_unitario AS Valor_Unitario, (dl.Porcentaje_Impuesto / 100.0 * dl.valor_unitario) AS Valor_Impuesto, dl.Porcentaje_Impuesto AS Porcentaje_Impuesto,
+                dl.Costo_Unitario AS Costo_Unitario, dl.valor_unitario AS Valor_Unitario, (dl.Porcentaje_Impuesto / 100.0 * dl.valor_unitario * dl.Cantidad_Facturada) AS Valor_Impuesto, dl.Porcentaje_Impuesto AS Porcentaje_Impuesto,
                 dl.Porcentaje_Descuento_1 AS Porcentaje_Descuento_1, dl.Porcentaje_Descuento_2 AS Porcentaje_Descuento_2,
                 dl.Porcentaje_Descuento_3 AS Porcentaje_Descuento_3, dl.IdVendedor AS IdVendedor, 0 AS Comision_Vendedor, 0 AS Valor_Comision_Vendedor,
                 td.IdBodega AS IdBodega, 'S' AS Maneja_Inventario, '' AS Tomador, 1 AS IdMoneda, 1 AS Tasa_Moneda_Ext, '0' AS CentroDeCostosDoc,
@@ -533,13 +562,15 @@
                 0 AS Porcentaje_ReteFuente_3, 0 AS Porcentaje_ReteFuente_4, 0 AS Emp_1, 0 AS Emp_2, 0 AS Emp_3, 0 AS Emp_4, 0 AS Emp_5, 0 AS Emp_6,
                 0 AS Emp_7, 0 AS Emp_8, 0 AS Tara_1, 0 AS Tara_2, 0 AS Tara_3, 0 AS Tara_4, 0 AS Tara_5, 0 AS Tara_6, 0 AS Tara_7, 0 AS Tara_8
 
-                FROM  consecutivos c, Documentos_Lin dl, Documentos d, TblTerceros t, TblTipoDoctos td, TblProducto p, TblRetencion r
+                FROM  consecutivos c, Documentos_Lin dl
+                INNER JOIN Documentos d ON d.Numero_documento=dl.Numero_Documento AND d.tipo = dl.tipo
+                INNER JOIN TblTipoDoctos td ON td.idTipoDoctos = '$tipo'
+                LEFT JOIN TblProducto p ON p.IdProducto = dl.IdProducto
+                LEFT JOIN TblTerceros t ON dl.Nit_Cedula=t.nit_cedula
+                LEFT JOIN TblRetencion r ON p.Retencion=r.IdRetencion
 
                 WHERE c.tipo = '$tipo' AND dl.Numero_documento = '$numero' AND dl.tipo = '$tiporef'
-                AND td.idTipoDoctos = c.tipo AND d.Numero_documento=dl.Numero_Documento AND d.tipo = dl.tipo
-                AND dl.Nit_Cedula=t.nit_cedula
-                AND p.IdProducto = dl.IdProducto
-                AND p.Retencion=r.IdRetencion)";
+                )";
 
                 $registros = sqlsrv_prepare($cn->getConecta(), $sql1);
                 if(sqlsrv_execute($registros) === false) {
@@ -565,6 +596,35 @@
                 $registros = sqlsrv_prepare($cn->getConecta(), $sql2);
                 if(sqlsrv_execute($registros) === false) {
                     throw new Exception("Error al actualizar consecutivo: " . print_r(sqlsrv_errors(), true));
+                }
+
+                // Actualizar Notas con el concepto de devolución (sobrescribe la nota del doc original)
+                $notaConcepto = 'Motivo: ' . $nombreConcepto;
+                $sqlNotas = "UPDATE Documentos SET Notas = ?
+                    WHERE tipo = '$tipo'
+                      AND Numero_Documento = (SELECT siguiente FROM Consecutivos WHERE tipo = '$tipo')";
+                $paramsNotas = array($notaConcepto);
+                $stmtNotas = sqlsrv_prepare($cn->getConecta(), $sqlNotas, $paramsNotas);
+                if(sqlsrv_execute($stmtNotas) === false) {
+                    throw new Exception("Error al actualizar Notas con concepto: " . print_r(sqlsrv_errors(), true));
+                }
+
+                // Intentar actualizar idConceptoDevolucion (requiere ejecutar sql/02_sqlserver_alter_documentos.sql)
+                $sqlCheckCol = "SELECT COUNT(*) AS existe FROM sys.columns
+                    WHERE object_id = OBJECT_ID('Documentos') AND name = 'idConceptoDevolucion'";
+                $stmtCheck = sqlsrv_query($cn->getConecta(), $sqlCheckCol);
+                if ($stmtCheck !== false) {
+                    $rowCheck = sqlsrv_fetch_array($stmtCheck, SQLSRV_FETCH_ASSOC);
+                    if ($rowCheck && $rowCheck['existe'] > 0) {
+                        $sqlIdConc = "UPDATE Documentos SET idConceptoDevolucion = ?
+                            WHERE tipo = '$tipo'
+                              AND Numero_Documento = (SELECT siguiente FROM Consecutivos WHERE tipo = '$tipo')";
+                        $paramsIdConc = array((int)$idConcepto);
+                        $stmtIdConc = sqlsrv_prepare($cn->getConecta(), $sqlIdConc, $paramsIdConc);
+                        if(sqlsrv_execute($stmtIdConc) === false) {
+                            throw new Exception("Error al actualizar idConceptoDevolucion: " . print_r(sqlsrv_errors(), true));
+                        }
+                    }
                 }
 
                 sqlsrv_commit($cn->getConecta());
@@ -617,6 +677,29 @@
                         "status" => "error",
                         "message" => "La Orden de Salida '$numero' está anulada y no puede ser procesada"
                     ));
+                }
+
+                // Verificar pendientes de forma dinámica (sin campos acumulados)
+                $sql_pend_chk = "SELECT COUNT(*) AS con_pendiente
+                                 FROM Documentos_Lin_Ped dlp
+                                 LEFT JOIN (
+                                     SELECT dl.IdProducto, SUM(dl.Cantidad_Facturada) AS total_facturado
+                                     FROM Documentos d
+                                     JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
+                                     WHERE d.Numero_Docto_Base_2 = '$numero' AND d.Tipo_Docto_Base_2 = '10'
+                                     GROUP BY dl.IdProducto
+                                 ) f ON f.IdProducto = dlp.IdProducto
+                                 WHERE dlp.numero_pedido = '$numero' AND dlp.sw = '10'
+                                 AND (dlp.cantidad - ISNULL(f.total_facturado, 0)) > 0";
+                $stmt_pend_chk = sqlsrv_query($cn->getConecta(), $sql_pend_chk);
+                if ($stmt_pend_chk) {
+                    $row_pend_chk = sqlsrv_fetch_array($stmt_pend_chk, SQLSRV_FETCH_ASSOC);
+                    if ($row_pend_chk && $row_pend_chk['con_pendiente'] == 0) {
+                        return json_encode(array(
+                            "status" => "error",
+                            "message" => "La Orden de Salida '$numero' ya tiene todas sus cantidades despachadas."
+                        ));
+                    }
                 }
 
                 sqlsrv_begin_transaction($cn->getConecta());
@@ -674,8 +757,9 @@
                 Emp_7, Emp_8, Tara_1, Tara_2, Tara_3, Tara_4, Tara_5, Tara_6, Tara_7, Tara_8)
 
                 (SELECT td.tipo AS sw, '$tipo' AS tipo, dp.Linea AS seq, p.contable AS Modelo, $numDoc AS Numero_Documento,
-                '' AS Numero_Docto_Base, '0' AS Numero_Lote, dp.IdCliente AS Nit_Cedula, dp.DireccionFactura AS codigo_direccion,  GETDATE() AS Fecha_Documento,
-                dp.IdProducto AS IdProducto, dp.und AS IdUnidad, '1' AS Factor_Conversion,  dp.cantidad AS Cantidad_Facturada,
+                '' AS Numero_Docto_Base, '0' AS Numero_Lote, dp.IdCliente AS Nit_Cedula, dp.DireccionFactura AS codigo_direccion, GETDATE() AS Fecha_Documento,
+                dp.IdProducto AS IdProducto, dp.und AS IdUnidad, '1' AS Factor_Conversion,
+                (dp.cantidad - ISNULL(f.total_facturado, 0)) AS Cantidad_Facturada,
                 0 AS Cantidad_Pendiente, dp.cantidad AS Cantidad_Orden, dp.valor_unitario AS Costo_Unitario, dp.valor_unitario AS Valor_Unitario,
                 ((ISNULL(dp.porcentaje_iva, 0)/100) * dp.valor_unitario) AS Valor_Impuesto, ISNULL(dp.porcentaje_iva, 0) AS Porcentaje_Impuesto, ISNULL(dp.porcentaje_descuento, 0) AS Porcentaje_Descuento_1,
                 ISNULL(dp.porc_dcto_2, 0) AS Porcentaje_Descuento_2, ISNULL(dp.porc_dcto_3, 0) AS Porcentaje_Descuento_3, dp.IdVendedor AS IdVendedor, 0 AS Comision_Vendedor, 0 AS Valor_Comision_Vendedor,
@@ -685,10 +769,18 @@
                 0 AS Porcentaje_ReteFuente_3, 0 AS Porcentaje_ReteFuente_4, 0 AS Emp_1, 0 AS Emp_2, 0 AS Emp_3, 0 AS Emp_4, 0 AS Emp_5, 0 AS Emp_6,
                 0 AS Emp_7, 0 AS Emp_8, 0 AS Tara_1, 0 AS Tara_2, 0 AS Tara_3, 0 AS Tara_4, 0 AS Tara_5, 0 AS Tara_6, 0 AS Tara_7, 0 AS Tara_8
 
-                FROM  Documentos_Lin_Ped dp, TblTipoDoctos td, TblProducto p
-
-                WHERE td.idTipoDoctos = '$tipo' AND p.IdProducto = dp.IdProducto
-                AND dp.numero_pedido = '$numero' AND dp.sw = 10)";
+                FROM Documentos_Lin_Ped dp
+                JOIN TblTipoDoctos td ON td.idTipoDoctos = '$tipo'
+                JOIN TblProducto p ON p.IdProducto = dp.IdProducto
+                LEFT JOIN (
+                    SELECT dl.IdProducto, SUM(dl.Cantidad_Facturada) AS total_facturado
+                    FROM Documentos d
+                    JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
+                    WHERE d.Numero_Docto_Base_2 = '$numero' AND d.Tipo_Docto_Base_2 = '10'
+                    GROUP BY dl.IdProducto
+                ) f ON f.IdProducto = dp.IdProducto
+                WHERE dp.numero_pedido = '$numero' AND dp.sw = '10'
+                AND (dp.cantidad - ISNULL(f.total_facturado, 0)) > 0)";
 
                 $registros_lin =  sqlsrv_prepare($cn->getConecta(), $sql1);
                 if(sqlsrv_execute($registros_lin) === false) {
@@ -715,11 +807,31 @@
                     throw new Exception("Error al actualizar consecutivo: " . print_r(sqlsrv_errors(), true));
                 }
 
-                // Marcar el pedido de origen como despachado
-                $sql_despacho = "UPDATE Documentos_Ped SET despacho = 'S' WHERE numero_pedido = ? AND sw = '10'";
-                $stmt_despacho = sqlsrv_prepare($cn->getConecta(), $sql_despacho, array($numero));
-                if(sqlsrv_execute($stmt_despacho) === false) {
-                    throw new Exception("Error al actualizar despacho del pedido: " . print_r(sqlsrv_errors(), true));
+                // Calcular si quedan pendientes para marcar exportado en Documentos_ped (P=parcial, S=completo)
+                $sql_chk_pend = "SELECT COUNT(*) AS con_pendiente
+                                 FROM Documentos_Lin_Ped dlp
+                                 LEFT JOIN (
+                                     SELECT dl.IdProducto, SUM(dl.Cantidad_Facturada) AS total_facturado
+                                     FROM Documentos d
+                                     JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
+                                     WHERE d.Numero_Docto_Base_2 = '$numero' AND d.Tipo_Docto_Base_2 = '10'
+                                     AND d.exportado = 'S'
+                                     GROUP BY dl.IdProducto
+                                 ) f ON f.IdProducto = dlp.IdProducto
+                                 WHERE dlp.numero_pedido = '$numero' AND dlp.sw = '10'
+                                 AND (dlp.cantidad - ISNULL(f.total_facturado, 0)) > 0";
+                $stmt_chk_pend = sqlsrv_query($cn->getConecta(), $sql_chk_pend);
+                $row_chk_pend  = sqlsrv_fetch_array($stmt_chk_pend, SQLSRV_FETCH_ASSOC);
+                $exportado_ped = ($row_chk_pend && $row_chk_pend['con_pendiente'] == 0) ? 'S' : 'P';
+
+                // Actualizar Documentos_ped: exportado indica si la OS quedó completa o parcial
+                // despacho = 'F' siempre (marca que ya fue procesada al menos una vez)
+                $sql_upd_ped = "UPDATE Documentos_Ped
+                                SET exportado = '$exportado_ped', despacho = 'F'
+                                WHERE numero_pedido = '$numero' AND sw = '10'";
+                $stmt_upd_ped = sqlsrv_prepare($cn->getConecta(), $sql_upd_ped);
+                if(sqlsrv_execute($stmt_upd_ped) === false) {
+                    throw new Exception("Error al actualizar estado de la OS: " . print_r(sqlsrv_errors(), true));
                 }
 
                 sqlsrv_commit($cn->getConecta());
@@ -1183,6 +1295,74 @@
                 $html .= "<option value='".$row['numberBatch']."'>".$row['numberBatch']."</option>";
             }
             return $html;
+        }
+
+        public function validar_os($numero) {
+            $cn = new Conectarserver;
+            $resultado = array('status' => 'no_existe', 'documentos' => array(), 'lineas_pendientes' => 0);
+
+            if (empty($numero)) return json_encode($resultado);
+
+            // Verificar que la OS exista y no esté anulada
+            $sql_chk = "SELECT COUNT(*) AS existe FROM Documentos_Ped
+                        WHERE numero_pedido = ? AND sw = '10' AND CAST(anulado AS int) = 1";
+            $stmt_chk = sqlsrv_query($cn->getConecta(), $sql_chk, array($numero));
+            if (!$stmt_chk) return json_encode($resultado);
+            $row_chk = sqlsrv_fetch_array($stmt_chk, SQLSRV_FETCH_ASSOC);
+            if (!$row_chk || $row_chk['existe'] == 0) return json_encode($resultado);
+
+            // Calcular pendientes y totales de forma dinámica
+            $sql_pend = "SELECT
+                                SUM(CASE WHEN (dlp.cantidad - ISNULL(f.total_facturado, 0)) > 0 THEN 1 ELSE 0 END) AS con_pendiente,
+                                SUM(dlp.cantidad) AS total_ordenado,
+                                ISNULL(SUM(f.total_facturado), 0) AS total_despachado
+                         FROM Documentos_Lin_Ped dlp
+                         LEFT JOIN (
+                             SELECT dl.IdProducto, SUM(dl.Cantidad_Facturada) AS total_facturado
+                             FROM Documentos d
+                             JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
+                             WHERE d.Numero_Docto_Base_2 = '$numero' AND d.Tipo_Docto_Base_2 = '10'
+                             GROUP BY dl.IdProducto
+                         ) f ON f.IdProducto = dlp.IdProducto
+                         WHERE dlp.numero_pedido = '$numero' AND dlp.sw = '10'";
+            $stmt_pend = sqlsrv_query($cn->getConecta(), $sql_pend);
+            $row_pend  = $stmt_pend ? sqlsrv_fetch_array($stmt_pend, SQLSRV_FETCH_ASSOC) : null;
+            $lineas_pendientes = (int)($row_pend['con_pendiente'] ?? 0);
+            $total_ordenado   = (float)($row_pend['total_ordenado'] ?? 0);
+            $total_despachado = (float)($row_pend['total_despachado'] ?? 0);
+
+            $resultado['lineas_pendientes'] = $lineas_pendientes;
+            $resultado['total_ordenado']    = $total_ordenado;
+            $resultado['total_despachado']  = $total_despachado;
+            $resultado['status'] = ($lineas_pendientes === 0) ? 'finalizado' : 'pendiente';
+
+            // Documentos ya generados desde esta OS
+            $sql_docs = "SELECT tt.TipoDoctos, d.Numero_documento, d.Fecha_Hora_Factura,
+                                CASE d.exportado
+                                    WHEN 'S' THEN 'Guardado'
+                                    ELSE 'Sin guardar'
+                                END AS estado
+                         FROM Documentos d
+                         JOIN TblTipoDoctos tt ON tt.idTipoDoctos = d.tipo
+                         WHERE d.Numero_Docto_Base_2 = ? AND d.Tipo_Docto_Base_2 = '10'
+                         ORDER BY d.Numero_documento DESC";
+            $stmt_docs = sqlsrv_query($cn->getConecta(), $sql_docs, array($numero));
+            if ($stmt_docs) {
+                while ($doc = sqlsrv_fetch_array($stmt_docs, SQLSRV_FETCH_ASSOC)) {
+                    $fecha_doc = '';
+                    if ($doc['Fecha_Hora_Factura'] instanceof DateTime) {
+                        $fecha_doc = date_format($doc['Fecha_Hora_Factura'], "d/m/Y");
+                    }
+                    $resultado['documentos'][] = array(
+                        'tipo'   => $doc['TipoDoctos'],
+                        'numero' => $doc['Numero_documento'],
+                        'fecha'  => $fecha_doc,
+                        'estado' => $doc['estado']
+                    );
+                }
+            }
+
+            return json_encode($resultado);
         }
 
     }

@@ -35,7 +35,25 @@
             if(($_POST["docref"] ?? 0) == 0){
                 $resultado = $salidas->insert_doc_salida($_POST["idTipo"], $_POST["numero"], $_SESSION["Id_Usuario"]);
             } else {
-                $resultado = $salidas->insert_devolucion($_POST["idTipo"], $_POST["numero"], $_POST["tipoDocRef"], $_SESSION["Id_Usuario"]);
+                // Validar concepto de devolución obligatorio
+                $idConcepto     = isset($_POST["idConceptoDevolucion"]) ? (int)$_POST["idConceptoDevolucion"] : 0;
+                $nombreConcepto = trim($_POST["nombreConceptoDevolucion"] ?? '');
+                if ($idConcepto <= 0 || $nombreConcepto === '') {
+                    echo json_encode(["status" => "error", "message" => "El concepto de devolución es obligatorio."]);
+                    break;
+                }
+                // Verificar que el concepto exista y esté activo en MySQL
+                require_once("../models/mdlConceptosDevolucion.php");
+                $conceptos = new ConceptosDevolucion();
+                $nombreVerificado = $conceptos->validar_activo($idConcepto);
+                if ($nombreVerificado === null) {
+                    echo json_encode(["status" => "error", "message" => "El concepto seleccionado no es válido o está inactivo."]);
+                    break;
+                }
+                $resultado = $salidas->insert_devolucion(
+                    $_POST["idTipo"], $_POST["numero"], $_POST["tipoDocRef"],
+                    $_SESSION["Id_Usuario"], $idConcepto, $nombreVerificado
+                );
             }
             echo $resultado;
         break;
@@ -131,23 +149,11 @@
             if(is_array($datos)==true and count($datos)>0){
                 foreach($datos as $row)
                 {
-                    $output["tipo"] = $row["tipo"];
-                    $output["TipoDoctos"] = $row["TipoDoctos"];
-                    $output["Numero_documento"] = $row["Numero_documento"];
-                    $output["Numero_Docto_Base"] = $row["Numero_Docto_Base"];
-                    $output["Tipo_Docto_Base_2"] = $row["Tipo_Docto_Base_2"];
-                    $output["Numero_Docto_Base_2"] = $row["Numero_Docto_Base_2"];
-                    $output["nit_Cedula"] = $row["nit_Cedula"];
-                    $output["Nombre_Cliente"] = $row["Nombre_Cliente"];
-                    $output["codigo_direccion"] = $row["codigo_direccion"];
-                    $output["direccion"] = $row["direccion"];
-                    $output["telefono_1"] = $row["telefono_1"];
-                    $output["nit_Cedula_2"] = $row["nit_Cedula_2"];
-                    $output["nombre2"] = $row["nombre2"];
-                    $output["codigo_direccion_2"] = $row["codigo_direccion_2"];
-                    $output["direccion2"] = $row["direccion2"];
-                    $output["notas"] = $row["notas"];
-                    $output["exportado"] = $row["exportado"];
+                    foreach($row as $key => $value) {
+                         if (!is_numeric($key)) { // Only string keys to avoid duplicates from fetch_array
+                             $output[$key] = $value;
+                         }
+                    }
                 }
                 echo json_encode($output);
 
@@ -172,6 +178,10 @@
                 $_POST['direccion'] ?? '',
                 $tmpPath
             );
+        break;
+
+        case "validar_os":
+            echo $salidas->validar_os($_POST["numero"] ?? '');
         break;
 
         case "listar_detalle_salida":

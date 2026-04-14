@@ -391,10 +391,18 @@
             
             // Solo incluir campos que fueron proporcionados
             if ($cantidad !== null) {
+                // Validar contra OS si aplica (antes de modificar)
+                $error_os = $this->validar_cantidad_vs_os($tipo, $consecutivo, $producto, $seq, $cantidad);
+                if ($error_os !== null) {
+                    return ['status' => 'error', 'message' => $error_os];
+                }
+
                 $updates[] = "Cantidad_Facturada = ?";
-                $updates[] = "Cantidad_Pendiente = ?";
+                // Cantidad_Pendiente = Cantidad_Orden - nueva_cantidad, mínimo 0
+                $updates[] = "Cantidad_Pendiente = CASE WHEN (Cantidad_Orden - ?) < 0 THEN 0 ELSE (Cantidad_Orden - ?) END";
                 $params[] = $cantidad;
-                $params[] = ($cantidad * -1);
+                $params[] = $cantidad;
+                $params[] = $cantidad;
             }
             
             if ($valor_unitario !== null) {
@@ -444,7 +452,7 @@
             // Si no hay campos para actualizar, retornar error
             if (empty($updates)) {
                 error_log("❌ No se proporcionaron campos para actualizar");
-                return false;
+                return ['status' => 'error', 'message' => 'No se proporcionaron campos para actualizar'];
             }
             
             // ⬅️ AGREGAR seq AL WHERE
@@ -466,23 +474,23 @@
             if (!$stmt) {
                 $errors = sqlsrv_errors();
                 error_log("❌ Error al preparar UPDATE: " . print_r($errors, true));
-                return false;
+                return ['status' => 'error', 'message' => 'Error al preparar la actualización'];
             }
-            
+
             if (sqlsrv_execute($stmt)) {
                 $filas_afectadas = sqlsrv_rows_affected($stmt);
                 error_log("✅ Actualización exitosa. Filas afectadas: " . $filas_afectadas);
-                
+
                 sqlsrv_free_stmt($stmt);
-                
+
                 // Actualizar los totales del documento
                 $this->actualizar_totales_documento($tipo, $consecutivo);
-                return true;
+                return ['status' => 'success'];
             } else {
                 $errors = sqlsrv_errors();
                 error_log("❌ Error al ejecutar UPDATE: " . print_r($errors, true));
                 sqlsrv_free_stmt($stmt);
-                return false;
+                return ['status' => 'error', 'message' => 'Error al ejecutar la actualización'];
             }
         }
 
@@ -514,6 +522,55 @@
             $stmt = sqlsrv_prepare($cn->getConecta(), $sql, $params);
             
             return sqlsrv_execute($stmt);
+        }
+
+        /**
+         * Valida que la nueva cantidad no supere el pendiente real de la OS.
+         * Retorna null si no aplica o si la cantidad es válida.
+         * Retorna string con el mensaje de error si la cantidad es inválida.
+         */
+        private function validar_cantidad_vs_os($tipo, $consecutivo, $producto, $seq, $nueva_cantidad) {
+            $cn = new Conectarserver;
+
+            // Verificar si este documento tiene referencia a una OS
+            $sql_os_ref = "SELECT Numero_Docto_Base_2 FROM Documentos
+                           WHERE tipo = ? AND Numero_Documento = ? AND Tipo_Docto_Base_2 = '10'";
+            $stmt_ref = sqlsrv_query($cn->getConecta(), $sql_os_ref, array($tipo, $consecutivo));
+            if (!$stmt_ref) return null;
+            $row_ref = sqlsrv_fetch_array($stmt_ref, SQLSRV_FETCH_ASSOC);
+            if (!$row_ref || empty($row_ref['Numero_Docto_Base_2'])) return null;
+
+            $numero_os = $row_ref['Numero_Docto_Base_2'];
+
+            // Obtener cantidad ordenada en la OS para este producto
+            $sql_os_qty = "SELECT cantidad FROM Documentos_Lin_Ped
+                           WHERE numero_pedido = ? AND sw = '10' AND IdProducto = ?";
+            $stmt_qty = sqlsrv_query($cn->getConecta(), $sql_os_qty, array($numero_os, $producto));
+            if (!$stmt_qty) return null;
+            $row_qty = sqlsrv_fetch_array($stmt_qty, SQLSRV_FETCH_ASSOC);
+            if (!$row_qty) return null;
+            $cantidad_os = (float)$row_qty['cantidad'];
+
+            // Sumar lo despachado en OTROS documentos (excluir el actual)
+            $sql_otros = "SELECT ISNULL(SUM(dl.Cantidad_Facturada), 0) AS total_otros
+                          FROM Documentos d
+                          JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
+                          WHERE d.Numero_Docto_Base_2 = ? AND d.Tipo_Docto_Base_2 = '10'
+                          AND NOT (d.tipo = ? AND d.Numero_documento = ?)
+                          AND dl.IdProducto = ?";
+            $stmt_otros = sqlsrv_query($cn->getConecta(), $sql_otros,
+                                       array($numero_os, $tipo, $consecutivo, $producto));
+            if (!$stmt_otros) return null;
+            $row_otros = sqlsrv_fetch_array($stmt_otros, SQLSRV_FETCH_ASSOC);
+            $total_otros = (float)($row_otros['total_otros'] ?? 0);
+
+            $pendiente_real = max(0, $cantidad_os - $total_otros);
+
+            if ((float)$nueva_cantidad > $pendiente_real) {
+                return "La cantidad ingresada (" . (float)$nueva_cantidad . ") supera la cantidad pendiente disponible (" . $pendiente_real . ") para este producto en la Orden de Salida.";
+            }
+
+            return null;
         }
 
         public function total_entrada($tipo, $consecutivo){

@@ -327,25 +327,28 @@
             }
             
             $resultado = $documento->update_prod_doc(
-                $tipo, 
-                $consecutivo, 
+                $tipo,
+                $consecutivo,
                 $producto,
-                $seq, 
-                $cantidad, 
-                $valor_unitario, 
-                $lote, 
+                $seq,
+                $cantidad,
+                $valor_unitario,
+                $lote,
                 $fecha_vence,
                 $descuento,
                 $nota,
                 $unidades
             );
-            
-            if ($resultado) {
-                echo "success";
+
+            header('Content-Type: application/json');
+            if (is_array($resultado)) {
+                echo json_encode($resultado);
             } else {
-                echo "error";
+                echo json_encode($resultado
+                    ? ['status' => 'success']
+                    : ['status' => 'error', 'message' => 'Error al actualizar']);
             }
-            exit(); 
+            exit();
         break;
 
         case "guardar_entrada":

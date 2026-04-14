@@ -28,10 +28,14 @@ const CONFIG = {
             get_info_producto: "../../controller/salidas.php?op=get_info_producto",
             combo_lotes: "salidas.php?op=combo_lotes",
             cargar_masiva_excel: "../../controller/salidas.php?op=cargar_masiva_excel",
-            update_notas_etapa: "../../controller/salidas.php?op=update_notas_etapa"
+            update_notas_etapa: "../../controller/salidas.php?op=update_notas_etapa",
+            validar_os: "../../controller/salidas.php?op=validar_os"
         },
         etapas: {
             listar_activas: "../../controller/etapas.php?op=listar_activas"
+        },
+        conceptosDevolucion: {
+            listar_activos: "../../controller/conceptosdevolucion.php?op=listar_activos"
         },
         documento: {
             insert_doc_entrada: "documento.php?op=insert_doc_entrada",
@@ -304,6 +308,70 @@ function inicializarEventos() {
             $("#telefono3").val(data.telefono_1);
         });
     });
+
+    // Validar OS cuando el usuario sale del campo número
+    $("#numero").on('blur', function() {
+        const numero = $(this).val().trim();
+        const docref = $("#docref").val();
+        const textoTipo = $("#idTipo option:selected").text().trim();
+        const esDev = textoTipo.startsWith('Dev');
+        if (docref == "0" && !esDev && numero) {
+            validarOrdenSalida(numero);
+        }
+    });
+
+}
+
+// VALIDACIÓN DE ORDEN DE SALIDA
+function validarOrdenSalida(numero) {
+    $.post(CONFIG.endpoints.salidas.validar_os, { numero: numero }, function(resp) {
+        if (resp.status === 'no_existe') return;
+
+        // Mostrar modal siempre que haya documentos asociados (finalizado o pendiente)
+        if (resp.documentos && resp.documentos.length > 0) {
+            mostrarModalEstadoOS(numero, resp);
+        }
+    }, 'json').fail(function() { /* ignorar errores de red en la pre-validación */ });
+}
+
+function mostrarModalEstadoOS(numero, resp) {
+    var filas = '';
+    resp.documentos.forEach(function(doc) {
+        var clazz = doc.estado === 'Guardado' ? 'label-success' : 'label-default';
+        var badge = '<span class="label ' + clazz + '">' + doc.estado + '</span>';
+        filas += '<tr>'
+               + '<td>' + doc.tipo + '</td>'
+               + '<td>' + doc.numero + '</td>'
+               + '<td>' + (doc.fecha || '') + '</td>'
+               + '<td>' + badge + '</td>'
+               + '</tr>';
+    });
+
+    var esFinalizado = resp.status === 'finalizado';
+    var msgClass  = esFinalizado ? 'alert-warning' : 'alert-info';
+    var msgIcono  = esFinalizado ? 'fa-exclamation-triangle' : 'fa-info-circle';
+    var msgTexto  = esFinalizado
+        ? 'Esta Orden de Salida <strong>' + numero + '</strong> ya tiene movimientos registrados y se encuentra <strong>completamente procesada</strong>.'
+        : 'La Orden de Salida <strong>' + numero + '</strong> ya tiene movimientos registrados. Solo se permitirá procesar las cantidades pendientes.';
+
+    $('#os-info-mensaje')
+        .removeClass('alert-warning alert-info')
+        .addClass(msgClass)
+        .html('<i class="fa ' + msgIcono + '"></i> ' + msgTexto);
+
+    $('#os-info-numero').text(numero);
+    $('#os-info-pendientes').text(resp.lineas_pendientes);
+    $('#os-info-despachado').text(resp.total_despachado);
+    $('#os-info-ordenado').text(resp.total_ordenado);
+
+    if (esFinalizado) {
+        $('#os-info-pendientes-wrap').hide();
+    } else {
+        $('#os-info-pendientes-wrap').show();
+    }
+
+    $('#os-info-tabla').html(filas);
+    $('#modalEstadoOS').modal('show');
 }
 
 // FUNCIONES DE GESTIÓN DE DOCUMENTOS
@@ -386,44 +454,13 @@ function crearDocumento() {
             type: "warning",
             showCancelButton: true,
             confirmButtonColor: "#d33",
-            confirmButtonText: "Sí, generar devolución",
+            confirmButtonText: "Sí, continuar",
             cancelButtonText: "Cancelar",
-            closeOnConfirm: false
+            closeOnConfirm: true
         }, function(confirmed) {
             if (!confirmed) return;
-
             document.getElementById("tipoDocRef").value = tipoDocOrig;
-
-            $.blockUI({ message: '<h2>Generando devolución, por favor espere...</h2>' });
-
-            const formDataDev = new FormData($("#doc_form")[0]);
-
-            $.ajax({
-                url: CONFIG.endpoints.salidas.insert_doc_salida,
-                type: "POST",
-                data: formDataDev,
-                contentType: false,
-                processData: false,
-                dataType: "json",
-                success: function(response) {
-                    $.unblockUI();
-                    if (response.status === "success") {
-                        swal({ title: "Devolución Registrada", text: response.message, type: "success" }, function() {
-                            window.location.href = 'index.php?tipo=' + response.tipo + '&consecutivo=' + response.consecutivo;
-                        });
-                    } else {
-                        swal("Error!", response.message, "error");
-                        $("#btncrear").prop('disabled', false);
-                    }
-                },
-                error: function() {
-                    $.unblockUI();
-                    swal("Error!", "Ha ocurrido un error al procesar la solicitud.", "error");
-                    $("#btncrear").prop('disabled', false);
-                }
-            });
-
-            $("#btncrear").prop('disabled', true);
+            abrirModalConceptoDevolucion();
         });
 
         return false;
@@ -585,21 +622,27 @@ function editarProducto() {
         data: formData,
         contentType: false,
         processData: false,
-        success: function(response) {
+        dataType: "json",
+        success: function(data) {
+            if (data.status !== 'success') {
+                swal("Cantidad no permitida", data.message || "Error al actualizar el producto.", "warning");
+                return;
+            }
+
             $('#modalagregar').modal('hide');
-            
+
             swal({
-                title: "Correcto!", 
-                text: "Registrado Correctamente", 
+                title: "Correcto!",
+                text: "Registrado Correctamente",
                 type: "success",
                 closeOnConfirm: true
             }, function() {
                 const tipo = getUrlParameter('tipo');
                 const consecutivo = getUrlParameter('consecutivo');
-                
+
                 $('#tb-doc').DataTable().ajax.reload();
                 $('#cantidad, #idproducto, #Valor_Unitario, #lote').val('');
-        
+
                 actualizarTodosLosTotales(tipo, consecutivo);
             });
         },
@@ -1252,33 +1295,31 @@ function guardarEdicionNativa(row) {
         method: "POST",
         body: formData
     })
-    .then(response => response.text())
-    .then(response => {
-        console.log('📥 Respuesta del servidor:', response);
-        
-        if (response && response.trim() === "success") {
-            // 🔥 CORRECIÓN: Primero actualizar el contenido de la celda
+    .then(response => response.json())
+    .then(data => {
+        console.log('📥 Respuesta del servidor:', data);
+
+        if (data.status === 'success') {
             var displayValue = newValue || '';
-            // Para fecha vence (col 8): el input type=date retorna YYYY-MM-DD, mostrar como DD/MM/YYYY
-            if (cellIndex === 8 && newValue && newValue.indexOf('-') !== -1) {
+            // Para fecha vence (col 9): el input type=date retorna YYYY-MM-DD, mostrar como DD/MM/YYYY
+            if (cellIndex === 9 && newValue && newValue.indexOf('-') !== -1) {
                 var dp = newValue.split('-');
                 if (dp.length === 3) displayValue = dp[2] + '/' + dp[1] + '/' + dp[0];
             }
             cell.textContent = displayValue;
-            
-            // 🔥 CORRECIÓN: Limpiar inmediatamente el estado de edición
+
             row.classList.remove('editing', 'saving');
             limpiarEstadoEdicionNativa();
-            
+
             mostrarFeedbackExitoso();
             actualizarTodosLosTotales(tipo, consecutivo);
-            
+
             console.log('✅ Cambio guardado exitosamente');
-            
+
         } else {
             row.classList.remove('saving');
-            swal("Error!", "No se pudo guardar el cambio en el servidor. Respuesta: " + response, "error");
-            console.error("Respuesta inesperada del servidor:", response);
+            swal("Cantidad no permitida", data.message || "No se pudo guardar el cambio en el servidor.", "warning");
+            console.error("Error del servidor:", data);
             cancelarEdicionNativa();
         }
     })
@@ -1927,3 +1968,94 @@ function cargarExcelMasivo() {
         }
     });
 }
+
+// ─── MODAL CONCEPTO DEVOLUCIÓN ────────────────────────────────────────────────
+
+function abrirModalConceptoDevolucion() {
+    // Limpiar estado previo
+    $('#selectConceptoDevolucion').html('<option value="">Cargando conceptos...</option>');
+    $('#divSinConceptos').hide();
+    $('#divSelectConcepto').show();
+    $('#btnConfirmarConcepto').prop('disabled', false);
+
+    // Cargar conceptos activos desde el backend
+    $.ajax({
+        url:      CONFIG.endpoints.conceptosDevolucion.listar_activos,
+        type:     'GET',
+        dataType: 'json',
+        success: function(data) {
+            if (!Array.isArray(data) || data.length === 0) {
+                $('#selectConceptoDevolucion').html('');
+                $('#divSelectConcepto').hide();
+                $('#divSinConceptos').show();
+                $('#btnConfirmarConcepto').prop('disabled', true);
+            } else {
+                var opts = '<option value="">-- Seleccione un concepto --</option>';
+                $.each(data, function(i, concepto) {
+                    opts += '<option value="' + concepto.id + '">' + concepto.nombre + '</option>';
+                });
+                $('#selectConceptoDevolucion').html(opts);
+            }
+        },
+        error: function() {
+            $('#selectConceptoDevolucion').html('');
+            $('#divSelectConcepto').hide();
+            $('#divSinConceptos').show().find('i').after(' Error al cargar los conceptos. Intente de nuevo.');
+            $('#btnConfirmarConcepto').prop('disabled', true);
+        }
+    });
+
+    $('#modalConceptoDevolucion').modal('show');
+}
+
+// Botón Cancelar dentro del modal de concepto
+$(document).on('click', '#btnCancelarConcepto', function() {
+    $('#modalConceptoDevolucion').modal('hide');
+    $("#btncrear").prop('disabled', false);
+});
+
+// Botón Confirmar dentro del modal de concepto
+$(document).on('click', '#btnConfirmarConcepto', function() {
+    var idConcepto     = $('#selectConceptoDevolucion').val();
+    var nombreConcepto = $('#selectConceptoDevolucion option:selected').text().trim();
+
+    if (!idConcepto || idConcepto === '') {
+        swal("Advertencia!", "Debe seleccionar un concepto de devolución para continuar.", "warning");
+        return;
+    }
+
+    $('#modalConceptoDevolucion').modal('hide');
+
+    $.blockUI({ message: '<h2>Generando devolución, por favor espere...</h2>' });
+
+    const formDataDev = new FormData($("#doc_form")[0]);
+    formDataDev.append('idConceptoDevolucion',     idConcepto);
+    formDataDev.append('nombreConceptoDevolucion', nombreConcepto);
+
+    $.ajax({
+        url:         CONFIG.endpoints.salidas.insert_doc_salida,
+        type:        'POST',
+        data:        formDataDev,
+        contentType: false,
+        processData: false,
+        dataType:    'json',
+        success: function(response) {
+            $.unblockUI();
+            if (response.status === 'success') {
+                swal({ title: 'Devolución Registrada', text: response.message, type: 'success' }, function() {
+                    window.location.href = 'index.php?tipo=' + response.tipo + '&consecutivo=' + response.consecutivo;
+                });
+            } else {
+                swal("Error!", response.message, "error");
+                $("#btncrear").prop('disabled', false);
+            }
+        },
+        error: function() {
+            $.unblockUI();
+            swal("Error!", "Ha ocurrido un error al procesar la solicitud.", "error");
+            $("#btncrear").prop('disabled', false);
+        }
+    });
+
+    $("#btncrear").prop('disabled', true);
+});

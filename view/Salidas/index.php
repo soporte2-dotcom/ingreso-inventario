@@ -410,6 +410,51 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 					</div>
 				</div>	
 
+							<!-- Modal Estado OS -->
+							<div class="modal fade" id="modalEstadoOS" tabindex="-1" role="dialog" aria-labelledby="modalEstadoOSTitle" aria-hidden="true">
+								<div class="modal-dialog modal-lg" role="document">
+									<div class="modal-content">
+										<div class="modal-header bg-warning">
+											<h5 class="modal-title" id="modalEstadoOSTitle">
+												<i class="fa fa-exclamation-triangle"></i> Estado de la Orden de Salida
+											</h5>
+											<button type="button" class="close" data-dismiss="modal" aria-label="Close">
+												<span aria-hidden="true">&times;</span>
+											</button>
+										</div>
+										<div class="modal-body">
+											<div id="os-info-mensaje" class="alert mb-2"></div>
+											<table class="table table-bordered table-sm">
+												<thead class="thead-light">
+													<tr>
+														<th>Tipo Documento</th>
+														<th>Número</th>
+														<th>Fecha</th>
+														<th>Estado</th>
+													</tr>
+												</thead>
+												<tbody id="os-info-tabla"></tbody>
+											</table>
+											<div class="d-flex justify-content-between align-items-center mt-2">
+												<div class="alert alert-secondary mb-0 py-1 px-2" style="font-size:13px;">
+													<i class="fa fa-bar-chart"></i>
+													Despachado: <strong><span id="os-info-despachado"></span></strong> /
+													Ordenado: <strong><span id="os-info-ordenado"></span></strong> unidades
+												</div>
+												<div id="os-info-pendientes-wrap" class="alert alert-info mb-0 py-1 px-2" style="font-size:13px;">
+													<i class="fa fa-list"></i>
+													Líneas pendientes: <strong><span id="os-info-pendientes"></span></strong>
+												</div>
+											</div>
+										</div>
+										<div class="modal-footer">
+											<button type="button" class="btn btn-primary" data-dismiss="modal">Entendido, continuar</button>
+										</div>
+									</div>
+								</div>
+							</div>
+							<!-- Fin Modal Estado OS -->
+
 							<!-- Modal Agregar-->
 							<div class="modal fade" id="modalagregar" tabindex="-1" role="dialog" aria-labelledby="modalagregarTitle" aria-hidden="true" data-backdrop="static" data-keyboard="false">
 								<div class="modal-dialog" role="document">
@@ -519,6 +564,46 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 							</div>
 							<!-- Fin modal Etapas -->
 
+							<!-- Modal Concepto Devolución -->
+							<div class="modal fade" id="modalConceptoDevolucion" tabindex="-1" role="dialog"
+								 aria-labelledby="modalConceptoDevolucionTitle" aria-hidden="true"
+								 data-backdrop="static" data-keyboard="false">
+								<div class="modal-dialog" role="document">
+									<div class="modal-content">
+										<div class="modal-header bg-danger text-white">
+											<h5 class="modal-title" id="modalConceptoDevolucionTitle">
+												<i class="fa fa-undo"></i> Concepto de Devolución
+											</h5>
+										</div>
+										<div class="modal-body">
+											<div class="alert alert-warning py-2">
+												<i class="fa fa-exclamation-triangle"></i>
+												<strong>Selección obligatoria.</strong> Debe indicar el motivo de la devolución para continuar.
+											</div>
+											<div id="divSinConceptos" class="alert alert-danger" style="display:none">
+												<i class="fa fa-times-circle"></i>
+												No hay conceptos de devolución activos. Por favor contacte al administrador del sistema.
+											</div>
+											<div class="form-group" id="divSelectConcepto">
+												<label class="font-weight-bold">Motivo / Concepto <span class="text-danger">*</span></label>
+												<select id="selectConceptoDevolucion" class="form-control">
+													<option value="">-- Seleccione un concepto --</option>
+												</select>
+											</div>
+										</div>
+										<div class="modal-footer">
+											<button type="button" class="btn btn-secondary" id="btnCancelarConcepto">
+												Cancelar
+											</button>
+											<button type="button" class="btn btn-danger" id="btnConfirmarConcepto">
+												<i class="fa fa-undo"></i> Confirmar Devolución
+											</button>
+										</div>
+									</div>
+								</div>
+							</div>
+							<!-- Fin Modal Concepto Devolución -->
+
 							<!-- Modal Cargar Excel -->
 							<div class="modal fade" id="modalexcel" tabindex="-1" role="dialog" aria-labelledby="modalexcelTitle" aria-hidden="true" data-backdrop="static" data-keyboard="false">
 								<div class="modal-dialog modal-lg" role="document">
@@ -581,7 +666,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="salidas.js?v=34"></script>
+	<script type="text/javascript" src="salidas.js?v=45"></script>
 
 	<script>
 		document.addEventListener("DOMContentLoaded", function() {
