@@ -12,7 +12,7 @@
 
                 FROM Documentos d, Terceros_Dir td, TblTipoDoctos tt, TblTerceros t
 
-                WHERE CONVERT(date, Fecha_Hora_Factura) > '2026/01/01' AND tt.tipo IN ('11', '2')
+                WHERE CONVERT(date, Fecha_Hora_Factura) > '2026/03/01' AND tt.tipo IN ('11', '2')
                 AND tt.idTipoDoctos = d.tipo AND td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion
                 AND t.nit_cedula = d.nit_Cedula
                 ORDER BY d.Fecha_Hora_Factura DESC";
@@ -26,7 +26,7 @@
 
                 FROM Documentos d, Terceros_Dir td, TblTipoDoctos tt, TblTerceros t
 
-                WHERE d.usuario = ? AND CONVERT(date, Fecha_Hora_Factura) > '2026/01/01' AND tt.tipo IN ('11', '2')
+                WHERE d.usuario = ? AND CONVERT(date, Fecha_Hora_Factura) > '2026/03/01' AND tt.tipo IN ('11', '2')
                 AND tt.idTipoDoctos = d.tipo AND td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion
                 AND t.nit_cedula = d.nit_Cedula
                 ORDER BY d.Fecha_Hora_Factura DESC";

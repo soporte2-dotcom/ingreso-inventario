@@ -144,7 +144,7 @@
 
                     FROM Documentos d, Terceros_Dir td, TblTipoDoctos tt, TblTerceros t
 
-                    WHERE CONVERT(date, Fecha_Hora_Factura) > '2025/07/31' AND tt.tipo IN ('12', '3')
+                    WHERE CONVERT(date, Fecha_Hora_Factura) > '2025/12/31' AND tt.tipo IN ('12', '3')
                     AND tt.idTipoDoctos = d.tipo AND td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion
                     AND t.nit_cedula = d.nit_Cedula
                     ORDER BY d.Fecha_Hora_Factura DESC";
@@ -158,7 +158,7 @@
 
                     FROM Documentos d, Terceros_Dir td, TblTipoDoctos tt, TblTerceros t
 
-                    WHERE d.usuario = ? AND CONVERT(date, Fecha_Hora_Factura) > '2024/12/31' AND tt.tipo IN ('12', '3')
+                    WHERE d.usuario = ? AND CONVERT(date, Fecha_Hora_Factura) > '2025/12/31' AND tt.tipo IN ('12', '3')
                     AND tt.idTipoDoctos = d.tipo AND td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion
                     AND t.nit_cedula = d.nit_Cedula
                     ORDER BY d.Fecha_Hora_Factura DESC";
