@@ -450,7 +450,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="nuevodoc.js?v=25"></script>
+	<script type="text/javascript" src="nuevodoc.js?v=26"></script>
 
 	<script>
         document.addEventListener("DOMContentLoaded", function() {

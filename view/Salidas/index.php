@@ -448,7 +448,9 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 											</div>
 										</div>
 										<div class="modal-footer">
-											<button type="button" class="btn btn-primary" data-dismiss="modal">Entendido, continuar</button>
+											<button type="button" class="btn btn-default" id="os-btn-cancelar" data-dismiss="modal" style="display:none;">Cancelar</button>
+											<button type="button" class="btn btn-success" id="os-btn-crear" style="display:none;"><i class="fa fa-save"></i> Crear</button>
+											<button type="button" class="btn btn-primary" id="os-btn-entendido" data-dismiss="modal">Entendido</button>
 										</div>
 									</div>
 								</div>
@@ -666,7 +668,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="salidas.js?v=45"></script>
+	<script type="text/javascript" src="salidas.js?v=46"></script>
 
 	<script>
 		document.addEventListener("DOMContentLoaded", function() {

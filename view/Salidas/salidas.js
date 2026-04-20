@@ -309,32 +309,14 @@ function inicializarEventos() {
         });
     });
 
-    // Validar OS cuando el usuario sale del campo número
-    $("#numero").on('blur', function() {
-        const numero = $(this).val().trim();
-        const docref = $("#docref").val();
-        const textoTipo = $("#idTipo option:selected").text().trim();
-        const esDev = textoTipo.startsWith('Dev');
-        if (docref == "0" && !esDev && numero) {
-            validarOrdenSalida(numero);
-        }
-    });
 
 }
 
-// VALIDACIÓN DE ORDEN DE SALIDA
-function validarOrdenSalida(numero) {
-    $.post(CONFIG.endpoints.salidas.validar_os, { numero: numero }, function(resp) {
-        if (resp.status === 'no_existe') return;
+// modo: 'bloqueo' (OS finalizada, no se puede crear) | 'confirmacion' (OS pendiente, pide confirmación)
+// onCrear: callback ejecutado al presionar Crear en modo 'confirmacion'
+function mostrarModalEstadoOS(numero, resp, modo, onCrear) {
+    modo = modo || 'bloqueo';
 
-        // Mostrar modal siempre que haya documentos asociados (finalizado o pendiente)
-        if (resp.documentos && resp.documentos.length > 0) {
-            mostrarModalEstadoOS(numero, resp);
-        }
-    }, 'json').fail(function() { /* ignorar errores de red en la pre-validación */ });
-}
-
-function mostrarModalEstadoOS(numero, resp) {
     var filas = '';
     resp.documentos.forEach(function(doc) {
         var clazz = doc.estado === 'Guardado' ? 'label-success' : 'label-default';
@@ -351,8 +333,8 @@ function mostrarModalEstadoOS(numero, resp) {
     var msgClass  = esFinalizado ? 'alert-warning' : 'alert-info';
     var msgIcono  = esFinalizado ? 'fa-exclamation-triangle' : 'fa-info-circle';
     var msgTexto  = esFinalizado
-        ? 'Esta Orden de Salida <strong>' + numero + '</strong> ya tiene movimientos registrados y se encuentra <strong>completamente procesada</strong>.'
-        : 'La Orden de Salida <strong>' + numero + '</strong> ya tiene movimientos registrados. Solo se permitirá procesar las cantidades pendientes.';
+        ? 'Esta Orden de Salida <strong>' + numero + '</strong> ya tiene movimientos registrados y se encuentra <strong>completamente procesada</strong>. No es posible crear nuevos documentos.'
+        : 'La Orden de Salida <strong>' + numero + '</strong> ya tiene movimientos registrados. Solo se procesarán las cantidades pendientes.';
 
     $('#os-info-mensaje')
         .removeClass('alert-warning alert-info')
@@ -371,6 +353,22 @@ function mostrarModalEstadoOS(numero, resp) {
     }
 
     $('#os-info-tabla').html(filas);
+
+    // Configurar botones según modo
+    if (modo === 'confirmacion') {
+        $('#os-btn-entendido').hide();
+        $('#os-btn-cancelar').show();
+        $('#os-btn-crear').show().off('click').on('click', function() {
+            $('#modalEstadoOS').modal('hide');
+            if (typeof onCrear === 'function') onCrear();
+        });
+    } else {
+        // 'info' o 'bloqueo': solo botón Entendido
+        $('#os-btn-entendido').show();
+        $('#os-btn-cancelar').hide();
+        $('#os-btn-crear').hide().off('click');
+    }
+
     $('#modalEstadoOS').modal('show');
 }
 
@@ -480,9 +478,48 @@ function crearDocumento() {
         }
     }
 
-    $.blockUI({ message: '<h2>Cargando favor Espere...</h2>' });
-
     const formData = new FormData($("#doc_form")[0]);
+
+    // Si es OS, validar estado antes de proceder
+    if (docref == "0") {
+        $.post(CONFIG.endpoints.salidas.validar_os, { numero: numero }, function(resp) {
+            if (resp.status === 'no_existe') {
+                // OS no existe, el backend dará el error correspondiente
+                ejecutarCreacionOSDoc(formData);
+                return;
+            }
+            if (!resp.documentos || resp.documentos.length === 0) {
+                // OS sin documentos previos, flujo normal
+                ejecutarCreacionOSDoc(formData);
+                return;
+            }
+            if (resp.status === 'finalizado') {
+                // Bloqueado, solo mostrar información
+                mostrarModalEstadoOS(numero, resp, 'bloqueo');
+                $("#btncrear").prop('disabled', false);
+            } else {
+                // Pendiente, pedir confirmación desde la modal
+                mostrarModalEstadoOS(numero, resp, 'confirmacion', function() {
+                    ejecutarCreacionOSDoc(formData);
+                });
+                $("#btncrear").prop('disabled', false);
+            }
+        }, 'json').fail(function() {
+            // Si falla la validación previa, intentar crear igual
+            ejecutarCreacionOSDoc(formData);
+        });
+
+        $("#btncrear").prop('disabled', true);
+        return false;
+    }
+
+    ejecutarCreacionOSDoc(formData);
+    return false;
+}
+
+function ejecutarCreacionOSDoc(formData) {
+    $.blockUI({ message: '<h2>Cargando favor Espere...</h2>' });
+    $("#btncrear").prop('disabled', true);
 
     $.ajax({
         url: CONFIG.endpoints.salidas.insert_doc_salida,
@@ -493,14 +530,13 @@ function crearDocumento() {
         dataType: "json",
         success: function(response) {
             $.unblockUI();
-
             if (response.status === "success") {
                 swal({
                     title: "Correcto!",
                     text: response.message,
                     type: "success"
                 }, function() {
-                    window.location.href = 'index.php?tipo='+ response.tipo +'&consecutivo='+ response.consecutivo;
+                    window.location.href = 'index.php?tipo=' + response.tipo + '&consecutivo=' + response.consecutivo;
                 });
             } else {
                 swal("Error!", response.message, "error");
@@ -514,9 +550,6 @@ function crearDocumento() {
             $("#btncrear").prop('disabled', false);
         }
     });
-
-    $("#btncrear").prop('disabled', true);
-    return false;
 }
 
 function guardarLote() {

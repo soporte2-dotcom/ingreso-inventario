@@ -802,11 +802,11 @@ function guardarEdicionNativa(row) {
         method: "POST",
         body: formData
     })
-    .then(response => response.text())
+    .then(response => response.json())
     .then(response => {
         console.log('📥 Respuesta del servidor:', response);
-        
-        if (response && response.trim() === "success") {
+
+        if (response && response.status === "success") {
             // 🔥 CORRECIÓN: Primero actualizar el contenido de la celda
             cell.textContent = newValue || '';
             
@@ -821,7 +821,7 @@ function guardarEdicionNativa(row) {
             
         } else {
             row.classList.remove('saving');
-            swal("Error!", "No se pudo guardar el cambio en el servidor. Respuesta: " + response, "error");
+            swal("Error!", "No se pudo guardar el cambio en el servidor. " + (response.message || JSON.stringify(response)), "error");
             console.error("Respuesta inesperada del servidor:", response);
             cancelarEdicionNativa();
         }
