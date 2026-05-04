@@ -811,7 +811,7 @@ function configurarInterfazParaDocumentoExistente(data) {
         "txt_tipodoc", "txt_numdoc", "txt_fecha1", "txt_pedido1",
         "txt_traslfact1", "txt_fecha_factura2",
         "tipodoc", "numdoc", "fecha1", "pedido1", "traslfact1", "fecha_factura2",
-        "div_dotacion", "btnlot", "btnetapas", "btneliminarsel", "btnguardar"
+        "div_dotacion", "btnlot", "btnetapas", "btneliminarsel", "btnguardar", "btnprint"
     ];
     
     elementosMostrar.forEach(id => {
@@ -883,9 +883,11 @@ function configurarEstadoExportado(exportado) {
             if(el) el.disabled = true;
         });
 
+        $('#btnprint').show();
         window.documentoExportado = true;
     } else {
         window.documentoExportado = false;
+        $('#btnprint').hide();
         $("#btnguardar").prop('disabled', false)
                        .removeClass('btn-disabled')
                        .html('Guardar')
@@ -1877,6 +1879,166 @@ $(document).on("click", "#btneditar", function(event) {
 $(document).on("click", "#btnguardar", function() {
     guardarDocumento();
 });
+
+$(document).on("click", "#btnprint", imprimirDocumento);
+
+function imprimirDocumento() {
+    var tipo        = getUrlParameter('tipo');
+    var consecutivo = getUrlParameter('consecutivo');
+
+    if (!tipo || !consecutivo) {
+        swal("Advertencia!", "No hay documento abierto para imprimir.", "warning");
+        return;
+    }
+
+    var tipodoc       = $('#tipodoc').val() || '';
+    var numdoc        = $('#numdoc').val() || '';
+    var fecha1        = $('#fecha1').val() || '';
+    var pedido1       = $('#pedido1').val() || '';
+    var traslfact1    = $('#traslfact1').val() || '';
+    var nit1          = $('#nit1').val() || '';
+    var nombre1       = $('#nombre1').val() || '';
+    var telefono1     = $('#telefono1').val() || '';
+    var nit2          = $('#nit2').val() || '';
+    var nombre2       = $('#nombre2').val() || '';
+    var nit3          = $('#nit3').val() || '';
+    var nombre3       = $('#nombre3').val() || '';
+    var notas         = $('#notas').val() || '';
+    var fechaFactura2 = $('#fecha_factura2').val() || '';
+
+    var totalCantidad  = $('#totalCantidad').text().trim() || '0';
+    var subtotal       = $('#total').text().trim() || '0';
+    var totalDescuento = $('#totalDescuento').text().trim() || '0';
+    var totalImpuesto  = $('#totalImpuesto').text().trim() || '0';
+    var valorTotal     = $('#valorTotal').text().trim() || '0';
+
+    var filas = [];
+    $('#tb-doc tbody tr').each(function() {
+        var c = this.cells;
+        if (c.length >= 12) {
+            filas.push({
+                seq:      c[0].textContent.trim(),
+                codigo:   c[1].textContent.trim(),
+                nombre:   c[2].textContent.trim(),
+                umedida:  c[3].textContent.trim(),
+                cantidad: c[4].textContent.trim(),
+                valor:    c[7].textContent.trim(),
+                lote:     c[8].textContent.trim()
+            });
+        }
+    });
+
+    var filasHtml = filas.map(function(f) {
+        return '<tr>' +
+            '<td style="text-align:center">' + f.seq + '</td>' +
+            '<td style="text-align:center"><b>' + f.codigo + '</b></td>' +
+            '<td>' + f.nombre + '</td>' +
+            '<td style="text-align:center">' + f.umedida + '</td>' +
+            '<td style="text-align:center">' + f.cantidad + '</td>' +
+            '<td style="text-align:center">' + f.lote + '</td>' +
+            '<td style="text-align:right">' + f.valor + '</td>' +
+            '</tr>';
+    }).join('') || '<tr><td colspan="7" style="text-align:center">Sin registros</td></tr>';
+
+    var seccionFacturarA = '';
+    if (nit1) {
+        seccionFacturarA = '<div class="seccion"><span class="sec-titulo">FACTURAR A</span>' +
+            '<div class="grid3">' +
+            '<div class="campo"><label>NIT/CÉDULA</label><span>' + nit1 + '</span></div>' +
+            '<div class="campo c2"><label>NOMBRE</label><span>' + nombre1 + '</span></div>' +
+            '<div class="campo"><label>TELÉFONO</label><span>' + telefono1 + '</span></div>' +
+            '</div></div>';
+    } else if (nit3) {
+        seccionFacturarA = '<div class="seccion"><span class="sec-titulo">FACTURAR A</span>' +
+            '<div class="grid3">' +
+            '<div class="campo"><label>NIT/CÉDULA</label><span>' + nit3 + '</span></div>' +
+            '<div class="campo c2"><label>NOMBRE</label><span>' + nombre3 + '</span></div>' +
+            '</div></div>';
+    }
+
+    var seccionEnviarA = '';
+    if (nit2) {
+        seccionEnviarA = '<div class="seccion"><span class="sec-titulo">ENVIAR A</span>' +
+            '<div class="grid2">' +
+            '<div class="campo"><label>NIT/CÉDULA</label><span>' + nit2 + '</span></div>' +
+            '<div class="campo"><label>NOMBRE</label><span>' + nombre2 + '</span></div>' +
+            '</div></div>';
+    }
+
+    var seccionFechas = fechaFactura2
+        ? '<div class="seccion"><span class="sec-titulo">FECHAS</span>' +
+          '<div class="grid2"><div class="campo"><label>FECHA FACTURA</label><span>' + fechaFactura2 + '</span></div></div></div>'
+        : '';
+
+    var seccionNotas = notas
+        ? '<div style="margin-bottom:12px">' +
+          '<label style="font-weight:bold;display:block;margin-bottom:4px">NOTAS:</label>' +
+          '<div style="border:1px solid #ccc;border-radius:4px;padding:8px;min-height:40px">' + notas + '</div>' +
+          '</div>'
+        : '';
+
+    var logoUrl = window.location.href.split('/view/')[0] + '/public/logo-empresas/logo-empresa.png';
+
+    var htmlContent = '<!DOCTYPE html><html><head>' +
+        '<meta charset="UTF-8">' +
+        '<title>Orden de Salida # ' + numdoc + '</title>' +
+        '<link rel="preconnect" href="https://fonts.googleapis.com">' +
+        '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
+        '<link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+39&display=swap" rel="stylesheet">' +
+        '<style>' +
+        'body{font-family:Arial,sans-serif;font-size:12px;margin:20px;color:#222}' +
+        '.cabecera{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;border-bottom:2px solid #333;padding-bottom:10px;margin-bottom:14px}' +
+        '.logo-empresa img{max-height:70px;max-width:140px;object-fit:contain}' +
+        '.info-doc h2{margin:0 0 4px;font-size:15px;text-transform:uppercase}' +
+        '.info-doc p{margin:2px 0}' +
+        '.barcode{text-align:center}' +
+        '.barcode-font{font-family:"Libre Barcode 39",cursive;font-size:52px;line-height:1;display:block}' +
+        '.barcode-num{font-size:13px;font-weight:bold;letter-spacing:2px;display:block;margin-top:2px}' +
+        '.seccion{border:2px solid #ccc;border-radius:4px;padding:10px 10px 6px;margin-bottom:10px;position:relative}' +
+        '.sec-titulo{position:absolute;top:-9px;left:10px;background:#fff;padding:0 5px;font-weight:bold;font-size:10px;text-transform:uppercase;letter-spacing:1px}' +
+        '.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}' +
+        '.grid3{display:grid;grid-template-columns:1fr 2fr 1fr;gap:8px;margin-top:4px}' +
+        '.campo label{display:block;font-weight:bold;font-size:10px;color:#666;margin-bottom:1px}' +
+        '.campo span{display:block;border-bottom:1px solid #ddd;padding:2px 0;font-size:12px}' +
+        'table{width:100%;border-collapse:collapse;margin-bottom:10px}' +
+        'thead tr{background:#e9e9e9}' +
+        'th,td{border:1px solid #bbb;padding:5px 6px;font-size:11px}' +
+        'th{text-align:center;font-weight:bold}' +
+        '.totales{display:flex;justify-content:flex-end;gap:18px;font-weight:bold;font-size:12px;margin-bottom:12px}' +
+        '@media print{body{margin:8px}.barcode-font{font-size:44px}}' +
+        '</style></head><body>' +
+        '<div class="cabecera">' +
+        '<div class="logo-empresa"><img src="' + logoUrl + '" alt="Logo empresa"></div>' +
+        '<div class="info-doc"><h2>Orden de Salida — ' + tipodoc + '</h2>' +
+        '<p>Fecha: ' + fecha1 + '</p>' +
+        (pedido1   ? '<p>Pedido: '   + pedido1   + '</p>' : '') +
+        (traslfact1 ? '<p>Despacho: ' + traslfact1 + '</p>' : '') +
+        '</div>' +
+        '<div class="barcode"><span class="barcode-font">' + numdoc + '</span><span class="barcode-num"># ' + numdoc + '</span></div>' +
+        '</div>' +
+        seccionFacturarA +
+        seccionEnviarA +
+        seccionFechas +
+        '<table><thead><tr>' +
+        '<th>Seq</th><th>Código</th><th>Nombre Producto</th><th>U. Medida</th><th>Cantidad</th><th>Lote</th><th>Valor</th>' +
+        '</tr></thead><tbody>' + filasHtml + '</tbody></table>' +
+        '<div class="totales">' +
+        '<span>Total Cant: ' + totalCantidad + '</span>' +
+        '<span>SubTotal: '   + subtotal      + '</span>' +
+        '<span>Descuento: '  + totalDescuento + '</span>' +
+        '<span>IVA: '        + totalImpuesto  + '</span>' +
+        '<span>TOTAL: '      + valorTotal     + '</span>' +
+        '</div>' +
+        seccionNotas +
+        '</body></html>';
+
+    var newWindow = window.open('', '_blank');
+    newWindow.document.write(htmlContent);
+    newWindow.document.close();
+    setTimeout(function() {
+        newWindow.print();
+    }, 500);
+}
 
 init();
 

@@ -344,6 +344,11 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 							<i class="fa fa-file-excel-o"></i> Cargar Excel
 						</button>
 					</div>
+					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
+						<button type="button" id="btnprint" class="d-flex w-15 btn btn-rounded btn-inline btn-primary" style="display: none">
+							<i class="fa fa-print"></i> Imprimir
+						</button>
+					</div>
 				</div>
 
 				<div class="container-fluid">
