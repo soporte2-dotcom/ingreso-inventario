@@ -39,6 +39,9 @@ const CONFIG = {
         conceptosDevolucion: {
             listar_activos: "../../controller/conceptosdevolucion.php?op=listar_activos"
         },
+        conceptosDotacion: {
+            listar_activos: "../../controller/conceptosdotacion.php?op=listar_activos"
+        },
         documento: {
             insert_doc_entrada: "documento.php?op=insert_doc_entrada",
             asignar_selecc: "documento.php?op=asignar_selecc",
@@ -2402,4 +2405,65 @@ $(document).on('click', '#btnConfirmarConcepto', function() {
     });
 
     $("#btncrear").prop('disabled', true);
+});
+
+// ─── MODAL CONCEPTO DOTACIÓN Y EPP ───────────────────────────────────────────
+
+$(document).on('change', '#dotacion_epp', function() {
+    if (!$(this).prop('checked')) return;
+    var numdoc = $('#numdoc').val();
+    if (!numdoc) return;
+
+    $('#selectConceptoDotacion').html('<option value="">Cargando conceptos...</option>');
+    $('#divSinConceptosDotacion').hide();
+    $('#divSelectConceptoDotacion').show();
+    $('#btnConfirmarConceptoDotacion').prop('disabled', false);
+
+    $.ajax({
+        url: CONFIG.endpoints.conceptosDotacion.listar_activos,
+        type: 'GET',
+        dataType: 'json',
+        success: function(data) {
+            if (!Array.isArray(data) || data.length === 0) {
+                $('#selectConceptoDotacion').html('');
+                $('#divSelectConceptoDotacion').hide();
+                $('#divSinConceptosDotacion').show();
+                $('#btnConfirmarConceptoDotacion').prop('disabled', true);
+            } else {
+                var opts = '<option value="">-- Seleccione un concepto --</option>';
+                $.each(data, function(i, c) {
+                    opts += '<option value="' + c.id + '">' + c.nombre + '</option>';
+                });
+                $('#selectConceptoDotacion').html(opts);
+            }
+        },
+        error: function() {
+            $('#divSelectConceptoDotacion').hide();
+            $('#divSinConceptosDotacion').show();
+            $('#btnConfirmarConceptoDotacion').prop('disabled', true);
+        }
+    });
+    $('#modalConceptoDotacion').modal('show');
+});
+
+$(document).on('click', '#btnCancelarConceptoDotacion', function() {
+    $('#modalConceptoDotacion').modal('hide');
+    $('#dotacion_epp').prop('checked', false);
+});
+
+$(document).on('click', '#btnConfirmarConceptoDotacion', function() {
+    var idConcepto     = $('#selectConceptoDotacion').val();
+    var nombreConcepto = $('#selectConceptoDotacion option:selected').text().trim();
+    if (!idConcepto) {
+        swal("Advertencia!", "Debe seleccionar un concepto de Dotación/EPP para continuar.", "warning");
+        return;
+    }
+    $('#modalConceptoDotacion').modal('hide');
+    $('#notas').val(nombreConcepto);
+    var tipo   = getUrlParameter('tipo');
+    var numdoc = $('#numdoc').val();
+    if (tipo && numdoc) {
+        $.post(CONFIG.endpoints.salidas.update_notas_etapa,
+            { tipo: tipo, numdoc: numdoc, notas: nombreConcepto });
+    }
 });

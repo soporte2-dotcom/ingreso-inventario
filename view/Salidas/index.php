@@ -586,6 +586,46 @@ $permiteTraslado = $_permisos->tiene_permiso_especial($_SESSION["Id_Usuario"], '
 							</div>
 							<!-- Fin modal Etapas -->
 
+							<!-- Modal Concepto Dotación y EPP -->
+							<div class="modal fade" id="modalConceptoDotacion" tabindex="-1" role="dialog"
+								 aria-labelledby="modalConceptoDotacionTitle" aria-hidden="true"
+								 data-backdrop="static" data-keyboard="false">
+								<div class="modal-dialog" role="document">
+									<div class="modal-content">
+										<div class="modal-header bg-info text-white">
+											<h5 class="modal-title" id="modalConceptoDotacionTitle">
+												<i class="fa fa-briefcase"></i> Concepto de Dotación / EPP
+											</h5>
+										</div>
+										<div class="modal-body">
+											<div class="alert alert-warning py-2">
+												<i class="fa fa-exclamation-triangle"></i>
+												<strong>Selección obligatoria.</strong> Debe indicar el concepto de dotación o EPP para continuar.
+											</div>
+											<div id="divSinConceptosDotacion" class="alert alert-danger" style="display:none">
+												<i class="fa fa-times-circle"></i>
+												No hay conceptos activos. Por favor contacte al administrador del sistema.
+											</div>
+											<div class="form-group" id="divSelectConceptoDotacion">
+												<label class="font-weight-bold">Concepto <span class="text-danger">*</span></label>
+												<select id="selectConceptoDotacion" class="form-control">
+													<option value="">-- Seleccione un concepto --</option>
+												</select>
+											</div>
+										</div>
+										<div class="modal-footer">
+											<button type="button" class="btn btn-secondary" id="btnCancelarConceptoDotacion">
+												Cancelar
+											</button>
+											<button type="button" class="btn btn-info" id="btnConfirmarConceptoDotacion">
+												<i class="fa fa-check"></i> Confirmar
+											</button>
+										</div>
+									</div>
+								</div>
+							</div>
+							<!-- Fin Modal Concepto Dotación y EPP -->
+
 							<!-- Modal Concepto Devolución -->
 							<div class="modal fade" id="modalConceptoDevolucion" tabindex="-1" role="dialog"
 								 aria-labelledby="modalConceptoDevolucionTitle" aria-hidden="true"
@@ -688,7 +728,7 @@ $permiteTraslado = $_permisos->tiene_permiso_especial($_SESSION["Id_Usuario"], '
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="salidas.js?v=62"></script>
+	<script type="text/javascript" src="salidas.js?v=63"></script>
 
 	<script>
 		document.addEventListener("DOMContentLoaded", function() {
