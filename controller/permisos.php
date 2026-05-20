@@ -374,6 +374,11 @@ try {
             echo $html_orig;
             break;
 
+        case "tiene_traslado_sin_os":
+            $uid = $_SESSION["Id_Usuario"];
+            echo json_encode(["tiene" => $permisos->tiene_permiso_especial($uid, 'traslado_sin_os')]);
+            break;
+
         default:
             echo "Operación no válida";
             break;

@@ -176,6 +176,10 @@
                     $output["Fecha_Hora_Factura"] = $row["Fecha_Hora_Factura"] ? date_format($row["Fecha_Hora_Factura"], "Y-m-d") : date("Y-m-d");
                     $output["IdTransportador"] = $row["IdTransportador"];
                     $output["IdVehiculo"] = $row["IdVehiculo"];
+                    $output["RespuestaCorrectaDian"] = $row["RespuestaCorrectaDian"];
+                    $output["NombreBodega"]   = $row["NombreBodega"]   ?? '';
+                    $output["NombreVendedor"] = $row["NombreVendedor"] ?? '';
+                    $output["ciudad"]         = $row["ciudad"]         ?? '';
                 }
                 echo json_encode($output);
 

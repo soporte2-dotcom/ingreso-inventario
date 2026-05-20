@@ -184,13 +184,18 @@
             $cn = new Conectarserver;
 
             $sql="SELECT d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
-            d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1,
+            d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, LTRIM(RTRIM(td.ciudad)) AS ciudad,
             d.nit_Cedula_2, t.nombre AS nombre2, d.codigo_direccion_2, td2.direccion AS direccion2, d.notas, d.exportado, d.IdVendedor, d.Fecha_Hora_Factura,
-            d.IdTransportador, d.IdVehiculo
-            FROM Documentos d, Terceros_Dir td, TblTipoDoctos tt, TblTerceros t, Terceros_Dir td2
-            WHERE d.tipo = '$tipo' AND d.Numero_documento = '$consecutivo' AND tt.idTipoDoctos = d.tipo AND
-            td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion AND
-            td2.nit = d.nit_Cedula_2 AND d.codigo_direccion_2 = td2.codigo_direccion AND t.nit_cedula = d.nit_Cedula_2";
+            d.IdTransportador, d.IdVehiculo, d.RespuestaCorrectaDian,
+            LTRIM(RTRIM(tb.Bodega)) AS NombreBodega, LTRIM(RTRIM(tv.Vendedor)) AS NombreVendedor
+            FROM Documentos d
+            INNER JOIN Terceros_Dir td  ON td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion
+            INNER JOIN TblTipoDoctos tt ON tt.idTipoDoctos = d.tipo
+            INNER JOIN TblTerceros t    ON t.nit_cedula = d.nit_Cedula_2
+            INNER JOIN Terceros_Dir td2 ON td2.nit = d.nit_Cedula_2 AND d.codigo_direccion_2 = td2.codigo_direccion
+            LEFT  JOIN TblBodega tb     ON tb.IdBodega = d.bodega
+            LEFT  JOIN TblVendedor tv   ON tv.Idvendedor = d.IdVendedor
+            WHERE d.tipo = '$tipo' AND d.Numero_documento = '$consecutivo'";
 
             $registros = sqlsrv_query($cn->getConecta(), $sql);
             if( $registros === false ){
@@ -390,11 +395,16 @@
             $params = [];
             
             // Solo incluir campos que fueron proporcionados
+            $tolerance_warning = null;
             if ($cantidad !== null) {
                 // Validar contra OS si aplica (antes de modificar)
                 $error_os = $this->validar_cantidad_vs_os($tipo, $consecutivo, $producto, $seq, $cantidad);
                 if ($error_os !== null) {
-                    return ['status' => 'error', 'message' => $error_os];
+                    if (is_array($error_os) && !empty($error_os['tolerance'])) {
+                        $tolerance_warning = $error_os['message'];
+                    } else {
+                        return ['status' => 'error', 'message' => $error_os];
+                    }
                 }
 
                 $updates[] = "Cantidad_Facturada = ?";
@@ -485,6 +495,9 @@
 
                 // Actualizar los totales del documento
                 $this->actualizar_totales_documento($tipo, $consecutivo);
+                if ($tolerance_warning !== null) {
+                    return ['status' => 'warning', 'message' => $tolerance_warning];
+                }
                 return ['status' => 'success'];
             } else {
                 $errors = sqlsrv_errors();
@@ -566,11 +579,31 @@
 
             $pendiente_real = max(0, $cantidad_os - $total_otros);
 
-            if ((float)$nueva_cantidad > $pendiente_real) {
-                return "La cantidad ingresada (" . (float)$nueva_cantidad . ") supera la cantidad pendiente disponible (" . $pendiente_real . ") para este producto en la Orden de Salida.";
+            if ((float)$nueva_cantidad <= $pendiente_real) {
+                return null;
             }
 
-            return null;
+            // Supera el pendiente — verificar tolerancia por unidad KILO (idUnidad = 1)
+            $sql_unidad = "SELECT IdUnidad FROM Documentos_Lin
+                           WHERE tipo = ? AND Numero_Documento = ? AND IdProducto = ? AND seq = ?";
+            $stmt_unidad = sqlsrv_query($cn->getConecta(), $sql_unidad,
+                                        array($tipo, $consecutivo, $producto, $seq));
+            if ($stmt_unidad) {
+                $row_unidad = sqlsrv_fetch_array($stmt_unidad, SQLSRV_FETCH_ASSOC);
+                if ($row_unidad && (int)$row_unidad['IdUnidad'] === 1) {
+                    $tolerancia = 5;
+                    if ((float)$nueva_cantidad <= ($pendiente_real + $tolerancia)) {
+                        return [
+                            'tolerance' => true,
+                            'message'   => "Cantidad guardada con tolerancia de peso. Se ingresaron " .
+                                           (float)$nueva_cantidad . " kg con un pendiente de " .
+                                           $pendiente_real . " kg (tolerancia permitida: +" . $tolerancia . " kg)."
+                        ];
+                    }
+                }
+            }
+
+            return "La cantidad ingresada (" . (float)$nueva_cantidad . ") supera la cantidad pendiente disponible (" . $pendiente_real . ") para este producto en la Orden de Salida.";
         }
 
         public function total_entrada($tipo, $consecutivo){
@@ -723,7 +756,7 @@
                 dp.nit AS nit_Cedula, dp.direccion_factura AS codigo_direccion,  GETDATE() AS Fecha_Hora_Factura, GETDATE() AS Fecha_Hora_Vencimiento, GETDATE() AS Fecha_orden_Venta,
                 t.condicion AS condicion, dp.valor_total AS valor_total, dp.valor_total AS valor_aplicado, dp.Retencion_1 AS Retencion_1, 0 AS Retencion_2, 0 AS Retencion_3, 
                 0 AS retencion_causada, 0 AS retencion_iva, 0 AS retencion_ica, 0 AS retencion_descuento, 0 AS descuento_pie, 0 AS DescuentoOrdenVenta, 0 AS descuento_1, 0 AS descuento_2,
-                0 AS descuento_3, 0 AS costo, dp.vendedor AS idVendedor, 'N' AS anulado, '$usuario' AS usuario, dp.notas AS notas, HOST_NAME() AS pc, GETDATE() AS fecha_hora, 
+                0 AS descuento_3, 0 AS costo, dp.vendedor AS idVendedor, 'N' AS anulado, '$usuario' AS usuario, SUBSTRING(dp.notas, 1, 250) AS notas, SUBSTRING(HOST_NAME(), 1, 20) AS pc, GETDATE() AS fecha_hora,
                 0 AS duracion, td.IdBodega AS bodega, 0 AS Valor_impuesto, 0 AS Impuesto_Consumo, 0 AS impuesto_deporte, dp.concepto AS concepto, GETDATE() AS vencimiento_presup, 
                 'N' AS exportado, '0' AS prefijo, dp.moneda AS moneda, 0 AS CentroDeCostosDoc, 0 AS valor_mercancia, 0 AS abono, 0 AS Comision_Vendedor, 
                 1 AS Tasa_Moneda_Ext, '' AS Tomador, 'V' AS Tasa_Fija_o_Variable, dir.idLista AS Punto_FOB,
@@ -850,7 +883,7 @@
                 d.condicion AS condicion, d.valor_total AS valor_total, 0 AS valor_aplicado, d.Retencion_1 AS Retencion_1, d.Retencion_2 AS Retencion_2, d.Retencion_3 AS Retencion_3, 0 AS retencion_causada, 0 AS retencion_iva, 
                 0 AS retencion_ica, 0 AS retencion_descuento, 0 AS descuento_pie, 0 AS DescuentoOrdenVenta, d.descuento_1 AS descuento_1, d.descuento_2 AS descuento_2, d.descuento_3 AS descuento_3, 
                 0 AS costo, d.IdVendedor AS IdVendedor, 'N' AS anulado, '$usuario' AS usuario,
-                d.notas AS notas, HOST_NAME() AS pc, GETDATE() AS fecha_hora, 0 AS duracion, td.IdBodega AS bodega, 0 AS Valor_impuesto, 0 AS Impuesto_Consumo, 
+                SUBSTRING(d.notas, 1, 250) AS notas, SUBSTRING(HOST_NAME(), 1, 20) AS pc, GETDATE() AS fecha_hora, 0 AS duracion, td.IdBodega AS bodega, 0 AS Valor_impuesto, 0 AS Impuesto_Consumo,
                 0 AS impuesto_deporte, d.concepto AS concepto, GETDATE() AS vencimiento_presup, 
                 'N' AS exportado, '0' AS prefijo, d.moneda AS moneda, 0 AS CentroDeCostosDoc, 0 AS valor_mercancia, 0 AS abono, 0 AS Comision_Vendedor, 
                 1 AS Tasa_Moneda_Ext, '' AS Tomador, 'V' AS Tasa_Fija_o_Variable, d.Punto_FOB AS Punto_FOB,

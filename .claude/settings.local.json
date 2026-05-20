@@ -18,7 +18,12 @@
       "Bash(\"C:/xampp/mysql/bin/mysql.exe\" -u root permisos_tecno -e \"SELECT id, nombre_modulo, ruta FROM modulos_sistema WHERE nombre_modulo='conceptos_devolucion';\")",
       "Bash(\"C:/xampp/mysql/bin/mysql.exe\" -u root permisos_tecno -e \"UPDATE modulos_sistema SET ruta='..\\\\\\\\\\\\\\\\ConceptosDevolucion\\\\\\\\\\\\\\\\' WHERE nombre_modulo='conceptos_devolucion';\")",
       "Bash(\"C:/xampp/mysql/bin/mysql.exe\" -u root permisos_tecno)",
-      "Bash(C:/xampp/php/php.exe:*)"
+      "Bash(C:/xampp/php/php.exe:*)",
+      "Bash(git -C \"c:/xampp/htdocs/ingresoinventario\" status)",
+      "Bash(git -C \"c:/xampp/htdocs/ingresoinventario\" log --oneline -5)",
+      "Bash(git -C \"c:/xampp/htdocs/ingresoinventario\" diff --name-only HEAD)",
+      "Bash(git -C \"c:/xampp/htdocs/ingresoinventario\" diff HEAD -- view/Salidas/salidas.js)",
+      "Bash(git -C \"c:/xampp/htdocs/ingresoinventario\" diff HEAD -- view/Entradas/nuevodoc.js)"
     ]
   }
 }

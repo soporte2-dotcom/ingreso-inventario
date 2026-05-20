@@ -3,6 +3,9 @@ require_once("../../config/conexionserver.php");
 if(isset($_SESSION["Id_Usuario"])){
 date_default_timezone_set("America/Bogota");
 $DateAndTime = date('d-m-Y h:i:s', time());
+require_once("../../models/mdlPermisos.php");
+$_permisos = new Permisos();
+$permiteTraslado = $_permisos->tiene_permiso_especial($_SESSION["Id_Usuario"], 'traslado_sin_os');
 ?>
 <!DOCTYPE html>
 <html>
@@ -41,7 +44,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 </script>
 
 <title>Cervalle::Salidas</title>
-
+<script>window.permiteTraslado = <?= $permiteTraslado ? 'true' : 'false' ?>;</script>
 </head>
 
 <body class="with-side-menu sidebar-hidden">
@@ -155,6 +158,9 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 					
 					<input type="hidden" name="tipo" id="tipo" class="form-control" />
 					<input type="hidden" name="sw" id="sw" class="form-control" />
+					<input type="hidden" id="nombre_bodega" />
+					<input type="hidden" id="nombre_vendedor" />
+					<input type="hidden" id="ciudad_doc" />
 					<input type="hidden" name="tipoDocRef" id="tipoDocRef" value="" />
 
 					<div class="col-lg-4">
@@ -344,11 +350,6 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 							<i class="fa fa-file-excel-o"></i> Cargar Excel
 						</button>
 					</div>
-					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
-						<button type="button" id="btnprint" class="d-flex w-15 btn btn-rounded btn-inline btn-primary" style="display: none">
-							<i class="fa fa-print"></i> Imprimir
-						</button>
-					</div>
 				</div>
 
 				<div class="container-fluid">
@@ -403,17 +404,31 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 				</div>
 
 				<br/>
-				
+
+				<div id="div_motivo_devolucion" class="alert alert-warning py-2 px-3 mb-2" style="display:none;">
+					<i class="fa fa-undo"></i> <strong>Motivo de devolución:</strong> <span id="motivo_devolucion"></span>
+				</div>
+
 				<div class="form-group py-2">
 					<label class="font-weight-bold">Fecha de Recibo y Notas Generales: </label>
 					<textarea class="form-control" rows="3" name="notas" id="notas"></textarea>
         		</div>
 
-				<div class="row">								 
+				<div class="row">
 					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
 						<button type="button" style="display: none" id="btnguardar"  class="d-flex w-15 btn btn-rounded btn-inline btn-success">Guardar</button>
 					</div>
-				</div>	
+					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
+						<button type="button" id="btnprint" class="d-flex w-15 btn btn-rounded btn-inline btn-primary" style="display: none">
+							<i class="fa fa-print"></i> Imprimir
+						</button>
+					</div>
+					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
+						<button type="button" style="display: none" id="btnreiniciar" class="d-flex w-15 btn btn-rounded btn-inline btn-warning">
+							<i class="fa fa-refresh"></i> Reiniciar OS
+						</button>
+					</div>
+				</div>
 
 							<!-- Modal Estado OS -->
 							<div class="modal fade" id="modalEstadoOS" tabindex="-1" role="dialog" aria-labelledby="modalEstadoOSTitle" aria-hidden="true">
@@ -673,7 +688,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="salidas.js?v=46"></script>
+	<script type="text/javascript" src="salidas.js?v=62"></script>
 
 	<script>
 		document.addEventListener("DOMContentLoaded", function() {

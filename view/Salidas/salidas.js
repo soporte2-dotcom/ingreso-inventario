@@ -1,6 +1,7 @@
 var tabla;
 var usu_id = $('#user_id').val();
 var rol_id = $('#rol_id').val();
+var nitEspejo = ''; // NIT que fue auto-llenado en Enviar A desde Facturar A
 
 let editingRow = null;
 let originalData = {};
@@ -29,7 +30,8 @@ const CONFIG = {
             combo_lotes: "salidas.php?op=combo_lotes",
             cargar_masiva_excel: "../../controller/salidas.php?op=cargar_masiva_excel",
             update_notas_etapa: "../../controller/salidas.php?op=update_notas_etapa",
-            validar_os: "../../controller/salidas.php?op=validar_os"
+            validar_os: "../../controller/salidas.php?op=validar_os",
+            reiniciar_doc_desde_os: "../../controller/salidas.php?op=reiniciar_doc_desde_os"
         },
         etapas: {
             listar_activas: "../../controller/etapas.php?op=listar_activas"
@@ -66,6 +68,13 @@ $(document).ready(function() {
     
     // Lista de tipos que requieren OS obligatoriamente
     const tiposRestringidos = ['215', '213', '914', '938', '947'];
+    // Usuarios con permiso 'traslado_sin_os' pueden usar 215 y 938 también de forma manual
+    if (window.permiteTraslado) {
+        ['215', '938'].forEach(function(t) {
+            const i = tiposRestringidos.indexOf(t);
+            if (i !== -1) tiposRestringidos.splice(i, 1);
+        });
+    }
     window.tiposRestringidos = tiposRestringidos;
     
     const tipo = getUrlParameter('tipo');
@@ -276,12 +285,38 @@ function inicializarEventos() {
         });
     });
 
+    // Espejo Facturar A → Enviar A al seleccionar del autocomplete
+    // Se usa autocompleteselect para tener acceso al nombre antes de que se escriba en el campo
+    $("#nit1").on("autocompleteselect", function(event, ui) {
+        const nit2Actual = $("#nit2").val();
+        // Espejear si Enviar A está vacío o sigue con el NIT que fue auto-llenado anteriormente
+        if (!nit2Actual || nit2Actual === nitEspejo) {
+            nitEspejo = ui.item.value;
+            $("#nit2").val(ui.item.value);
+            $("#nombre2").val(ui.item.nombre);
+            $("#direccion2").html('<option value="" disabled selected>Seleccione...</option>');
+            $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.combo_dir, { nit: ui.item.value }, function(data) {
+                $("#direccion2").html(data);
+            });
+        }
+    });
+
+    // Si el usuario cambia nit2 manualmente, detener el espejo
+    $("#nit2").on("autocompleteselect", function() {
+        nitEspejo = '';
+    });
+
     $("#direccion1").change(function() {
         const direccion = $(this).val();
         $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.telefono_dir, { direccion }, function(data) {
             data = JSON.parse(data);
             $("#telefono1").val(data.telefono_1);
         });
+
+        // Si Enviar A tiene el mismo NIT que Facturar A, copiar la dirección seleccionada
+        if ($("#nit2").val() === $("#nit1").val()) {
+            $("#direccion2").val($(this).val());
+        }
     });
 
     // Eventos para Enviar A (nit2)
@@ -884,6 +919,7 @@ function configurarEstadoExportado(exportado) {
         });
 
         $('#btnprint').show();
+        $('#btnreiniciar').hide();
         window.documentoExportado = true;
     } else {
         window.documentoExportado = false;
@@ -892,6 +928,13 @@ function configurarEstadoExportado(exportado) {
                        .removeClass('btn-disabled')
                        .html('Guardar')
                        .removeAttr('title');
+
+        // Mostrar botón Reiniciar solo para documentos basados en OS (sw=10)
+        if ($('#sw').val() == '10') {
+            $('#btnreiniciar').show();
+        } else {
+            $('#btnreiniciar').hide();
+        }
     }
 }
 
@@ -1004,7 +1047,19 @@ function listardetalle(tipo, consecutivo){
             });
         }
         $('#notas').html(data.notas);
+
+        // Motivo de devolución (solo devoluciones tienen RespuestaCorrectaDian)
+        if (data.RespuestaCorrectaDian) {
+            $('#motivo_devolucion').text(data.RespuestaCorrectaDian);
+            $('#div_motivo_devolucion').show();
+        } else {
+            $('#div_motivo_devolucion').hide();
+        }
+
         $('#sw').val(data.Tipo_Docto_Base_2);
+        $('#nombre_bodega').val(data.NombreBodega || '');
+        $('#nombre_vendedor').val(data.NombreVendedor || '');
+        $('#ciudad_doc').val(data.ciudad || '');
         $('#dotacion_epp').prop('checked', data.IdVendedor == 12);
         if (data.Fecha_Hora_Factura) {
             var fechaDoc = new Date(data.Fecha_Hora_Factura + "T00:00:00");
@@ -1334,7 +1389,7 @@ function guardarEdicionNativa(row) {
     .then(data => {
         console.log('📥 Respuesta del servidor:', data);
 
-        if (data.status === 'success') {
+        if (data.status === 'success' || data.status === 'warning') {
             var displayValue = newValue || '';
             // Para fecha vence (col 9): el input type=date retorna YYYY-MM-DD, mostrar como DD/MM/YYYY
             if (cellIndex === 9 && newValue && newValue.indexOf('-') !== -1) {
@@ -1346,7 +1401,11 @@ function guardarEdicionNativa(row) {
             row.classList.remove('editing', 'saving');
             limpiarEstadoEdicionNativa();
 
-            mostrarFeedbackExitoso();
+            if (data.status === 'warning') {
+                swal("Tolerancia aplicada", data.message, "info");
+            } else {
+                mostrarFeedbackExitoso();
+            }
             actualizarTodosLosTotales(tipo, consecutivo);
 
             console.log('✅ Cambio guardado exitosamente');
@@ -1880,6 +1939,52 @@ $(document).on("click", "#btnguardar", function() {
     guardarDocumento();
 });
 
+$(document).on("click", "#btnreiniciar", function() {
+    var tipo        = getUrlParameter('tipo');
+    var consecutivo = getUrlParameter('consecutivo');
+    swal({
+        title: "¿Reiniciar documento?",
+        text: "Esta acción eliminará todos los productos del documento y los volverá a cargar desde la Orden de Salida con las cantidades pendientes actuales. El consecutivo no cambiará.\n\n¿Desea continuar?",
+        type: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Sí, reiniciar",
+        cancelButtonText: "Cancelar",
+        confirmButtonColor: "#d33"
+    }, function(confirm) {
+        if (!confirm) return;
+        $.ajax({
+            url: CONFIG.endpoints.salidas.reiniciar_doc_desde_os,
+            type: "POST",
+            data: { tipo: tipo, numdoc: consecutivo },
+            dataType: "json",
+            success: function(data) {
+                if (data.status === "success") {
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 400);
+                } else {
+                    swal("Error", data.message, "error");
+                }
+            },
+            error: function(xhr, status, err) {
+                console.log("reiniciar error:", xhr.responseText, status, err);
+                swal("Error", "No se pudo conectar con el servidor.", "error");
+            }
+        });
+    });
+});
+
+function mostrarNotificacion(tipo, mensaje) {
+    var color = tipo === 'success' ? 'alert-success' : 'alert-danger';
+    var $n = $('<div>')
+        .addClass('alert ' + color)
+        .css({ position: 'fixed', top: '20px', right: '20px', zIndex: 99999,
+               minWidth: '280px', boxShadow: '0 2px 8px rgba(0,0,0,.3)', padding: '12px 18px' })
+        .html(mensaje)
+        .appendTo('body');
+    setTimeout(function() { $n.fadeOut(400, function() { $(this).remove(); }); }, 3500);
+}
+
 $(document).on("click", "#btnprint", imprimirDocumento);
 
 function imprimirDocumento() {
@@ -1891,26 +1996,31 @@ function imprimirDocumento() {
         return;
     }
 
-    var tipodoc       = $('#tipodoc').val() || '';
-    var numdoc        = $('#numdoc').val() || '';
-    var fecha1        = $('#fecha1').val() || '';
-    var pedido1       = $('#pedido1').val() || '';
-    var traslfact1    = $('#traslfact1').val() || '';
-    var nit1          = $('#nit1').val() || '';
-    var nombre1       = $('#nombre1').val() || '';
-    var telefono1     = $('#telefono1').val() || '';
-    var nit2          = $('#nit2').val() || '';
-    var nombre2       = $('#nombre2').val() || '';
-    var nit3          = $('#nit3').val() || '';
-    var nombre3       = $('#nombre3').val() || '';
-    var notas         = $('#notas').val() || '';
-    var fechaFactura2 = $('#fecha_factura2').val() || '';
+    var tipodoc    = $('#tipodoc').val() || '';
+    var numdoc     = $('#numdoc').val() || '';
+    var fecha1     = $('#fecha1').val() || '';
+    var pedido1    = $('#pedido1').val() || '';
+    var traslfact1 = $('#traslfact1').val() || '';
+    var nit1       = $('#nit1').val() || '';
+    var nombre1    = $('#nombre1').val() || '';
+    var nit2       = $('#nit2').val() || '';
+    var nombre2    = $('#nombre2').val() || '';
+    var nit3       = $('#nit3').val() || '';
+    var nombre3    = $('#nombre3').val() || '';
+    var notas      = $('#notas').val() || '';
+    var dir1text      = $('#direccion1 option:selected').text() || '';
+    var dir2text      = $('#direccion2 option:selected').text() || '';
+    var nombreBodega   = $('#nombre_bodega').val()  || '';
+    var nombreVendedor = $('#nombre_vendedor').val() || '';
+    var ciudadDoc      = $('#ciudad_doc').val()      || '';
 
-    var totalCantidad  = $('#totalCantidad').text().trim() || '0';
-    var subtotal       = $('#total').text().trim() || '0';
-    var totalDescuento = $('#totalDescuento').text().trim() || '0';
-    var totalImpuesto  = $('#totalImpuesto').text().trim() || '0';
-    var valorTotal     = $('#valorTotal').text().trim() || '0';
+    var totalCantidad = $('#totalCantidad').text().trim() || '0';
+
+    var nombreDe  = nombre1 || nombre3 || '';
+    var nitDe     = nit1    || nit3    || '';
+    var dirDe     = dir1text;
+    var nombreEnv = nombre2;
+    var dirEnv    = dir2text;
 
     var filas = [];
     $('#tb-doc tbody tr').each(function() {
@@ -1922,7 +2032,6 @@ function imprimirDocumento() {
                 nombre:   c[2].textContent.trim(),
                 umedida:  c[3].textContent.trim(),
                 cantidad: c[4].textContent.trim(),
-                valor:    c[7].textContent.trim(),
                 lote:     c[8].textContent.trim()
             });
         }
@@ -1930,45 +2039,14 @@ function imprimirDocumento() {
 
     var filasHtml = filas.map(function(f) {
         return '<tr>' +
-            '<td style="text-align:center">' + f.seq + '</td>' +
-            '<td style="text-align:center"><b>' + f.codigo + '</b></td>' +
-            '<td>' + f.nombre + '</td>' +
-            '<td style="text-align:center">' + f.umedida + '</td>' +
-            '<td style="text-align:center">' + f.cantidad + '</td>' +
-            '<td style="text-align:center">' + f.lote + '</td>' +
-            '<td style="text-align:right">' + f.valor + '</td>' +
+            '<td style="text-align:center">'        + f.seq      + '</td>' +
+            '<td style="text-align:center"><b>'     + f.codigo   + '</b></td>' +
+            '<td>'                                  + f.nombre   + '</td>' +
+            '<td style="text-align:center">'        + f.umedida  + '</td>' +
+            '<td style="text-align:center">'        + f.cantidad + '</td>' +
+            '<td style="text-align:center">'        + f.lote     + '</td>' +
             '</tr>';
-    }).join('') || '<tr><td colspan="7" style="text-align:center">Sin registros</td></tr>';
-
-    var seccionFacturarA = '';
-    if (nit1) {
-        seccionFacturarA = '<div class="seccion"><span class="sec-titulo">FACTURAR A</span>' +
-            '<div class="grid3">' +
-            '<div class="campo"><label>NIT/CÉDULA</label><span>' + nit1 + '</span></div>' +
-            '<div class="campo c2"><label>NOMBRE</label><span>' + nombre1 + '</span></div>' +
-            '<div class="campo"><label>TELÉFONO</label><span>' + telefono1 + '</span></div>' +
-            '</div></div>';
-    } else if (nit3) {
-        seccionFacturarA = '<div class="seccion"><span class="sec-titulo">FACTURAR A</span>' +
-            '<div class="grid3">' +
-            '<div class="campo"><label>NIT/CÉDULA</label><span>' + nit3 + '</span></div>' +
-            '<div class="campo c2"><label>NOMBRE</label><span>' + nombre3 + '</span></div>' +
-            '</div></div>';
-    }
-
-    var seccionEnviarA = '';
-    if (nit2) {
-        seccionEnviarA = '<div class="seccion"><span class="sec-titulo">ENVIAR A</span>' +
-            '<div class="grid2">' +
-            '<div class="campo"><label>NIT/CÉDULA</label><span>' + nit2 + '</span></div>' +
-            '<div class="campo"><label>NOMBRE</label><span>' + nombre2 + '</span></div>' +
-            '</div></div>';
-    }
-
-    var seccionFechas = fechaFactura2
-        ? '<div class="seccion"><span class="sec-titulo">FECHAS</span>' +
-          '<div class="grid2"><div class="campo"><label>FECHA FACTURA</label><span>' + fechaFactura2 + '</span></div></div></div>'
-        : '';
+    }).join('') || '<tr><td colspan="6" style="text-align:center">Sin registros</td></tr>';
 
     var seccionNotas = notas
         ? '<div style="margin-bottom:12px">' +
@@ -1977,59 +2055,130 @@ function imprimirDocumento() {
           '</div>'
         : '';
 
-    var logoUrl = window.location.href.split('/view/')[0] + '/public/logo-empresas/logo-empresa.png';
+    var logoMap = {
+        '805018495': 'logo-empresa.png',
+        '900184187': 'logo-empresa-agroinversiones.png',
+        '901123996': 'logo-empresa-cjpork.png',
+        '900805477': 'logo-empresa-frigopork.png',
+        '900714090': 'logo-empresa-grupork.png',
+        '900328449': 'logo-empresa-impagro.png',
+        '900062893': 'logo-empresa-integraciones.png',
+        '900798244': 'logo-empresa-valleverde.png'
+    };
+    var baseUrl  = window.location.href.split('/view/')[0] + '/public/logo-empresas/';
+    var logoFile = logoMap[nitDe.trim()] || 'logo-empresa.png';
+    var logoUrl  = baseUrl + logoFile;
 
     var htmlContent = '<!DOCTYPE html><html><head>' +
         '<meta charset="UTF-8">' +
-        '<title>Orden de Salida # ' + numdoc + '</title>' +
+        '<title>Movimiento de Inventario # ' + numdoc + '</title>' +
         '<link rel="preconnect" href="https://fonts.googleapis.com">' +
         '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
         '<link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+39&display=swap" rel="stylesheet">' +
         '<style>' +
-        'body{font-family:Arial,sans-serif;font-size:12px;margin:20px;color:#222}' +
-        '.cabecera{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;border-bottom:2px solid #333;padding-bottom:10px;margin-bottom:14px}' +
-        '.logo-empresa img{max-height:70px;max-width:140px;object-fit:contain}' +
-        '.info-doc h2{margin:0 0 4px;font-size:15px;text-transform:uppercase}' +
-        '.info-doc p{margin:2px 0}' +
+        'body{font-family:Arial,sans-serif;font-size:10px;margin:14px;color:#222}' +
+        '.cabecera{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;border-bottom:2px solid #333;padding-bottom:8px;margin-bottom:10px}' +
+        '.logo-empresa img{max-height:60px;max-width:120px;object-fit:contain}' +
+        '.info-doc h2{margin:0 0 4px;font-size:13px;text-transform:uppercase;font-weight:bold;letter-spacing:1px}' +
+        '.info-doc p{margin:1px 0;font-size:10px}' +
         '.barcode{text-align:center}' +
-        '.barcode-font{font-family:"Libre Barcode 39",cursive;font-size:52px;line-height:1;display:block}' +
-        '.barcode-num{font-size:13px;font-weight:bold;letter-spacing:2px;display:block;margin-top:2px}' +
-        '.seccion{border:2px solid #ccc;border-radius:4px;padding:10px 10px 6px;margin-bottom:10px;position:relative}' +
-        '.sec-titulo{position:absolute;top:-9px;left:10px;background:#fff;padding:0 5px;font-weight:bold;font-size:10px;text-transform:uppercase;letter-spacing:1px}' +
-        '.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}' +
-        '.grid3{display:grid;grid-template-columns:1fr 2fr 1fr;gap:8px;margin-top:4px}' +
-        '.campo label{display:block;font-weight:bold;font-size:10px;color:#666;margin-bottom:1px}' +
-        '.campo span{display:block;border-bottom:1px solid #ddd;padding:2px 0;font-size:12px}' +
-        'table{width:100%;border-collapse:collapse;margin-bottom:10px}' +
+        '.barcode-font{font-family:"Libre Barcode 39",cursive;font-size:42px;line-height:1;display:block}' +
+        '.barcode-num{font-size:11px;font-weight:bold;letter-spacing:2px;display:block;margin-top:1px}' +
+        '.seccion{border:1px solid #bbb;border-radius:3px;padding:8px;margin-bottom:8px}' +
+        '.grid2col{display:grid;grid-template-columns:1fr 1fr;gap:12px}' +
+        '.campo{margin-bottom:4px}' +
+        '.campo label{display:block;font-weight:bold;font-size:9px;color:#666;margin-bottom:1px;text-transform:uppercase}' +
+        '.campo span{display:block;border-bottom:1px solid #ddd;padding:1px 0;font-size:10px;min-height:13px}' +
+        'table{width:100%;border-collapse:collapse;margin-bottom:8px}' +
         'thead tr{background:#e9e9e9}' +
-        'th,td{border:1px solid #bbb;padding:5px 6px;font-size:11px}' +
+        'th,td{border:1px solid #bbb;padding:3px 5px;font-size:9px}' +
         'th{text-align:center;font-weight:bold}' +
-        '.totales{display:flex;justify-content:flex-end;gap:18px;font-weight:bold;font-size:12px;margin-bottom:12px}' +
-        '@media print{body{margin:8px}.barcode-font{font-size:44px}}' +
+        '.total-cant{text-align:right;font-weight:bold;font-size:10px;margin-bottom:10px}' +
+        '.epp-recibe{margin:16px 0 10px}' +
+        '.epp-recibe-titulo{font-size:11px;font-weight:bold;text-transform:uppercase;margin:0 0 6px}' +
+        '.epp-firma-linea{border-top:1px solid #333;width:60%;margin:30px 0 6px}' +
+        '.epp-recibe-dato{font-size:10px;margin:2px 0}' +
+        '.epp-legal{margin-top:12px;font-size:8.5px;color:#333;line-height:1.5}' +
+        '.epp-legal h4{font-size:9px;font-weight:bold;margin:8px 0 2px;text-transform:uppercase}' +
+        '.epp-legal p{margin:0 0 4px;text-align:justify}' +
+        '@media print{body{margin:6px}.barcode-font{font-size:36px}}' +
         '</style></head><body>' +
+
         '<div class="cabecera">' +
         '<div class="logo-empresa"><img src="' + logoUrl + '" alt="Logo empresa"></div>' +
-        '<div class="info-doc"><h2>Orden de Salida — ' + tipodoc + '</h2>' +
-        '<p>Fecha: ' + fecha1 + '</p>' +
-        (pedido1   ? '<p>Pedido: '   + pedido1   + '</p>' : '') +
-        (traslfact1 ? '<p>Despacho: ' + traslfact1 + '</p>' : '') +
+        '<div class="info-doc">' +
+        '<h2>Movimiento de Inventario</h2>' +
+        '<p><b>NRO:</b> ' + numdoc + '</p>' +
+        '<p><b>Fecha Documento:</b> ' + fecha1 + '</p>' +
+        '<p><b>Tipo Movimiento:</b> ' + tipodoc + '</p>' +
         '</div>' +
         '<div class="barcode"><span class="barcode-font">' + numdoc + '</span><span class="barcode-num"># ' + numdoc + '</span></div>' +
         '</div>' +
-        seccionFacturarA +
-        seccionEnviarA +
-        seccionFechas +
-        '<table><thead><tr>' +
-        '<th>Seq</th><th>Código</th><th>Nombre Producto</th><th>U. Medida</th><th>Cantidad</th><th>Lote</th><th>Valor</th>' +
-        '</tr></thead><tbody>' + filasHtml + '</tbody></table>' +
-        '<div class="totales">' +
-        '<span>Total Cant: ' + totalCantidad + '</span>' +
-        '<span>SubTotal: '   + subtotal      + '</span>' +
-        '<span>Descuento: '  + totalDescuento + '</span>' +
-        '<span>IVA: '        + totalImpuesto  + '</span>' +
-        '<span>TOTAL: '      + valorTotal     + '</span>' +
+
+        '<div class="seccion">' +
+        '<div class="grid2col">' +
+
+        '<div>' +
+        '<div class="campo"><label>De</label><span>' + nombreDe + '</span></div>' +
+        '<div class="campo"><label>Dirección</label><span>' + dirDe + '</span></div>' +
+        '<div class="campo"><label>Enviar a</label><span>' + nombreEnv + '</span></div>' +
+        '<div class="campo"><label>Dirección</label><span>' + dirEnv + '</span></div>' +
+        '<div class="campo"><label>Ciudad</label><span>' + ciudadDoc + '</span></div>' +
+        '<div class="campo"><label>Nit</label><span>' + nitDe + '</span></div>' +
         '</div>' +
+
+        '<div>' +
+        '<div class="campo"><label>Orden / Consumo</label><span>' + pedido1 + '</span></div>' +
+        '<div class="campo"><label>Factura</label><span>' + traslfact1 + '</span></div>' +
+        '<div class="campo"><label>Bodega</label><span>' + nombreBodega + '</span></div>' +
+        '<div class="campo"><label>Lote</label><span></span></div>' +
+        '<div class="campo"><label>Grupo</label><span>' + nombreVendedor + '</span></div>' +
+        '</div>' +
+
+        '</div></div>' +
+
+        '<table><thead><tr>' +
+        '<th>Seq</th><th>Código</th><th>Nombre Producto</th><th>U. Medida</th><th>Cantidad</th><th>Lote</th>' +
+        '</tr></thead><tbody>' + filasHtml + '</tbody></table>' +
+
+        '<div class="total-cant">Total Cantidad: ' + totalCantidad + '</div>' +
+
         seccionNotas +
+        (($('#dotacion_epp').prop('checked')) ?
+        '<div class="epp-recibe">' +
+        '<p class="epp-recibe-titulo">Recibe</p>' +
+        '<div class="epp-firma-linea"></div>' +
+        '<p class="epp-recibe-dato"><b>Nit/Cédula:</b> ' + (nit2 || nit1 || '') + '</p>' +
+        '<p class="epp-recibe-dato"><b>Nombre:</b> ' + (nombre2 || nombre1 || '') + '</p>' +
+        '</div>' +
+
+        '<div class="epp-legal">' +
+
+        '<h4>Objeto</h4>' +
+        '<p>Mediante el presente documento se formaliza la entrega de los elementos de dotación y de protección personal (EPP) requeridos para garantizar la ' +
+        'seguridad, salud y bienestar del trabajador durante el desarrollo de sus funciones dentro de la empresa, en cumplimiento ' +
+        'de la legislación laboral vigente en Colombia, especialmente lo dispuesto en el artículo 230 del Código Sustantivo del Trabajo.</p>' +
+
+        '<h4>Estado de los Elementos Entregados</h4>' +
+        '<p>Todos los elementos entregados al trabajador se encuentran en óptimas condiciones de uso, en buen estado físico y de funcionamiento.</p>' +
+
+        '<h4>Obligaciones del Trabajador</h4>' +
+        '<p>El trabajador declara haber recibido la dotación en cumplimiento de lo establecido por la ley, en las fechas determinadas por la empresa, y se ' +
+        'compromete a usarla conforme a lo dispuesto en el decálogo de vestuario. Así mismo, se obliga a portarla únicamente en los días estipulados, con ' +
+        'los zapatos y accesorios permitidos por la empresa, sin realizar modificaciones, enmendaduras, reducciones, tejidos, bordados u otros cambios ' +
+        'que alteren su diseño o presentación original.</p>' +
+        '<p>El trabajador también se compromete a hacer uso adecuado y permanente de los elementos de protección personal (EPP) en todas las actividades ' +
+        'que lo requieran, y a reportar de manera inmediata cualquier daño o necesidad de reposición a su jefe inmediato. Además, reconoce su obligación ' +
+        'de recibir los EPP y la dotación asignada a su cargo y firmar la constancia de entrega correspondiente.</p>' +
+
+        '<h4>Responsabilidades del Empleador</h4>' +
+        '<p>La empresa se compromete a suministrar de forma oportuna todos los elementos de protección personal y la dotación necesarios, con base en un ' +
+        'análisis técnico y de costo-beneficio, orientado a salvaguardar la integridad del trabajador y garantizar condiciones ' +
+        'laborales seguras, de acuerdo con la normatividad vigente en materia de Seguridad y Salud en el Trabajo.</p>' +
+
+        '</div>'
+        : '') +
+
         '</body></html>';
 
     var newWindow = window.open('', '_blank');

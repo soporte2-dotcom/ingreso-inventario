@@ -79,6 +79,10 @@
             );
         break;
 
+        case "reiniciar_doc_desde_os":
+            echo $salidas->reiniciar_doc_desde_os($_POST["tipo"], $_POST["numdoc"]);
+        break;
+
         case "update_lote_salida":
             $salidas->update_lote_salida($_POST["tipo"], $_POST["numdoc"], $_POST["lote1"], $_POST["seqs"] ?? '');
         break;

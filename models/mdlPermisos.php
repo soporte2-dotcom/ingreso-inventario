@@ -145,10 +145,10 @@ class Permisos {
     public function get_menu_usuario($usuario_id) {
         try {
             $conn = $this->mysql->obtenerConexion();
-            $query = "SELECT ms.ruta, ms.icono, ms.texto_menu 
+            $query = "SELECT ms.ruta, ms.icono, ms.texto_menu
                       FROM modulos_sistema ms
                       INNER JOIN usuario_permisos up ON ms.nombre_modulo = up.modulo
-                      WHERE up.usuario_id = ? AND up.permiso = 'S' AND ms.activo = 'S'
+                      WHERE up.usuario_id = ? AND up.permiso = 'S' AND ms.activo = 'S' AND ms.ruta != '#'
                       ORDER BY ms.orden_menu ASC";
             
             $stmt = $conn->prepare($query);
@@ -473,6 +473,19 @@ class Permisos {
       } catch (Exception $e) {
           error_log("Error get_tipos_documento_permitidos: " . $e->getMessage());
           return [];
+      }
+  }
+
+  public function tiene_permiso_especial($usuario_id, $modulo) {
+      try {
+          $conn = $this->mysql->obtenerConexion();
+          $query = "SELECT COUNT(*) FROM usuario_permisos WHERE usuario_id = ? AND modulo = ? AND permiso = 'S'";
+          $stmt = $conn->prepare($query);
+          $stmt->execute([$usuario_id, $modulo]);
+          return (int)$stmt->fetchColumn() > 0;
+      } catch (Exception $e) {
+          error_log("Error tiene_permiso_especial: " . $e->getMessage());
+          return false;
       }
   }
 
