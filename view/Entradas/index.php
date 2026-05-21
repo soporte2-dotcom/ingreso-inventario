@@ -10,6 +10,11 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 <?php require_once("../MainJs/js.php"); ?>
 
 <script type="text/javascript">
+	window.currentUser = '<?= strtoupper(trim($_SESSION["Id_Usuario"])) ?>';
+	window.puedeEditarValor = ['LAUREN', 'SA'].indexOf(window.currentUser) !== -1;
+</script>
+
+<script type="text/javascript">
 
 	$(function() {
 		$("#nit3").autocomplete({
@@ -203,21 +208,21 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 					<div class="col-lg-2">
 						<fieldset class="form-group">
 							<label class="form-label semibold" style="display: none" id="txt_nit2">Nit/Cedula</label>
-							<input type="text" style="display: none" name="nit2" id="nit2" class="form-control" readonly/>
+							<input type="text" style="display: none" name="nit2" id="nit2" class="form-control"/>
 						</fieldset>
 					</div>
 
 					<div class="col-lg-3">
 						<fieldset class="form-group">
 							<label class="form-label semibold" style="display: none" id="txt_nombre2">Nombre</label>
-							<input type="text" style="display: none" name="nombre2" id="nombre2" class="form-control"  readonly/>
+							<input type="text" style="display: none" name="nombre2" id="nombre2" class="form-control"/>
 						</fieldset>
 					</div>
 
 					<div class="col-lg-3">
 						<fieldset class="form-group">
 							<label class="form-label semibold" style="display: none" id="txt_direccion2">Direccion</label>
-							<input type="text" style="display: none" id="direccion2" name="direccion2" class="form-control" readonly>
+							<input type="text" style="display: none" id="direccion2" name="direccion2" class="form-control">
 						</fieldset>
 					</div>
 
@@ -450,7 +455,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="nuevodoc.js?v=26"></script>
+	<script type="text/javascript" src="nuevodoc.js?v=31"></script>
 
 	<script>
         document.addEventListener("DOMContentLoaded", function() {

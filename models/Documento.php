@@ -191,8 +191,8 @@
             FROM Documentos d
             INNER JOIN Terceros_Dir td  ON td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion
             INNER JOIN TblTipoDoctos tt ON tt.idTipoDoctos = d.tipo
-            INNER JOIN TblTerceros t    ON t.nit_cedula = d.nit_Cedula_2
-            INNER JOIN Terceros_Dir td2 ON td2.nit = d.nit_Cedula_2 AND d.codigo_direccion_2 = td2.codigo_direccion
+            LEFT  JOIN TblTerceros t    ON t.nit_cedula = d.nit_Cedula_2
+            LEFT  JOIN Terceros_Dir td2 ON td2.nit = d.nit_Cedula_2 AND d.codigo_direccion_2 = td2.codigo_direccion
             LEFT  JOIN TblBodega tb     ON tb.IdBodega = d.bodega
             LEFT  JOIN TblVendedor tv   ON tv.Idvendedor = d.IdVendedor
             WHERE d.tipo = '$tipo' AND d.Numero_documento = '$consecutivo'";

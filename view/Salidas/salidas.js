@@ -1036,13 +1036,16 @@ function listardetalle(tipo, consecutivo){
                 });
             });
         }
-        $('#nit2').val(data.nit_Cedula_2);
-        $('#nombre2').val(data.nombre2);
-        if(data.nit_Cedula_2) {
-            $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.combo_dir, { nit: data.nit_Cedula_2 }, function(html) {
+        var nit2Usar  = data.nit_Cedula_2  || data.nit_Cedula;
+        var nom2Usar  = data.nombre2       || data.Nombre_Cliente;
+        var dir2Usar  = data.codigo_direccion_2 || data.codigo_direccion;
+        $('#nit2').val(nit2Usar);
+        $('#nombre2').val(nom2Usar);
+        if(nit2Usar) {
+            $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.combo_dir, { nit: nit2Usar }, function(html) {
                 $('#direccion2').html(html);
                 $('#direccion2 option').each(function() {
-                    if($(this).val().split(',')[0].trim() == String(data.codigo_direccion_2).trim()) {
+                    if($(this).val().split(',')[0].trim() == String(dir2Usar).trim()) {
                         $(this).prop('selected', true);
                         return false;
                     }

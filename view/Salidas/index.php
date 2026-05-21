@@ -728,7 +728,7 @@ $permiteTraslado = $_permisos->tiene_permiso_especial($_SESSION["Id_Usuario"], '
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="salidas.js?v=63"></script>
+	<script type="text/javascript" src="salidas.js?v=64"></script>
 
 	<script>
 		document.addEventListener("DOMContentLoaded", function() {

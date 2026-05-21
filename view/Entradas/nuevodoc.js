@@ -390,7 +390,13 @@ function configurarEstadoExportado(exportado) {
         $("#btnguardar, #btnlot, #btneliminarsel").prop('disabled', true).addClass('btn-disabled');
         $("#btnguardar").html('Documento Exportado')
                        .attr('title', 'No se puede modificar un documento exportado');
-        // Quitar clase editable de todas las celdas ya renderizadas
+        ['nit1','nombre1','direccion1','telefono1',
+         'nit2','nombre2','direccion2',
+         'nit3','nombre3','direccion3','telefono3',
+         'traslfact1','remision','idTransportador','idVehiculo','notas'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.disabled = true;
+        });
         $('#tb-doc tbody td.editable-cell').removeClass('editable-cell');
     } else {
         documentoExportado = false;
@@ -487,10 +493,37 @@ function listardetalle(tipo, consecutivo){
         $('#direcc').val(data.codigo_direccion);
         $('#direccion1').val(data.direccion);
         $('#telefono1').val(data.telefono_1);
-        $('#nit2').val(data.nit_Cedula_2);
-        $('#nombre2').val(data.nombre2);
-        $('#codigo_direccion2').val(data.codigo_direccion_2);
-        $('#direccion2').val(data.direccion2);
+        var nit2Usar = data.nit_Cedula_2       || data.nit_Cedula;
+        var nom2Usar = data.nombre2            || data.Nombre_Cliente;
+        var dir2Usar = data.codigo_direccion_2 || data.codigo_direccion;
+
+        if (String(data.Tipo_Docto_Base_2) === '9') {
+            // Entrada desde pedido: Enviar A usa nit3/nombre3/direccion3
+            $('#nit3').val(nit2Usar);
+            $('#nombre3').val(nom2Usar);
+            if (nit2Usar) {
+                $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.combo_dir, { nit: nit2Usar }, function(html) {
+                    $('#direccion3').html(html);
+                    $('#direccion3 option').each(function() {
+                        if ($(this).val().split(',')[0].trim() == String(dir2Usar).trim()) {
+                            $(this).prop('selected', true);
+                            var dirVal = $(this).val();
+                            $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.telefono_dir, { direccion: dirVal }, function(resp) {
+                                resp = JSON.parse(resp);
+                                $('#telefono3').val(resp.telefono_1);
+                            });
+                            return false;
+                        }
+                    });
+                });
+            }
+        } else {
+            // Traslado: Enviar A usa nit2/nombre2/direccion2
+            $('#nit2').val(nit2Usar);
+            $('#nombre2').val(nom2Usar);
+            $('#codigo_direccion2').val(dir2Usar);
+            $('#direccion2').val(data.direccion2 || data.direccion);
+        }
         $('#notas').html(data.notas);
         $('#sw').val(data.Tipo_Docto_Base_2);
         if(data.IdTransportador){ $('#idTransportador').val(data.IdTransportador); }
@@ -539,7 +572,9 @@ function listardetalle(tipo, consecutivo){
                 $('td', row).eq(4).addClass('editable-cell');  // Cantidad
                 $('td', row).eq(5).addClass('editable-cell');  // % Desc
                 // col 6 = % IVA (solo lectura, no editable)
-                $('td', row).eq(7).addClass('editable-cell');  // Valor
+                if (window.puedeEditarValor) {
+                    $('td', row).eq(7).addClass('editable-cell');  // Valor - solo LAUREN y SA
+                }
                 $('td', row).eq(8).addClass('editable-cell');  // Lote
                 $('td', row).eq(9).addClass('editable-cell');  // Fecha Venc
                 $('td', row).eq(10).addClass('editable-cell'); // Nota
