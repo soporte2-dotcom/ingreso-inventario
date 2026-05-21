@@ -65,6 +65,11 @@ function init() {
     // Inicialización si es necesaria
 }
 
+// Forzar reload al volver con el botón Atrás del navegador (bfcache)
+window.addEventListener('pageshow', function(e) {
+    if (e.persisted) window.location.reload();
+});
+
 $(document).ready(function() {
     inicializarCombos();
     inicializarEventos();
@@ -782,15 +787,27 @@ function procesarGuardado(endpoint) {
         data: formData,
         contentType: false,
         processData: false,
-        success: function(datos) {                  
-            swal({
-                title: "Correcto!", 
-                text: "Documento Registrado Correctamente", 
-                type: "success"
-            }, function() {
-                window.location.href = 'index.php'; 
-            });
+        success: function(datos) {
             console.log(datos);
+            swal({
+                title: "Correcto!",
+                text: "Documento Registrado Correctamente",
+                type: "success",
+                showCancelButton: true,
+                confirmButtonText: "Aceptar",
+                confirmButtonClass: "btn-success",
+                cancelButtonText: "Imprimir",
+                cancelButtonClass: "btn-info"
+            }, function(isConfirm) {
+                if (isConfirm) {
+                    window.location.href = 'index.php';
+                } else {
+                    imprimirDocumento();
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 800);
+                }
+            });
         },
         complete: function() {
             $.unblockUI();

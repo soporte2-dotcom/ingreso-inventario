@@ -23,7 +23,10 @@
       "Bash(git -C \"c:/xampp/htdocs/ingresoinventario\" log --oneline -5)",
       "Bash(git -C \"c:/xampp/htdocs/ingresoinventario\" diff --name-only HEAD)",
       "Bash(git -C \"c:/xampp/htdocs/ingresoinventario\" diff HEAD -- view/Salidas/salidas.js)",
-      "Bash(git -C \"c:/xampp/htdocs/ingresoinventario\" diff HEAD -- view/Entradas/nuevodoc.js)"
+      "Bash(git -C \"c:/xampp/htdocs/ingresoinventario\" diff HEAD -- view/Entradas/nuevodoc.js)",
+      "Bash(Select-String -Path \"c:\\\\xampp\\\\htdocs\\\\ingresoinventario\\\\view\\\\Salidas\\\\salidas.js\" -Pattern \"guardar_salida|Registrado|Correcto\")",
+      "Bash(Select-Object LineNumber, Line)",
+      "Bash(Format-Table -AutoSize)"
     ]
   }
 }

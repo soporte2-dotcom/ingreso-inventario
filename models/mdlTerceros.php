@@ -18,7 +18,7 @@
 
         public function get_terceroxnit($id){
             $cn = new Conectarserver;
-            $query = "SELECT TOP(5) * FROM TblTerceros WHERE nit_cedula like '%$id%' ";
+            $query = "SELECT TOP(5) * FROM TblTerceros WHERE nit_cedula like '%$id%' AND bloqueo = 0";
             $registros = sqlsrv_query($cn->getConecta(), $query);
                 if( $registros === false ){
                     echo "Error al ejecutar consulta.</br>";

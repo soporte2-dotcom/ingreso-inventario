@@ -22,6 +22,11 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 			minLength: 2,
 			select: function(event, ui) {
 				$('#nombre3').val(ui.item.nombre);
+				$('#telefono3').val('');
+				$('#direccion3').html('<option value="" disabled selected>Seleccione...</option>');
+				$.post('../../controller/terceros.php?op=combo_dir', { nit: ui.item.value }, function(html) {
+					$('#direccion3').html(html);
+				});
 				$("#nit3").focus();
 			}
 		});
