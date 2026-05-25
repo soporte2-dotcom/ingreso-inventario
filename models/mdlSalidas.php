@@ -687,7 +687,8 @@
                 $sql_pend_chk = "SELECT COUNT(*) AS con_pendiente
                                  FROM Documentos_Lin_Ped dlp
                                  LEFT JOIN (
-                                     SELECT dl.IdProducto, SUM(dl.Cantidad_Facturada) AS total_facturado
+                                     SELECT dl.IdProducto,
+                                            SUM(CASE WHEN d.Tipo_Docto_Base = '0' THEN dl.Cantidad_Facturada ELSE -dl.Cantidad_Facturada END) AS total_facturado
                                      FROM Documentos d
                                      JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                                      WHERE d.Numero_Docto_Base_2 = '$numero' AND d.Tipo_Docto_Base_2 = '10'
@@ -777,7 +778,8 @@
                 JOIN TblTipoDoctos td ON td.idTipoDoctos = '$tipo'
                 JOIN TblProducto p ON p.IdProducto = dp.IdProducto
                 LEFT JOIN (
-                    SELECT dl.IdProducto, SUM(dl.Cantidad_Facturada) AS total_facturado
+                    SELECT dl.IdProducto,
+                           SUM(CASE WHEN d.Tipo_Docto_Base = '0' THEN dl.Cantidad_Facturada ELSE -dl.Cantidad_Facturada END) AS total_facturado
                     FROM Documentos d
                     JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                     WHERE d.Numero_Docto_Base_2 = '$numero' AND d.Tipo_Docto_Base_2 = '10'
@@ -815,7 +817,8 @@
                 $sql_chk_pend = "SELECT COUNT(*) AS con_pendiente
                                  FROM Documentos_Lin_Ped dlp
                                  LEFT JOIN (
-                                     SELECT dl.IdProducto, SUM(dl.Cantidad_Facturada) AS total_facturado
+                                     SELECT dl.IdProducto,
+                                            SUM(CASE WHEN d.Tipo_Docto_Base = '0' THEN dl.Cantidad_Facturada ELSE -dl.Cantidad_Facturada END) AS total_facturado
                                      FROM Documentos d
                                      JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                                      WHERE d.Numero_Docto_Base_2 = '$numero' AND d.Tipo_Docto_Base_2 = '10'
@@ -1393,13 +1396,15 @@
             if (!$row_chk || $row_chk['existe'] == 0) return json_encode($resultado);
 
             // Calcular pendientes y totales de forma dinámica
+            // Las devoluciones tienen Tipo_Docto_Base != '0', se restan para liberar la OS
             $sql_pend = "SELECT
                                 SUM(CASE WHEN (dlp.cantidad - ISNULL(f.total_facturado, 0)) > 0 THEN 1 ELSE 0 END) AS con_pendiente,
                                 SUM(dlp.cantidad) AS total_ordenado,
                                 ISNULL(SUM(f.total_facturado), 0) AS total_despachado
                          FROM Documentos_Lin_Ped dlp
                          LEFT JOIN (
-                             SELECT dl.IdProducto, SUM(dl.Cantidad_Facturada) AS total_facturado
+                             SELECT dl.IdProducto,
+                                    SUM(CASE WHEN d.Tipo_Docto_Base = '0' THEN dl.Cantidad_Facturada ELSE -dl.Cantidad_Facturada END) AS total_facturado
                              FROM Documentos d
                              JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                              WHERE d.Numero_Docto_Base_2 = '$numero' AND d.Tipo_Docto_Base_2 = '10'
