@@ -564,8 +564,9 @@
             if (!$row_qty) return null;
             $cantidad_os = (float)$row_qty['cantidad'];
 
-            // Sumar lo despachado en OTROS documentos (excluir el actual)
-            $sql_otros = "SELECT ISNULL(SUM(dl.Cantidad_Facturada), 0) AS total_otros
+            // Sumar lo despachado en OTROS documentos (excluir el actual).
+            // Las devoluciones (Tipo_Docto_Base != '0') restan del total despachado.
+            $sql_otros = "SELECT ISNULL(SUM(CASE WHEN d.Tipo_Docto_Base = '0' THEN dl.Cantidad_Facturada ELSE -dl.Cantidad_Facturada END), 0) AS total_otros
                           FROM Documentos d
                           JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                           WHERE d.Numero_Docto_Base_2 = ? AND d.Tipo_Docto_Base_2 = '10'

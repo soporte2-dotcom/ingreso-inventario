@@ -427,7 +427,7 @@
                     $sql_chk = "SELECT COUNT(*) AS con_pendiente
                                 FROM Documentos_Lin_Ped dlp
                                 LEFT JOIN (
-                                    SELECT dl.IdProducto, SUM(dl.Cantidad_Facturada) AS total_facturado
+                                    SELECT dl.IdProducto, SUM(CASE WHEN d.Tipo_Docto_Base = '0' THEN dl.Cantidad_Facturada ELSE -dl.Cantidad_Facturada END) AS total_facturado
                                     FROM Documentos d
                                     JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                                     WHERE d.Numero_Docto_Base_2 = '$numero_os' AND d.Tipo_Docto_Base_2 = '10'
@@ -910,7 +910,7 @@
                 JOIN TblTipoDoctos td ON td.idTipoDoctos = '$tipo'
                 JOIN TblProducto p ON p.IdProducto = dp.IdProducto
                 LEFT JOIN (
-                    SELECT dl.IdProducto, SUM(dl.Cantidad_Facturada) AS total_facturado
+                    SELECT dl.IdProducto, SUM(CASE WHEN d.Tipo_Docto_Base = '0' THEN dl.Cantidad_Facturada ELSE -dl.Cantidad_Facturada END) AS total_facturado
                     FROM Documentos d
                     JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                     WHERE d.Numero_Docto_Base_2 = '$numero_os' AND d.Tipo_Docto_Base_2 = '10'
