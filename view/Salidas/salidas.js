@@ -2124,6 +2124,11 @@ function imprimirDocumento() {
         '.epp-legal{margin-top:12px;font-size:8.5px;color:#333;line-height:1.5}' +
         '.epp-legal h4{font-size:9px;font-weight:bold;margin:8px 0 2px;text-transform:uppercase}' +
         '.epp-legal p{margin:0 0 4px;text-align:justify}' +
+        '.firmas-seccion{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:36px;padding-top:10px}' +
+        '.firma-bloque{text-align:center}' +
+        '.firma-bloque-titulo{font-size:11px;font-weight:bold;text-transform:uppercase;margin:0 0 40px}' +
+        '.firma-linea{border-top:1px solid #333;width:80%;margin:0 auto 6px}' +
+        '.firma-etiqueta{font-size:9px;color:#555;margin:3px 0 0}' +
         '@media print{body{margin:6px}.barcode-font{font-size:36px}}' +
         '</style></head><body>' +
 
@@ -2167,6 +2172,20 @@ function imprimirDocumento() {
         '<div class="total-cant">Total Cantidad: ' + totalCantidad + '</div>' +
 
         seccionNotas +
+        ((!$('#dotacion_epp').prop('checked')) ?
+        '<div class="firmas-seccion">' +
+        '<div class="firma-bloque">' +
+        '<p class="firma-bloque-titulo">Entrega</p>' +
+        '<div class="firma-linea"></div>' +
+        '<p class="firma-etiqueta">Nombre legible</p>' +
+        '</div>' +
+        '<div class="firma-bloque">' +
+        '<p class="firma-bloque-titulo">Recibe</p>' +
+        '<div class="firma-linea"></div>' +
+        '<p class="firma-etiqueta">Nombre legible</p>' +
+        '</div>' +
+        '</div>'
+        : '') +
         (($('#dotacion_epp').prop('checked')) ?
         '<div class="epp-recibe">' +
         '<p class="epp-recibe-titulo">Recibe</p>' +

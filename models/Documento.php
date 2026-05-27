@@ -184,18 +184,18 @@
             $cn = new Conectarserver;
 
             $sql="SELECT d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
-            d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, LTRIM(RTRIM(td.ciudad)) AS ciudad,
-            d.nit_Cedula_2, t.nombre AS nombre2, d.codigo_direccion_2, td2.direccion AS direccion2, d.notas, d.exportado, d.IdVendedor, d.Fecha_Hora_Factura,
-            d.IdTransportador, d.IdVehiculo, d.RespuestaCorrectaDian,
-            LTRIM(RTRIM(tb.Bodega)) AS NombreBodega, LTRIM(RTRIM(tv.Vendedor)) AS NombreVendedor
-            FROM Documentos d
-            INNER JOIN Terceros_Dir td  ON td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion
-            INNER JOIN TblTipoDoctos tt ON tt.idTipoDoctos = d.tipo
-            LEFT  JOIN TblTerceros t    ON t.nit_cedula = d.nit_Cedula_2
-            LEFT  JOIN Terceros_Dir td2 ON td2.nit = d.nit_Cedula_2 AND d.codigo_direccion_2 = td2.codigo_direccion
-            LEFT  JOIN TblBodega tb     ON tb.IdBodega = d.bodega
-            LEFT  JOIN TblVendedor tv   ON tv.Idvendedor = d.IdVendedor
-            WHERE d.tipo = '$tipo' AND d.Numero_documento = '$consecutivo'";
+                d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, LTRIM(RTRIM(td.ciudad)) AS ciudad,
+                d.nit_Cedula_2, t.nombre AS nombre2, d.codigo_direccion_2, td2.direccion AS direccion2, d.notas, d.exportado, d.IdVendedor, d.Fecha_Hora_Factura,
+                d.IdTransportador, d.IdVehiculo, d.RespuestaCorrectaDian,
+                LTRIM(RTRIM(tb.Bodega)) AS NombreBodega, LTRIM(RTRIM(tv.Vendedor)) AS NombreVendedor
+                FROM Documentos d
+                INNER JOIN Terceros_Dir td  ON td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion
+                INNER JOIN TblTipoDoctos tt ON tt.idTipoDoctos = d.tipo
+                LEFT  JOIN TblTerceros t    ON t.nit_cedula = d.nit_Cedula_2
+                LEFT  JOIN Terceros_Dir td2 ON td2.nit = d.nit_Cedula_2 AND d.codigo_direccion_2 = td2.codigo_direccion
+                LEFT  JOIN TblBodega tb     ON tb.IdBodega = d.bodega
+                LEFT  JOIN TblVendedor tv   ON tv.Idvendedor = d.IdVendedor
+                WHERE d.tipo = '$tipo' AND d.Numero_documento = '$consecutivo'";
 
             $registros = sqlsrv_query($cn->getConecta(), $sql);
             if( $registros === false ){
