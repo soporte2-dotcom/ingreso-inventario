@@ -141,7 +141,7 @@ $permiteTraslado = $_permisos->tiene_permiso_especial($_SESSION["Id_Usuario"], '
 					<div class="col-lg-2">
 						<fieldset class="form-group">
 							<label class="form-label semibold" id="txt_numero">Ingresar el Numero</label>
-							<input type="text" name="numero" id="numero" class="form-control" required/>
+							<input type="text" name="numero" id="numero" class="form-control" required autocomplete="off"/>
 						</fieldset>
 					</div>
 
@@ -728,7 +728,7 @@ $permiteTraslado = $_permisos->tiene_permiso_especial($_SESSION["Id_Usuario"], '
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="salidas.js?v=69"></script>
+	<script type="text/javascript" src="salidas.js?v=72"></script>
 
 	<script>
 		document.addEventListener("DOMContentLoaded", function() {

@@ -188,6 +188,10 @@
             echo $salidas->validar_os($_POST["numero"] ?? '');
         break;
 
+        case "preview_doc_devolucion":
+            echo $salidas->preview_doc_devolucion($_POST["numero"] ?? '', $_POST["tiporef"] ?? '');
+        break;
+
         case "listar_detalle_salida":
             $datos = $salidas->listar_docdetalle_x_id($_POST["tipo"], $_POST["consecutivo"]);
             $data = Array();

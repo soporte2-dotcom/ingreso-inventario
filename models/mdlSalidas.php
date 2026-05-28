@@ -1451,5 +1451,40 @@
             return json_encode($resultado);
         }
 
+        public function preview_doc_devolucion($numero, $tiporef) {
+            $cn = new Conectarserver;
+
+            $sql = "SELECT d.Numero_documento, d.Fecha_Hora_Factura, LTRIM(RTRIM(d.Nombre_Cliente)) AS Nombre_Cliente,
+                           d.nit_Cedula, d.exportado, LTRIM(RTRIM(tt.TipoDoctos)) AS TipoDoctos,
+                           (SELECT COUNT(*) FROM Documentos dev
+                            WHERE dev.Numero_Docto_Base = CAST(d.Numero_documento AS VARCHAR)
+                            AND dev.Tipo_Docto_Base = '$tiporef'
+                            AND dev.exportado = 'S') AS tiene_devolucion
+                    FROM Documentos d
+                    INNER JOIN TblTipoDoctos tt ON tt.idTipoDoctos = d.tipo
+                    WHERE d.Numero_documento = ? AND d.tipo = ?";
+
+            $stmt = sqlsrv_query($cn->getConecta(), $sql, array($numero, $tiporef));
+            if (!$stmt) {
+                return json_encode(['status' => 'error', 'message' => 'Error al consultar el documento']);
+            }
+
+            $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+            if (!$row) {
+                return json_encode(['status' => 'not_found']);
+            }
+
+            return json_encode([
+                'status'           => 'found',
+                'numero'           => $row['Numero_documento'],
+                'tipo'             => $row['TipoDoctos'],
+                'fecha'            => $row['Fecha_Hora_Factura'] ? date_format($row['Fecha_Hora_Factura'], 'd/m/Y') : '',
+                'empresa'          => $row['Nombre_Cliente'],
+                'nit'              => $row['nit_Cedula'],
+                'exportado'        => $row['exportado'],
+                'tiene_devolucion' => (int)$row['tiene_devolucion']
+            ]);
+        }
+
     }
 ?>

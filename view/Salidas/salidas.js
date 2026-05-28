@@ -31,7 +31,8 @@ const CONFIG = {
             cargar_masiva_excel: "../../controller/salidas.php?op=cargar_masiva_excel",
             update_notas_etapa: "../../controller/salidas.php?op=update_notas_etapa",
             validar_os: "../../controller/salidas.php?op=validar_os",
-            reiniciar_doc_desde_os: "../../controller/salidas.php?op=reiniciar_doc_desde_os"
+            reiniciar_doc_desde_os: "../../controller/salidas.php?op=reiniciar_doc_desde_os",
+            preview_doc_devolucion: "../../controller/salidas.php?op=preview_doc_devolucion"
         },
         etapas: {
             listar_activas: "../../controller/etapas.php?op=listar_activas"
@@ -415,6 +416,73 @@ function mostrarModalEstadoOS(numero, resp, modo, onCrear) {
     $('#modalEstadoOS').modal('show');
 }
 
+// ─── PREVIEW DEVOLUCIÓN ──────────────────────────────────────────────────────
+var devPreviewOk = false;
+
+function consultarPreviewDevolucion() {
+    var numero  = $.trim($('#numero').val());
+    var tiporef = $('#tipoDocOrig').val();
+
+    $('#div_preview_devolucion').hide();
+    $('#preview_devolucion_content').html('');
+    devPreviewOk = false;
+
+    if (!numero || !tiporef) return;
+
+    $('#preview_devolucion_content').html(
+        '<div class="alert alert-default" style="padding:6px 10px;font-size:12px">' +
+        '<i class="fa fa-spinner fa-spin"></i> Buscando documento...</div>'
+    );
+    $('#div_preview_devolucion').show();
+
+    $.post(CONFIG.endpoints.salidas.preview_doc_devolucion, { numero: numero, tiporef: tiporef }, function(data) {
+        var html = '';
+        if (data.status === 'not_found') {
+            html = '<div class="alert alert-danger" style="padding:8px 12px;font-size:12px;margin:0">' +
+                   '<i class="fa fa-times-circle"></i> <strong>No encontrado:</strong> ' +
+                   'No existe un documento <em>' + ($('#tipoDocOrig option:selected').text().trim() || tiporef) + '</em>' +
+                   ' con el número <strong>' + numero + '</strong>. Verifique el número ingresado.' +
+                   '</div>';
+            devPreviewOk = false;
+        } else if (data.status === 'found') {
+            var estadoLabel = data.exportado === 'S'
+                ? '<span class="label label-success">Exportado</span>'
+                : '<span class="label label-warning">Pendiente</span>';
+            var devLabel = data.tiene_devolucion > 0
+                ? '<span class="label label-danger" title="Ya existe una devolución para este documento">Devolución existente</span>'
+                : '';
+            html = '<div class="alert alert-info" style="padding:8px 12px;font-size:12px;margin:0">' +
+                   '<i class="fa fa-check-circle"></i> <strong>Documento encontrado:</strong>&nbsp;' +
+                   data.tipo + ' N° <strong>' + data.numero + '</strong> &mdash; ' +
+                   data.empresa + ' &mdash; ' +
+                   '<strong>' + data.fecha + '</strong> &mdash; ' +
+                   estadoLabel + ' ' + devLabel +
+                   '</div>';
+            devPreviewOk = true;
+        } else {
+            html = '<div class="alert alert-warning" style="padding:8px 12px;font-size:12px;margin:0">' +
+                   '<i class="fa fa-exclamation-triangle"></i> Error al consultar el documento.' +
+                   '</div>';
+            devPreviewOk = false;
+        }
+        $('#preview_devolucion_content').html(html);
+        $('#div_preview_devolucion').show();
+    }, 'json').fail(function() {
+        $('#preview_devolucion_content').html(
+            '<div class="alert alert-warning" style="padding:8px 12px;font-size:12px;margin:0">' +
+            '<i class="fa fa-exclamation-triangle"></i> Error de conexión al consultar.</div>'
+        );
+        $('#div_preview_devolucion').show();
+        devPreviewOk = false;
+    });
+}
+
+function limpiarPreviewDevolucion() {
+    devPreviewOk = false;
+    $('#div_preview_devolucion').hide();
+    $('#preview_devolucion_content').html('');
+}
+
 // FUNCIONES DE GESTIÓN DE DOCUMENTOS
 function crearDocumento() {
     const tipo = document.getElementById("idTipo").value;
@@ -487,21 +555,95 @@ function crearDocumento() {
             return false;
         }
 
-        swal({
-            title: "Confirmar Devolución",
-            text: "Está a punto de generar una devolución total al documento:\n\n" +
-                  tipoDocOrigTexto + "  N° " + numeroDev + "\n\n" +
-                  "Esta acción es definitiva e irreversible. ¿Desea continuar?",
-            type: "warning",
-            showCancelButton: true,
-            confirmButtonColor: "#d33",
-            confirmButtonText: "Sí, continuar",
-            cancelButtonText: "Cancelar",
-            closeOnConfirm: true
-        }, function(confirmed) {
-            if (!confirmed) return;
-            document.getElementById("tipoDocRef").value = tipoDocOrig;
-            abrirModalConceptoDevolucion();
+        // Consultar el documento antes de mostrar el modal de confirmación
+        $.post(CONFIG.endpoints.salidas.preview_doc_devolucion,
+               { numero: numeroDev, tiporef: tipoDocOrig },
+        function(data) {
+            var htmlModal, puedeConfirmar;
+
+            if (data.status === 'not_found') {
+                swal("Documento no encontrado",
+                     "No existe un documento de tipo '" + tipoDocOrigTexto + "' con el número " + numeroDev + ".\n\nVerifique que el número corresponde al traslado, no a la Orden de Salida.",
+                     "error");
+                return;
+            }
+
+            if (data.status === 'found') {
+                var estadoHtml = data.exportado === 'S'
+                    ? '<span style="color:#27ae60;font-weight:bold">&#10003; Exportado</span>'
+                    : '<span style="color:#e67e22;font-weight:bold">&#9998; Pendiente</span>';
+
+                var advertencia = data.tiene_devolucion > 0
+                    ? '<div style="margin-top:10px;padding:7px 10px;background:#fff3cd;border-left:4px solid #f39c12;border-radius:3px;font-size:12px;color:#856404">' +
+                      '<strong>&#9888; Advertencia:</strong> Ya existe una devolución registrada para este documento.' +
+                      '</div>'
+                    : '';
+
+                htmlModal =
+                    '<div style="text-align:left;font-size:13px">' +
+                    '<table style="width:100%;border-collapse:collapse">' +
+                    '<tr><td style="color:#888;padding:3px 8px 3px 0;white-space:nowrap">Tipo</td>' +
+                        '<td style="font-weight:bold">' + data.tipo + '</td></tr>' +
+                    '<tr><td style="color:#888;padding:3px 8px 3px 0">Número</td>' +
+                        '<td style="font-weight:bold">' + data.numero + '</td></tr>' +
+                    '<tr><td style="color:#888;padding:3px 8px 3px 0">Empresa</td>' +
+                        '<td>' + data.empresa + '</td></tr>' +
+                    '<tr><td style="color:#888;padding:3px 8px 3px 0">NIT</td>' +
+                        '<td>' + data.nit + '</td></tr>' +
+                    '<tr><td style="color:#888;padding:3px 8px 3px 0">Fecha</td>' +
+                        '<td>' + data.fecha + '</td></tr>' +
+                    '<tr><td style="color:#888;padding:3px 8px 3px 0">Estado</td>' +
+                        '<td>' + estadoHtml + '</td></tr>' +
+                    '</table>' +
+                    advertencia +
+                    '<hr style="margin:10px 0;border-color:#ddd">' +
+                    '<p style="font-size:11px;color:#888;margin:0">Esta acción es definitiva e irreversible.</p>' +
+                    '</div>';
+                puedeConfirmar = true;
+            } else {
+                // Error de conexión: mostrar confirmación básica de todas formas
+                htmlModal =
+                    '<div style="text-align:left;font-size:13px">' +
+                    '<p>' + tipoDocOrigTexto + ' &nbsp;<strong>N° ' + numeroDev + '</strong></p>' +
+                    '<hr style="margin:10px 0;border-color:#ddd">' +
+                    '<p style="font-size:11px;color:#888;margin:0">Esta acción es definitiva e irreversible.</p>' +
+                    '</div>';
+                puedeConfirmar = true;
+            }
+
+            swal({
+                title: "Confirmar Devolución",
+                text: htmlModal,
+                html: true,
+                type: "warning",
+                showCancelButton: true,
+                confirmButtonColor: "#d33",
+                confirmButtonText: "Sí, continuar",
+                cancelButtonText: "Cancelar",
+                closeOnConfirm: true
+            }, function(confirmed) {
+                if (!confirmed) return;
+                document.getElementById("tipoDocRef").value = tipoDocOrig;
+                abrirModalConceptoDevolucion();
+            });
+        }, 'json').fail(function() {
+            // Si falla la consulta, mostrar confirmación básica
+            swal({
+                title: "Confirmar Devolución",
+                text: "Está a punto de generar una devolución total al documento:\n\n" +
+                      tipoDocOrigTexto + "  N° " + numeroDev + "\n\n" +
+                      "Esta acción es definitiva e irreversible. ¿Desea continuar?",
+                type: "warning",
+                showCancelButton: true,
+                confirmButtonColor: "#d33",
+                confirmButtonText: "Sí, continuar",
+                cancelButtonText: "Cancelar",
+                closeOnConfirm: true
+            }, function(confirmed) {
+                if (!confirmed) return;
+                document.getElementById("tipoDocRef").value = tipoDocOrig;
+                abrirModalConceptoDevolucion();
+            });
         });
 
         return false;
@@ -1062,6 +1204,22 @@ function listardetalle(tipo, consecutivo){
             $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.combo_dir, { nit: nit2Usar }, function(html) {
                 $('#direccion2').html(html);
                 $('#direccion2 option').each(function() {
+                    if($(this).val().split(',')[0].trim() == String(dir2Usar).trim()) {
+                        $(this).prop('selected', true);
+                        return false;
+                    }
+                });
+            });
+        }
+        // Cuando Tipo_Docto_Base_2==9 se muestran nit3/nombre3/direccion3 (mostrarCamposEntrada),
+        // así que también hay que llenar esos campos con los mismos datos de "Enviar A".
+        if (String(data.Tipo_Docto_Base_2) === '9' && nit2Usar) {
+            $('#nit3').val(nit2Usar);
+            $('#nombre3').val(nom2Usar);
+            $('#telefono3').val(data.telefono_1 || '');
+            $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.combo_dir, { nit: nit2Usar }, function(html) {
+                $('#direccion3').html(html);
+                $('#direccion3 option').each(function() {
                     if($(this).val().split(',')[0].trim() == String(dir2Usar).trim()) {
                         $(this).prop('selected', true);
                         return false;
