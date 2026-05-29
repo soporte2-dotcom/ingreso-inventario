@@ -50,9 +50,19 @@
                     echo json_encode(["status" => "error", "message" => "El concepto seleccionado no es válido o está inactivo."]);
                     break;
                 }
+                $lineasJson = $_POST["lineasDevolucion"] ?? null;
+                $lineas = null;
+                if ($lineasJson) {
+                    $decoded = json_decode($lineasJson, true);
+                    if (is_array($decoded) && count($decoded) > 0) {
+                        $lineas = array_map(function($l) {
+                            return ['seq' => (int)$l['seq'], 'cantidad' => (float)$l['cantidad']];
+                        }, $decoded);
+                    }
+                }
                 $resultado = $salidas->insert_devolucion(
                     $_POST["idTipo"], $_POST["numero"], $_POST["tipoDocRef"],
-                    $_SESSION["Id_Usuario"], $idConcepto, $nombreVerificado
+                    $_SESSION["Id_Usuario"], $idConcepto, $nombreVerificado, $lineas
                 );
             }
             echo $resultado;
@@ -190,6 +200,10 @@
 
         case "preview_doc_devolucion":
             echo $salidas->preview_doc_devolucion($_POST["numero"] ?? '', $_POST["tiporef"] ?? '');
+        break;
+
+        case "get_lineas_devolucion":
+            echo $salidas->get_lineas_devolucion($_POST["tipo"] ?? '', $_POST["numero"] ?? '');
         break;
 
         case "listar_detalle_salida":

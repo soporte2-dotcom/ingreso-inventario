@@ -379,6 +379,54 @@ try {
             echo json_encode(["tiene" => $permisos->tiene_permiso_especial($uid, 'traslado_sin_os')]);
             break;
 
+        case "cargar_permisos_especiales":
+            $usuario_id = $_POST["usuario_id"] ?? null;
+            if (!$usuario_id) {
+                echo "<div class='alert alert-danger'>No se recibió ID de usuario</div>";
+                break;
+            }
+            $usuario_info = $permisos->get_usuario($usuario_id);
+            if (!$usuario_info) {
+                echo "<div class='alert alert-danger'>Usuario no encontrado</div>";
+                break;
+            }
+            $nombre_completo = $usuario_info['Nom_Usuario'] . ' ' . $usuario_info['Ape_Usuario'];
+            echo "<div class='user-info alert alert-info'>
+                    <h5><span class='glyphicon glyphicon-user'></span> Información del Usuario</h5>
+                    <strong>ID:</strong> {$usuario_info['Id_Usuario']}<br>
+                    <strong>Nombre:</strong> {$nombre_completo}
+                  </div>";
+
+            $tiene_dev_parcial = $permisos->tiene_permiso_especial($usuario_id, 'devolucion_parcial');
+            $checked = $tiene_dev_parcial ? 'checked' : '';
+
+            echo "<h5 style='margin-bottom:15px'><span class='glyphicon glyphicon-star'></span> Permisos Especiales de Salidas</h5>";
+            echo "<div class='documentos-list'>
+                    <div class='checkbox'>
+                        <input type='checkbox' id='perm_devolucion_parcial' name='especiales[]' value='devolucion_parcial' $checked>
+                        <label for='perm_devolucion_parcial'>
+                            <strong>Devolución Parcial</strong>
+                            <small class='text-muted'> &mdash; Permite seleccionar ítems individuales al hacer devoluciones</small>
+                        </label>
+                    </div>
+                  </div>";
+            break;
+
+        case "guardar_permisos_especiales":
+            $usuario_id = $_POST["usuario_id"] ?? null;
+            if (!$usuario_id) {
+                echo json_encode(["status" => "error", "message" => "No se recibió ID de usuario"]);
+                break;
+            }
+            $todos_especiales = ['devolucion_parcial'];
+            $seleccionados = isset($_POST["especiales"]) ? $_POST["especiales"] : [];
+            foreach ($todos_especiales as $modulo) {
+                $valor = in_array($modulo, $seleccionados) ? 'S' : 'N';
+                $permisos->update_permiso($usuario_id, $modulo, $valor);
+            }
+            echo json_encode(["status" => "success", "message" => "Permisos especiales actualizados correctamente"]);
+            break;
+
         default:
             echo "Operación no válida";
             break;

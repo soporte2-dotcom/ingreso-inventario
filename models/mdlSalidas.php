@@ -484,7 +484,65 @@
             }
         }
 
-        public function insert_devolucion($tipo, $numero, $tiporef, $usuario, $idConcepto, $nombreConcepto){
+        public function get_lineas_devolucion($tipo, $numero) {
+            $cn = new Conectarserver;
+            // La subconsulta calcula cuánto ya fue devuelto por ítem (seq)
+            // buscando documentos con Numero_Docto_Base = numero original y Tipo_Docto_Base = tipo original
+            $sql = "SELECT dl.seq, dl.IdProducto, LTRIM(RTRIM(p.Producto)) AS Producto,
+                           LTRIM(RTRIM(u.Unidad)) AS Unidad,
+                           dl.Cantidad_Facturada AS cantidad_original,
+                           ISNULL((
+                               SELECT SUM(dl2.Cantidad_Facturada)
+                               FROM Documentos dev
+                               INNER JOIN Documentos_Lin dl2
+                                   ON dl2.tipo = dev.tipo
+                                   AND dl2.Numero_documento = dev.Numero_documento
+                                   AND dl2.seq = dl.seq
+                               WHERE dev.Numero_Docto_Base = CAST(dl.Numero_documento AS VARCHAR)
+                                 AND dev.Tipo_Docto_Base = ?
+                                 AND dev.exportado = 'S'
+                           ), 0) AS cantidad_devuelta,
+                           dl.Valor_Unitario,
+                           dl.Porcentaje_Descuento_1, dl.Porcentaje_Impuesto,
+                           dl.Numero_Lote, dl.Fecha_Vence
+                    FROM Documentos_Lin dl
+                    INNER JOIN TblProducto p ON p.IdProducto = dl.IdProducto
+                    INNER JOIN TblUnidad u ON u.idUnidad = dl.IdUnidad
+                    WHERE dl.tipo = ? AND dl.Numero_documento = ?
+                    ORDER BY dl.seq ASC";
+            $params = array($tipo, $tipo, $numero);
+            $stmt = sqlsrv_query($cn->getConecta(), $sql, $params);
+            if (!$stmt) {
+                return json_encode(['status' => 'error', 'message' => 'Error al obtener líneas del documento']);
+            }
+            $lineas = [];
+            while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+                $fechaVence = '';
+                if (isset($row['Fecha_Vence']) && $row['Fecha_Vence'] instanceof DateTime) {
+                    $fechaVence = date_format($row['Fecha_Vence'], 'd/m/Y');
+                }
+                $cantOrig      = (float)$row['cantidad_original'];
+                $cantDevuelta  = (float)$row['cantidad_devuelta'];
+                $cantDisponible = max(0, $cantOrig - $cantDevuelta);
+                $lineas[] = array(
+                    'seq'               => $row['seq'],
+                    'IdProducto'        => $row['IdProducto'],
+                    'Producto'          => $row['Producto'],
+                    'Unidad'            => $row['Unidad'],
+                    'cantidad_original' => $cantOrig,
+                    'cantidad_devuelta' => $cantDevuelta,
+                    'cantidad_disponible' => $cantDisponible,
+                    'Valor_Unitario'    => (float)$row['Valor_Unitario'],
+                    'Porcentaje_Descuento' => (float)$row['Porcentaje_Descuento_1'],
+                    'Porcentaje_Impuesto'  => (float)$row['Porcentaje_Impuesto'],
+                    'Numero_Lote'       => $row['Numero_Lote'],
+                    'Fecha_Vence'       => $fechaVence
+                );
+            }
+            return json_encode(['status' => 'success', 'lineas' => $lineas]);
+        }
+
+        public function insert_devolucion($tipo, $numero, $tiporef, $usuario, $idConcepto, $nombreConcepto, $lineas = null){
             $cn = new Conectarserver;
 
             try {
@@ -505,6 +563,17 @@
                     return json_encode(array(
                         "status" => "error",
                         "message" => "El documento de referencia con número '$numero' y tipo '$tiporef' no existe en el sistema"
+                    ));
+                }
+
+                // Validar que el documento esté exportado (guardado)
+                $sql_exp = "SELECT exportado FROM Documentos WHERE Numero_documento = ? AND tipo = ?";
+                $stmt_exp = sqlsrv_query($cn->getConecta(), $sql_exp, array($numero, $tiporef));
+                $row_exp = sqlsrv_fetch_array($stmt_exp, SQLSRV_FETCH_ASSOC);
+                if (!$row_exp || $row_exp['exportado'] !== 'S') {
+                    return json_encode(array(
+                        "status" => "error",
+                        "message" => "El documento N° '$numero' no está en estado Exportado. Solo se pueden generar devoluciones sobre documentos ya guardados."
                     ));
                 }
 
@@ -542,7 +611,8 @@
                     throw new Exception("Error al insertar documento: " . print_r(sqlsrv_errors(), true));
                 }
 
-                $sql1="INSERT INTO Documentos_Lin
+                // Insertar líneas: total o parcial según $lineas
+                $sqlLinBase = "INSERT INTO Documentos_Lin
                 (sw, tipo, seq, modelo, Numero_Documento, Numero_Docto_Base, Numero_Lote, Nit_Cedula, Codigo_Direccion, Fecha_Documento,
                 IdProducto, IdUnidad, Factor_Conversion, Cantidad_Facturada, Cantidad_Pendiente, Cantidad_Orden, Costo_Unitario, Valor_Unitario,
                 Valor_Impuesto, Porcentaje_Impuesto, Porcentaje_Descuento_1, Porcentaje_Descuento_2,Porcentaje_Descuento_3, IdVendedor, Comision_Vendedor,
@@ -551,51 +621,78 @@
                 Porcentaje_ReteFuente, Envase, Numero_Lote_Destino, serial, Impuesto_Consumo, Porcentaje_ReteFuente_2,
                 Porcentaje_ReteFuente_3, Porcentaje_ReteFuente_4, Emp_1, Emp_2, Emp_3, Emp_4, Emp_5, Emp_6,
                 Emp_7, Emp_8, Tara_1, Tara_2, Tara_3, Tara_4, Tara_5, Tara_6, Tara_7, Tara_8)
-
                 (SELECT td.tipo AS sw, '$tipo' AS tipo, dl.seq AS seq, p.contable AS Modelo, (c.siguiente+1) AS Numero_Documento,
-                '' AS Numero_Docto_Base, dl.Numero_Lote AS Numero_Lote, dl.Nit_Cedula AS Nit_Cedula, dl.codigo_direccion AS codigo_direccion,  GETDATE() AS Fecha_Documento,
-                dl.IdProducto AS IdProducto, dl.IdUnidad AS IdUnidad, '1' AS Factor_Conversion, Cantidad_Facturada AS Cantidad_Facturada,
-                (dl.Cantidad_Facturada)* -1 AS Cantidad_Pendiente, dl.Cantidad_Orden AS Cantidad_Orden,
-                dl.Costo_Unitario AS Costo_Unitario, dl.valor_unitario AS Valor_Unitario, (dl.Porcentaje_Impuesto / 100.0 * dl.valor_unitario * dl.Cantidad_Facturada) AS Valor_Impuesto, dl.Porcentaje_Impuesto AS Porcentaje_Impuesto,
+                '' AS Numero_Docto_Base, dl.Numero_Lote AS Numero_Lote, dl.Nit_Cedula AS Nit_Cedula, dl.codigo_direccion AS codigo_direccion, GETDATE() AS Fecha_Documento,
+                dl.IdProducto AS IdProducto, dl.IdUnidad AS IdUnidad, '1' AS Factor_Conversion, {CANT_FACTURADA},
+                {CANT_PENDIENTE}, dl.Cantidad_Orden AS Cantidad_Orden,
+                dl.Costo_Unitario AS Costo_Unitario, dl.valor_unitario AS Valor_Unitario, {VALOR_IMPUESTO}, dl.Porcentaje_Impuesto AS Porcentaje_Impuesto,
                 dl.Porcentaje_Descuento_1 AS Porcentaje_Descuento_1, dl.Porcentaje_Descuento_2 AS Porcentaje_Descuento_2,
                 dl.Porcentaje_Descuento_3 AS Porcentaje_Descuento_3, dl.IdVendedor AS IdVendedor, 0 AS Comision_Vendedor, 0 AS Valor_Comision_Vendedor,
                 td.IdBodega AS IdBodega, 'S' AS Maneja_Inventario, '' AS Tomador, 1 AS IdMoneda, 1 AS Tasa_Moneda_Ext, '0' AS CentroDeCostosDoc,
                 ' ' AS Nota_Linea, '1' AS Unidades, GETDATE() AS Fecha_Vence, 'N' AS Exportado, dl.Costo_Unitario_Inicial AS Costo_Unitario_Inicial,
-                CASE
-                WHEN LTRIM(RTRIM(t.TipoPersona)) = 'Juridica' THEN r.PorcentajeRetencionJuridica
-                ELSE r.PorcentajeRetencionNatural
-                END AS Porcentaje_ReteFuente, 0 AS Envase, 0 AS Numero_Lote_Destino, '' AS serial, 0 AS Impuesto_Consumo, 0 AS Porcentaje_ReteFuente_2,
+                CASE WHEN LTRIM(RTRIM(t.TipoPersona)) = 'Juridica' THEN r.PorcentajeRetencionJuridica
+                ELSE r.PorcentajeRetencionNatural END AS Porcentaje_ReteFuente, 0 AS Envase, 0 AS Numero_Lote_Destino, '' AS serial, 0 AS Impuesto_Consumo, 0 AS Porcentaje_ReteFuente_2,
                 0 AS Porcentaje_ReteFuente_3, 0 AS Porcentaje_ReteFuente_4, 0 AS Emp_1, 0 AS Emp_2, 0 AS Emp_3, 0 AS Emp_4, 0 AS Emp_5, 0 AS Emp_6,
                 0 AS Emp_7, 0 AS Emp_8, 0 AS Tara_1, 0 AS Tara_2, 0 AS Tara_3, 0 AS Tara_4, 0 AS Tara_5, 0 AS Tara_6, 0 AS Tara_7, 0 AS Tara_8
-
-                FROM  consecutivos c, Documentos_Lin dl
+                FROM consecutivos c, Documentos_Lin dl
                 INNER JOIN Documentos d ON d.Numero_documento=dl.Numero_Documento AND d.tipo = dl.tipo
                 INNER JOIN TblTipoDoctos td ON td.idTipoDoctos = '$tipo'
                 LEFT JOIN TblProducto p ON p.IdProducto = dl.IdProducto
                 LEFT JOIN TblTerceros t ON dl.Nit_Cedula=t.nit_cedula
                 LEFT JOIN TblRetencion r ON p.Retencion=r.IdRetencion
+                WHERE c.tipo = '$tipo' AND dl.Numero_documento = '$numero' AND dl.tipo = '$tiporef'{SEQ_FILTER})";
 
-                WHERE c.tipo = '$tipo' AND dl.Numero_documento = '$numero' AND dl.tipo = '$tiporef'
-                )";
+                if ($lineas !== null && is_array($lineas) && count($lineas) > 0) {
+                    // Devolución parcial: insertar línea por línea con cantidad personalizada
+                    foreach ($lineas as $linea) {
+                        $seq        = (int)$linea['seq'];
+                        $cantidadDev = (float)$linea['cantidad'];
+                        if ($cantidadDev <= 0) continue;
 
-                $registros = sqlsrv_prepare($cn->getConecta(), $sql1);
-                if(sqlsrv_execute($registros) === false) {
-                    throw new Exception("Error al insertar detalle del documento: " . print_r(sqlsrv_errors(), true));
+                        $sqlLin = str_replace(
+                            ['{CANT_FACTURADA}', '{CANT_PENDIENTE}', '{VALOR_IMPUESTO}', '{SEQ_FILTER}'],
+                            [
+                                "$cantidadDev AS Cantidad_Facturada",
+                                "($cantidadDev) * -1 AS Cantidad_Pendiente",
+                                "(dl.Porcentaje_Impuesto / 100.0 * dl.valor_unitario * $cantidadDev) AS Valor_Impuesto",
+                                " AND dl.seq = $seq"
+                            ],
+                            $sqlLinBase
+                        );
+                        $stmtLin = sqlsrv_prepare($cn->getConecta(), $sqlLin);
+                        if (sqlsrv_execute($stmtLin) === false) {
+                            throw new Exception("Error al insertar línea seq=$seq: " . print_r(sqlsrv_errors(), true));
+                        }
+                    }
+                } else {
+                    // Devolución total: copiar todas las líneas del documento original
+                    $sql1 = str_replace(
+                        ['{CANT_FACTURADA}', '{CANT_PENDIENTE}', '{VALOR_IMPUESTO}', '{SEQ_FILTER}'],
+                        [
+                            'Cantidad_Facturada AS Cantidad_Facturada',
+                            '(dl.Cantidad_Facturada) * -1 AS Cantidad_Pendiente',
+                            '(dl.Porcentaje_Impuesto / 100.0 * dl.valor_unitario * dl.Cantidad_Facturada) AS Valor_Impuesto',
+                            ''
+                        ],
+                        $sqlLinBase
+                    );
+                    $stmtLin = sqlsrv_prepare($cn->getConecta(), $sql1);
+                    if (sqlsrv_execute($stmtLin) === false) {
+                        throw new Exception("Error al insertar detalle del documento: " . print_r(sqlsrv_errors(), true));
+                    }
                 }
 
-                // Actualizar Valor_impuesto en cabecera como suma de impuestos del detalle
-                $sql_imp = "UPDATE Documentos SET
-                    Valor_impuesto = (
-                        SELECT ISNULL(SUM(dl.Valor_Impuesto), 0)
-                        FROM Documentos_Lin dl
-                        WHERE dl.tipo = '$tipo'
-                          AND dl.Numero_documento = (SELECT siguiente+1 FROM Consecutivos WHERE tipo = '$tipo')
-                    )
-                    WHERE tipo = '$tipo'
-                      AND Numero_Documento = (SELECT siguiente+1 FROM Consecutivos WHERE tipo = '$tipo')";
-                $registros = sqlsrv_prepare($cn->getConecta(), $sql_imp);
-                if(sqlsrv_execute($registros) === false) {
-                    throw new Exception("Error al actualizar Valor_impuesto en cabecera: " . print_r(sqlsrv_errors(), true));
+                // Recalcular totales en cabecera (obligatorio para parciales, consistencia en totales para totales)
+                $sql_totales = "UPDATE Documentos SET
+                    Total_Items    = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = '$tipo' AND Numero_documento = (SELECT siguiente+1 FROM Consecutivos WHERE tipo = '$tipo')),
+                    Valor_impuesto = (SELECT ISNULL(SUM(dl.Valor_Impuesto), 0) FROM Documentos_Lin dl WHERE dl.tipo = '$tipo' AND dl.Numero_documento = (SELECT siguiente+1 FROM Consecutivos WHERE tipo = '$tipo')),
+                    valor_total    = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - dl.Porcentaje_Descuento_1/100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - dl.Porcentaje_Descuento_1/100)) * (dl.Porcentaje_Impuesto/100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = '$tipo' AND dl.Numero_documento = (SELECT siguiente+1 FROM Consecutivos WHERE tipo = '$tipo')),
+                    costo          = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - dl.Porcentaje_Descuento_1/100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - dl.Porcentaje_Descuento_1/100)) * (dl.Porcentaje_Impuesto/100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = '$tipo' AND dl.Numero_documento = (SELECT siguiente+1 FROM Consecutivos WHERE tipo = '$tipo')),
+                    valor_aplicado = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - dl.Porcentaje_Descuento_1/100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - dl.Porcentaje_Descuento_1/100)) * (dl.Porcentaje_Impuesto/100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = '$tipo' AND dl.Numero_documento = (SELECT siguiente+1 FROM Consecutivos WHERE tipo = '$tipo'))
+                    WHERE tipo = '$tipo' AND Numero_Documento = (SELECT siguiente+1 FROM Consecutivos WHERE tipo = '$tipo')";
+                $stmtTot = sqlsrv_prepare($cn->getConecta(), $sql_totales);
+                if (sqlsrv_execute($stmtTot) === false) {
+                    throw new Exception("Error al recalcular totales en cabecera: " . print_r(sqlsrv_errors(), true));
                 }
 
                 $sql2="UPDATE Consecutivos SET siguiente = siguiente+1 WHERE tipo = '$tipo' ";

@@ -21,6 +21,12 @@ $(document).ready(function() {
         recargarPermisosSiHayUsuario();
     });
 
+    $("#btn_permisos_especiales").click(function() {
+        tipoPermisosActual = 'especiales';
+        actualizarBotonesActivos(this);
+        recargarPermisosSiHayUsuario();
+    });
+
     function actualizarBotonesActivos(botonActivo) {
         $(".permiso-btn").removeClass('active');
         $(botonActivo).addClass('active');
@@ -102,6 +108,8 @@ $(document).ready(function() {
             operacion = 'cargar_permisos';
         } else if (tipoPermisosActual === 'entradas') {
             operacion = 'cargar_permisos_entradas';
+        } else if (tipoPermisosActual === 'especiales') {
+            operacion = 'cargar_permisos_especiales';
         } else {
             operacion = 'cargar_permisos_salidas';
         }
@@ -130,6 +138,8 @@ $(document).ready(function() {
                 textoBoton = 'Guardar Permisos de Módulos';
             } else if (tipoPermisosActual === 'entradas') {
                 textoBoton = 'Guardar Permisos de Entradas';
+            } else if (tipoPermisosActual === 'especiales') {
+                textoBoton = 'Guardar Permisos Especiales';
             } else {
                 textoBoton = 'Guardar Permisos de Salidas';
             }
@@ -214,6 +224,9 @@ $(document).ready(function() {
             operacion = 'guardar_permisos_documentos';
             texto = 'permisos de entradas';
             formData.append('tipo_documentos', 'entradas');
+        } else if (tipoPermisosActual === 'especiales') {
+            operacion = 'guardar_permisos_especiales';
+            texto = 'permisos especiales';
         } else {
             operacion = 'guardar_permisos_documentos';
             texto = 'permisos de salidas';

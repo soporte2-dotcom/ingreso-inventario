@@ -6,6 +6,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 require_once("../../models/mdlPermisos.php");
 $_permisos = new Permisos();
 $permiteTraslado = $_permisos->tiene_permiso_especial($_SESSION["Id_Usuario"], 'traslado_sin_os');
+$permiteDevolucionParcial = $_permisos->tiene_permiso_especial($_SESSION["Id_Usuario"], 'devolucion_parcial');
 ?>
 <!DOCTYPE html>
 <html>
@@ -45,6 +46,7 @@ $permiteTraslado = $_permisos->tiene_permiso_especial($_SESSION["Id_Usuario"], '
 
 <title>Cervalle::Salidas</title>
 <script>window.permiteTraslado = <?= $permiteTraslado ? 'true' : 'false' ?>;</script>
+<script>window.permiteDevolucionParcial = <?= $permiteDevolucionParcial ? 'true' : 'false' ?>;</script>
 </head>
 
 <body class="with-side-menu sidebar-hidden">
@@ -665,6 +667,67 @@ $permiteTraslado = $_permisos->tiene_permiso_especial($_SESSION["Id_Usuario"], '
 								</div>
 							</div>
 							<!-- Fin Modal Concepto Devolución -->
+
+							<!-- Modal Items Devolución Parcial -->
+							<div class="modal fade" id="modalItemsDevolucion" tabindex="-1" role="dialog"
+								 aria-labelledby="modalItemsDevolucionTitle" aria-hidden="true"
+								 data-backdrop="static" data-keyboard="false">
+								<div class="modal-dialog modal-lg" role="document">
+									<div class="modal-content">
+										<div class="modal-header bg-danger text-white">
+											<h5 class="modal-title" id="modalItemsDevolucionTitle">
+												<i class="fa fa-list-ul"></i> Seleccionar Ítems a Devolver
+											</h5>
+										</div>
+										<div class="modal-body">
+											<div class="alert alert-warning py-2 mb-2">
+												<i class="fa fa-exclamation-triangle"></i>
+												Marque los productos a devolver y ajuste las cantidades. La cantidad a devolver no puede superar la cantidad original.
+											</div>
+											<div id="divItemsDevLoading" class="text-center py-3">
+												<i class="fa fa-spinner fa-spin fa-2x"></i>
+												<p class="mt-2">Cargando ítems del documento...</p>
+											</div>
+											<div id="divItemsDevError" class="alert alert-danger" style="display:none">
+												<i class="fa fa-times-circle"></i> Error al cargar los ítems. Intente de nuevo.
+											</div>
+											<div id="divItemsDevTabla" style="display:none">
+												<div style="margin-bottom:6px">
+													<a href="#" id="btnSeleccionarTodosItems" style="font-size:12px">Seleccionar todos</a>
+													&nbsp;|&nbsp;
+													<a href="#" id="btnDeseleccionarTodosItems" style="font-size:12px">Quitar selección</a>
+												</div>
+												<div style="max-height:380px;overflow-y:auto">
+													<table class="table table-sm table-bordered table-striped" id="tbItemsDevolucion">
+														<thead class="thead-dark" style="font-size:12px">
+															<tr>
+																<th style="width:36px;text-align:center">&#10003;</th>
+																<th>Producto</th>
+																<th style="width:72px">Unidad</th>
+																<th style="width:80px;text-align:right">Original</th>
+																<th style="width:80px;text-align:center">Ya devuelta</th>
+																<th style="width:100px;text-align:center">A devolver</th>
+																<th style="width:85px;text-align:right">Val. Unit.</th>
+																<th style="width:75px">Lote</th>
+															</tr>
+														</thead>
+														<tbody id="tbodyItemsDev"></tbody>
+													</table>
+												</div>
+											</div>
+										</div>
+										<div class="modal-footer">
+											<button type="button" class="btn btn-secondary" id="btnCancelarItemsDev">
+												Cancelar
+											</button>
+											<button type="button" class="btn btn-danger" id="btnContinuarItemsDev" disabled>
+												<i class="fa fa-arrow-right"></i> Continuar
+											</button>
+										</div>
+									</div>
+								</div>
+							</div>
+							<!-- Fin Modal Items Devolución Parcial -->
 
 							<!-- Modal Cargar Excel -->
 							<div class="modal fade" id="modalexcel" tabindex="-1" role="dialog" aria-labelledby="modalexcelTitle" aria-hidden="true" data-backdrop="static" data-keyboard="false">

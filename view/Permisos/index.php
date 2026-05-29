@@ -72,7 +72,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 
 .tipo-permisos-selector .permiso-btn {
     float: left;
-    width: 32%;
+    width: 23.5%;
     padding: 15px 20px;
     background-color: #f8f9fa !important;
     border: 2px solid #dee2e6 !important;
@@ -131,6 +131,12 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 .tipo-permisos-selector .permiso-btn.salidas-btn.active {
     background-color: #dc3545 !important;
     border-color: #dc3545 !important;
+    color: #ffffff !important;
+}
+
+.tipo-permisos-selector .permiso-btn.especiales-btn.active {
+    background-color: #6f42c1 !important;
+    border-color: #6f42c1 !important;
     color: #ffffff !important;
 }
 
@@ -215,6 +221,10 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 
                                 <button type="button" id="btn_permisos_salidas" class="permiso-btn salidas-btn">
                                     <span class="glyphicon glyphicon-log-out"></span> Permisos de Salidas
+                                </button>
+
+                                <button type="button" id="btn_permisos_especiales" class="permiso-btn especiales-btn">
+                                    <span class="glyphicon glyphicon-star"></span> Permisos Especiales
                                 </button>
                             </div>
                         </div>

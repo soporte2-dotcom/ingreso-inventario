@@ -32,7 +32,8 @@ const CONFIG = {
             update_notas_etapa: "../../controller/salidas.php?op=update_notas_etapa",
             validar_os: "../../controller/salidas.php?op=validar_os",
             reiniciar_doc_desde_os: "../../controller/salidas.php?op=reiniciar_doc_desde_os",
-            preview_doc_devolucion: "../../controller/salidas.php?op=preview_doc_devolucion"
+            preview_doc_devolucion: "../../controller/salidas.php?op=preview_doc_devolucion",
+            get_lineas_devolucion:  "../../controller/salidas.php?op=get_lineas_devolucion"
         },
         etapas: {
             listar_activas: "../../controller/etapas.php?op=listar_activas"
@@ -418,6 +419,7 @@ function mostrarModalEstadoOS(numero, resp, modo, onCrear) {
 
 // ─── PREVIEW DEVOLUCIÓN ──────────────────────────────────────────────────────
 var devPreviewOk = false;
+var lineasDevolucionSeleccionadas = null;
 
 function consultarPreviewDevolucion() {
     var numero  = $.trim($('#numero').val());
@@ -569,9 +571,15 @@ function crearDocumento() {
             }
 
             if (data.status === 'found') {
-                var estadoHtml = data.exportado === 'S'
-                    ? '<span style="color:#27ae60;font-weight:bold">&#10003; Exportado</span>'
-                    : '<span style="color:#e67e22;font-weight:bold">&#9998; Pendiente</span>';
+                if (data.exportado !== 'S') {
+                    swal('No permitido',
+                         'El documento ' + ($('#tipoDocOrig option:selected').text().trim() || tipoDocOrig) +
+                         ' N° ' + numeroDev + ' aún no está guardado (exportado).\n\nSolo se pueden generar devoluciones sobre documentos ya exportados.',
+                         'error');
+                    return;
+                }
+
+                var estadoHtml = '<span style="color:#27ae60;font-weight:bold">&#10003; Exportado</span>';
 
                 var advertencia = data.tiene_devolucion > 0
                     ? '<div style="margin-top:10px;padding:7px 10px;background:#fff3cd;border-left:4px solid #f39c12;border-radius:3px;font-size:12px;color:#856404">' +
@@ -624,7 +632,61 @@ function crearDocumento() {
             }, function(confirmed) {
                 if (!confirmed) return;
                 document.getElementById("tipoDocRef").value = tipoDocOrig;
-                abrirModalConceptoDevolucion();
+                lineasDevolucionSeleccionadas = null;
+                if (window.permiteDevolucionParcial) {
+                    // setTimeout necesario: SweetAlert v1 no permite abrir un segundo swal
+                    // dentro del callback del primero sin que el DOM se limpie primero
+                    setTimeout(function() {
+                        swal({
+                            title: "Tipo de Devolución",
+                            text: "¿Desea hacer una devolución parcial (seleccionar ítems) o completa (todos los ítems)?",
+                            type: "info",
+                            showCancelButton: true,
+                            confirmButtonColor: "#6f42c1",
+                            confirmButtonText: "Parcial",
+                            cancelButtonText: "Completa",
+                            closeOnConfirm: true,
+                            closeOnCancel: true
+                        }, function(esParcial) {
+                            if (esParcial === true) {
+                                abrirModalItemsDevolucion(numeroDev, tipoDocOrig);
+                            } else if (esParcial === false) {
+                                // Completa: cargar disponibles y usar todo lo que queda
+                                $.ajax({
+                                    url: CONFIG.endpoints.salidas.get_lineas_devolucion,
+                                    type: 'POST',
+                                    dataType: 'json',
+                                    data: { tipo: tipoDocOrig, numero: numeroDev },
+                                    success: function(data) {
+                                        if (data.status === 'success' && data.lineas && data.lineas.length > 0) {
+                                            var disponibles = [];
+                                            $.each(data.lineas, function(i, l) {
+                                                var cantDisp = parseFloat(l.cantidad_disponible);
+                                                if (cantDisp > 0) {
+                                                    disponibles.push({ seq: l.seq, cantidad: cantDisp });
+                                                }
+                                            });
+                                            if (disponibles.length === 0) {
+                                                swal('Advertencia', 'Todos los ítems de este documento ya fueron devueltos.', 'warning');
+                                                return;
+                                            }
+                                            lineasDevolucionSeleccionadas = disponibles;
+                                        } else {
+                                            lineasDevolucionSeleccionadas = null;
+                                        }
+                                        abrirModalConceptoDevolucion();
+                                    },
+                                    error: function() {
+                                        lineasDevolucionSeleccionadas = null;
+                                        abrirModalConceptoDevolucion();
+                                    }
+                                });
+                            }
+                        });
+                    }, 300);
+                } else {
+                    abrirModalConceptoDevolucion();
+                }
             });
         }, 'json').fail(function() {
             // Si falla la consulta, mostrar confirmación básica
@@ -2575,6 +2637,9 @@ $(document).on('click', '#btnConfirmarConcepto', function() {
     const formDataDev = new FormData($("#doc_form")[0]);
     formDataDev.append('idConceptoDevolucion',     idConcepto);
     formDataDev.append('nombreConceptoDevolucion', nombreConcepto);
+    if (lineasDevolucionSeleccionadas !== null) {
+        formDataDev.append('lineasDevolucion', JSON.stringify(lineasDevolucionSeleccionadas));
+    }
 
     $.ajax({
         url:         CONFIG.endpoints.salidas.insert_doc_salida,
@@ -2602,6 +2667,156 @@ $(document).on('click', '#btnConfirmarConcepto', function() {
     });
 
     $("#btncrear").prop('disabled', true);
+});
+
+// ─── MODAL ÍTEMS DEVOLUCIÓN PARCIAL ──────────────────────────────────────────
+
+function abrirModalItemsDevolucion(numero, tiporef) {
+    $('#divItemsDevLoading').show();
+    $('#divItemsDevError').hide();
+    $('#divItemsDevTabla').hide();
+    $('#tbodyItemsDev').html('');
+    $('#btnContinuarItemsDev').prop('disabled', true);
+    $('#modalItemsDevolucion').modal('show');
+
+    $.ajax({
+        url:      CONFIG.endpoints.salidas.get_lineas_devolucion,
+        type:     'POST',
+        dataType: 'json',
+        data:     { tipo: tiporef, numero: numero },
+        success: function(data) {
+            $('#divItemsDevLoading').hide();
+            if (data.status !== 'success' || !data.lineas || data.lineas.length === 0) {
+                $('#divItemsDevError').show();
+                return;
+            }
+
+            var filas = '';
+            var hayDisponibles = false;
+
+            $.each(data.lineas, function(i, l) {
+                var cantOrig  = parseFloat(l.cantidad_original);
+                var cantDev   = parseFloat(l.cantidad_devuelta);
+                var cantDisp  = parseFloat(l.cantidad_disponible);
+                var valUnit   = parseFloat(l.Valor_Unitario).toLocaleString('es-CO', {minimumFractionDigits:2, maximumFractionDigits:2});
+                var agotado   = cantDisp <= 0;
+
+                if (!agotado) hayDisponibles = true;
+
+                var devueltaHtml = cantDev > 0
+                    ? '<span style="color:#c0392b;font-size:11px">' + cantDev + '</span>'
+                    : '<span style="color:#aaa;font-size:11px">—</span>';
+
+                var cantCeldaHtml = agotado
+                    ? '<span style="color:#aaa;font-size:11px">Agotado</span>'
+                    : '<input type="number" class="form-control form-control-sm inputCantDev" ' +
+                      'value="' + cantDisp + '" min="0.001" max="' + cantDisp + '" step="any" ' +
+                      'style="width:90px;display:none" disabled>';
+
+                var rowStyle = agotado ? 'background:#f8f8f8;color:#aaa;' : '';
+
+                filas +=
+                    '<tr data-seq="' + l.seq + '" data-cant="' + cantDisp + '" style="' + rowStyle + '">' +
+                    '<td style="text-align:center;vertical-align:middle">' +
+                        (agotado ? '' : '<input type="checkbox" class="chkItemDev">') +
+                    '</td>' +
+                    '<td style="font-size:12px;vertical-align:middle">' + l.IdProducto + ' - ' + l.Producto + '</td>' +
+                    '<td style="font-size:12px;vertical-align:middle">' + l.Unidad + '</td>' +
+                    '<td style="text-align:right;font-size:12px;vertical-align:middle">' + cantOrig + '</td>' +
+                    '<td style="text-align:center;vertical-align:middle">' + devueltaHtml + '</td>' +
+                    '<td style="text-align:center;vertical-align:middle">' + cantCeldaHtml + '</td>' +
+                    '<td style="text-align:right;font-size:12px;vertical-align:middle">' + valUnit + '</td>' +
+                    '<td style="font-size:11px;vertical-align:middle">' + (l.Numero_Lote || '') + '</td>' +
+                    '</tr>';
+            });
+
+            $('#tbodyItemsDev').html(filas);
+
+            if (!hayDisponibles) {
+                $('#tbodyItemsDev').after(
+                    '<div class="alert alert-danger mt-2">' +
+                    '<i class="fa fa-ban"></i> Todos los ítems de este documento ya fueron devueltos.' +
+                    '</div>'
+                );
+                $('#btnContinuarItemsDev').prop('disabled', true);
+            }
+
+            $('#divItemsDevTabla').show();
+        },
+        error: function() {
+            $('#divItemsDevLoading').hide();
+            $('#divItemsDevError').show();
+        }
+    });
+}
+
+$(document).on('change', '.chkItemDev', function() {
+    var $row   = $(this).closest('tr');
+    var $input = $row.find('.inputCantDev');
+    if ($(this).prop('checked')) {
+        $input.show().prop('disabled', false);
+    } else {
+        $input.hide().prop('disabled', true);
+    }
+    var haySel = $('#tbodyItemsDev .chkItemDev:checked').length > 0;
+    $('#btnContinuarItemsDev').prop('disabled', !haySel);
+});
+
+$(document).on('click', '#btnSeleccionarTodosItems', function(e) {
+    e.preventDefault();
+    $('#tbodyItemsDev .chkItemDev').each(function() {
+        $(this).prop('checked', true).trigger('change');
+    });
+});
+
+$(document).on('click', '#btnDeseleccionarTodosItems', function(e) {
+    e.preventDefault();
+    $('#tbodyItemsDev .chkItemDev').each(function() {
+        $(this).prop('checked', false).trigger('change');
+    });
+});
+
+$(document).on('click', '#btnCancelarItemsDev', function() {
+    lineasDevolucionSeleccionadas = null;
+    $('#modalItemsDevolucion').modal('hide');
+    $('#btncrear').prop('disabled', false);
+});
+
+$(document).on('click', '#btnContinuarItemsDev', function() {
+    var lineas = [];
+    var errores = [];
+
+    $('#tbodyItemsDev tr').each(function() {
+        var $chk = $(this).find('.chkItemDev');
+        if (!$chk.prop('checked')) return;
+
+        var seq      = parseInt($(this).data('seq'), 10);
+        var cantOrig = parseFloat($(this).data('cant'));
+        var cantDev  = parseFloat($(this).find('.inputCantDev').val());
+
+        if (isNaN(cantDev) || cantDev <= 0) {
+            errores.push('La cantidad del ítem seq ' + seq + ' debe ser mayor a 0.');
+            return;
+        }
+        if (cantDev > cantOrig) {
+            errores.push('La cantidad del ítem seq ' + seq + ' (' + cantDev + ') supera la disponible (' + cantOrig + ').');
+            return;
+        }
+        lineas.push({ seq: seq, cantidad: cantDev });
+    });
+
+    if (errores.length > 0) {
+        swal('Advertencia', errores.join('\n'), 'warning');
+        return;
+    }
+    if (lineas.length === 0) {
+        swal('Advertencia', 'Debe seleccionar al menos un ítem para continuar.', 'warning');
+        return;
+    }
+
+    lineasDevolucionSeleccionadas = lineas;
+    $('#modalItemsDevolucion').modal('hide');
+    abrirModalConceptoDevolucion();
 });
 
 // ─── MODAL CONCEPTO DOTACIÓN Y EPP ───────────────────────────────────────────
