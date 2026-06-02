@@ -2352,10 +2352,17 @@ function imprimirDocumento() {
         '@media print{body{margin:6px}.barcode-font{font-size:36px}}' +
         '</style></head><body>' +
 
+        (($('#dotacion_epp').prop('checked')) ?
+        '<div style="text-align:center;margin-bottom:6px">' +
+        '<span style="font-size:10px;font-weight:bold;color:#555;letter-spacing:1px;border:1px solid #bbb;border-radius:3px;padding:2px 8px">FO-INV-003</span>' +
+        '</div>' : '') +
+
         '<div class="cabecera">' +
         '<div class="logo-empresa"><img src="' + logoUrl + '" alt="Logo empresa"></div>' +
         '<div class="info-doc">' +
-        '<h2>Movimiento de Inventario</h2>' +
+        ($('#dotacion_epp').prop('checked')
+            ? '<h2>Entrega Dotación y EPP</h2>'
+            : '<h2>Movimiento de Inventario</h2>') +
         '<p><b>NRO:</b> ' + numdoc + '</p>' +
         '<p><b>Fecha Documento:</b> ' + fecha1 + '</p>' +
         '<p><b>Tipo Movimiento:</b> ' + tipodoc + '</p>' +
