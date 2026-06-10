@@ -625,10 +625,14 @@ function agregarEventosEdicionInline() {
     // Limpiar eventos anteriores para evitar duplicados
     table.removeEventListener('dblclick', manejarDobleClic);
     table.addEventListener('dblclick', manejarDobleClic);
-    
+
     // Evento para eliminar con delegation
     document.removeEventListener('click', manejarEliminarGlobal);
     document.addEventListener('click', manejarEliminarGlobal);
+
+    // Evento para imprimir etiqueta con delegation
+    document.removeEventListener('click', manejarImprimirEtiquetaGlobal);
+    document.addEventListener('click', manejarImprimirEtiquetaGlobal);
 }
 
 // Función separada para manejar doble clic
@@ -650,9 +654,18 @@ function manejarEliminarGlobal(e) {
         const consecutivo = getUrlParameter('consecutivo');
         const seq = row.cells[0].textContent.trim();
         const producto = row.cells[1].textContent.trim();
-        
+
         console.log(' Eliminando producto:', producto);
         eliminar(tipo, consecutivo, producto, seq);
+    }
+}
+
+// Función separada para manejar impresión de etiqueta global
+function manejarImprimirEtiquetaGlobal(e) {
+    if (e.target.closest('.btn-imprimir-etiqueta')) {
+        e.preventDefault();
+        const row = e.target.closest('tr');
+        abrirModalEtiqueta(row);
     }
 }
 
@@ -885,6 +898,9 @@ function limpiarEstadoEdicionNativa() {
         // Restaurar botones básicos
         actionsCell.innerHTML = `
             <div class="edit-actions">
+                <button type="button" class="btn btn-success btn-sm btn-action btn-imprimir-etiqueta" title="Imprimir Etiqueta">
+                    <i class="fa fa-tag"></i>
+                </button>
                 <button type="button" class="btn btn-info btn-sm btn-action btn-duplicar" title="Duplicar línea">
                     <i class="fa fa-copy"></i>
                 </button>
@@ -1184,6 +1200,91 @@ function eliminarSeleccionados() {
     });
 }
 
+// FUNCIONES DE IMPRESIÓN DE ETIQUETA
+function abrirModalEtiqueta(row) {
+    const codigo   = row.cells[1].textContent.trim();
+    const nombre   = row.cells[2].textContent.trim();
+    const lote     = row.cells[8].textContent.trim();
+    const cantidadRaw = row.cells[4].textContent.trim();
+    const cantidad = parseFloat(cantidadRaw.replace(/,/g, '')) || 0;
+
+    $('#etq_codigo').val(codigo);
+    $('#etq_nombre').val(nombre);
+    $('#etq_lote').val(lote);
+    $('#etq_cantidad').val(cantidad);
+
+    $('#modalImprimirEtiqueta').modal('show');
+}
+
+function imprimirEtiqueta() {
+    const codigo   = $('#etq_codigo').val().trim();
+    const nombre   = $('#etq_nombre').val().trim();
+    const lote     = $('#etq_lote').val().trim();
+    const cantidad = parseFloat($('#etq_cantidad').val());
+
+    if (!cantidad || cantidad <= 0) {
+        swal("Advertencia!", "La cantidad debe ser mayor a 0.", "warning");
+        return;
+    }
+
+    // Formato barcode: 6 dígitos código + 4 dígitos entero + 2 dígitos decimal + 7 chars lote (sin separadores)
+    const codigoFormateado = String(codigo).padStart(6, '0');
+
+    const cantFixed        = Math.abs(cantidad).toFixed(2).split('.');
+    const cantidadFormateada = cantFixed[0].padStart(4, '0') + '.' + cantFixed[1]; // solo para display
+    const cantidadBarcode    = cantFixed[0].padStart(4, '0') + cantFixed[1];       // 6 dígitos sin punto
+
+    const loteFormateado = String(lote).padStart(7, '0');
+
+    const valorBarcode = codigoFormateado + cantidadBarcode + loteFormateado; // ej: 0110260010000000000
+
+    var baseUrl = window.location.href.split('/view/')[0];
+    var logoUrl = baseUrl + '/public/logo-empresas/logo-empresa.png';
+
+    var htmlContent = '<!DOCTYPE html><html><head>' +
+        '<meta charset="UTF-8">' +
+        '<title>Etiqueta ' + codigoFormateado + '</title>' +
+        '<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>' +
+        '<style>' +
+        '@page { size: 4.8cm 4.8cm; margin: 0; }' +
+        'html, body { margin: 0; padding: 0; width: 4.8cm; height: 4.8cm; font-family: Arial, sans-serif; }' +
+        '.etiqueta { width: 4.8cm; height: 4.8cm; padding: 1.5mm 2mm; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: 0.5mm; overflow: hidden; }' +
+        '.etq-logo { max-width: 75%; max-height: 8mm; object-fit: contain; display: block; }' +
+        '.etq-codigo-destaque { font-size: 15px; font-weight: bold; color: #000; text-align: center; letter-spacing: 1px; width: 100%; line-height: 1.2; }' +
+        '.etq-cantidad { font-size: 8px; color: #333; text-align: center; width: 100%; }' +
+        '.etq-barcode-wrap { width: 100%; display: flex; flex-direction: column; align-items: center; padding: 0 2mm; box-sizing: border-box; }' +
+        '#etq-barcode { display: block; max-width: 100%; height: auto; }' +
+        '.etq-barcode-val { font-size: 8.5px; font-weight: bold; text-align: center; letter-spacing: 0.5px; color: #000; width: 100%; margin-top: 0; line-height: 1; }' +
+        '@media print { html, body { margin: 0; } }' +
+        '</style></head><body>' +
+        '<div class="etiqueta">' +
+        '<img class="etq-logo" src="' + logoUrl + '" alt="CERVALLE">' +
+        '<div class="etq-codigo-destaque">' + codigoFormateado + '</div>' +
+        '<div class="etq-cantidad">Cantidad: ' + parseFloat(cantidad.toFixed(2)) + '</div>' +
+        '<div class="etq-barcode-wrap"><svg id="etq-barcode"></svg>' +
+        '<div class="etq-barcode-val">' + valorBarcode + '</div></div>' +
+        '</div>' +
+        '<script>' +
+        'window.onload = function() {' +
+        '    JsBarcode("#etq-barcode", "' + valorBarcode + '", {' +
+        '        format: "CODE128",' +
+        '        width: 1.2,' +
+        '        height: 28,' +
+        '        displayValue: false,' +
+        '        margin: 0' +
+        '    });' +
+        '    setTimeout(function() { window.print(); }, 500);' +
+        '};' +
+        '<\/script>' +
+        '</body></html>';
+
+    var newWindow = window.open('', '_blank');
+    newWindow.document.write(htmlContent);
+    newWindow.document.close();
+
+    $('#modalImprimirEtiqueta').modal('hide');
+}
+
 // EVENT HANDLERS
 $(document).on("click", "#btncrear", function(event) {
     event.preventDefault();
@@ -1202,6 +1303,10 @@ $(document).on("click", "#btneditar", function(event) {
 
 $(document).on("click", "#btnguardar", function() {
     guardarDocumento();
+});
+
+$(document).on("click", "#btnImprimirEtiqueta", function() {
+    imprimirEtiqueta();
 });
 
 init();

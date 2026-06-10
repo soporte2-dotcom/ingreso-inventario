@@ -250,6 +250,9 @@
                 if($row["exportado"] == 'N') {
                     $sub_array[] = '
                         <div class="edit-actions">
+                            <button type="button" class="btn btn-success btn-sm btn-action btn-imprimir-etiqueta" title="Imprimir Etiqueta">
+                                <i class="fa fa-tag"></i>
+                            </button>
                             <button type="button" class="btn btn-info btn-sm btn-action btn-duplicar" title="Duplicar línea">
                                 <i class="fa fa-copy"></i>
                             </button>
@@ -262,6 +265,9 @@
                 } else {
                     $sub_array[] = '
                         <div class="edit-actions">
+                            <button type="button" class="btn btn-success btn-sm btn-action btn-imprimir-etiqueta" title="Imprimir Etiqueta">
+                                <i class="fa fa-tag"></i>
+                            </button>
                             <button type="button" class="btn btn-info btn-sm btn-action btn-duplicar" title="Duplicar línea" disabled>
                                 <i class="fa fa-copy"></i>
                             </button>

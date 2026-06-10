@@ -454,13 +454,55 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 								</div>
 							</div>
 							<!-- Fin modal lote -->
+
+						<!-- Modal Imprimir Etiqueta -->
+						<div class="modal fade" id="modalImprimirEtiqueta" tabindex="-1" role="dialog" aria-labelledby="modalImprimirEtiquetaLabel" aria-hidden="true" data-backdrop="static" data-keyboard="false">
+							<div class="modal-dialog" role="document">
+								<div class="modal-content">
+									<div class="modal-header">
+										<h5 class="modal-title" id="modalImprimirEtiquetaLabel"><i class="fa fa-tag"></i> Imprimir Etiqueta</h5>
+										<button type="button" class="close" data-dismiss="modal" aria-label="Close">
+											<span aria-hidden="true">&times;</span>
+										</button>
+									</div>
+									<div class="modal-body">
+										<div class="row">
+											<div class="col-lg-12 col-md-12 col-sm-12">
+												<label>Código Producto</label>
+												<input class="form-control" type="text" id="etq_codigo" readonly>
+											</div>
+											<div class="col-lg-12 col-md-12 col-sm-12 mt-2">
+												<label>Nombre Producto</label>
+												<input class="form-control" type="text" id="etq_nombre" readonly>
+											</div>
+											<div class="col-lg-12 col-md-12 col-sm-12 mt-2">
+												<label>Lote</label>
+												<input class="form-control" type="text" id="etq_lote" readonly>
+											</div>
+											<div class="col-lg-12 col-md-12 col-sm-12 mt-2">
+												<label>Cantidad</label>
+												<input class="form-control" type="number" id="etq_cantidad" min="0.01" step="any">
+											</div>
+										</div>
+									</div>
+									<div class="modal-footer">
+										<button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+										<button type="button" class="btn btn-success" id="btnImprimirEtiqueta">
+											<i class="fa fa-print"></i> Imprimir
+										</button>
+									</div>
+								</div>
+							</div>
+						</div>
+						<!-- Fin Modal Imprimir Etiqueta -->
+
 						</form>
 
 			</div>
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="nuevodoc.js?v=31"></script>
+	<script type="text/javascript" src="nuevodoc.js?v=32"></script>
 
 	<script>
         document.addEventListener("DOMContentLoaded", function() {
