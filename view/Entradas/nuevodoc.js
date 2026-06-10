@@ -1259,7 +1259,7 @@ function imprimirEtiqueta() {
         '</style></head><body>' +
         '<div class="etiqueta">' +
         '<img class="etq-logo" src="' + logoUrl + '" alt="CERVALLE">' +
-        '<div class="etq-codigo-destaque">' + codigoFormateado + '</div>' +
+        '<div class="etq-codigo-destaque">' + codigo + '</div>' +
         '<div class="etq-cantidad">Cantidad: ' + parseFloat(cantidad.toFixed(2)) + '</div>' +
         '<div class="etq-barcode-wrap"><svg id="etq-barcode"></svg>' +
         '<div class="etq-barcode-val">' + valorBarcode + '</div></div>' +
