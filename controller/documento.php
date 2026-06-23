@@ -480,6 +480,11 @@
             echo $documento->combo_vehiculo();
         break;
 
+        case "reiniciar_doc_desde_pedido":
+        case "reiniciar_doc_entrada":
+            echo $documento->reiniciar_doc_entrada($_POST["tipo"], $_POST["numdoc"]);
+        break;
+
     }
 
 ?>

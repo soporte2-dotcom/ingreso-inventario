@@ -377,11 +377,16 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 					<textarea class="form-control" rows="3" name="notas" id="notas"></textarea>
         		</div>
 
-				<div class="row">								 
+				<div class="row">
 					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
 						<button type="button" style="display: none" id="btnguardar"  class="d-flex w-15 btn btn-rounded btn-inline btn-success">Guardar</button>
 					</div>
-				</div>	
+					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
+						<button type="button" style="display: none" id="btnreiniciar" class="d-flex w-15 btn btn-rounded btn-inline btn-warning" onclick="reiniciarDocumento()" title="Vuelve a cargar las líneas originales del pedido">
+							<i class="fa fa-refresh"></i> Reiniciar
+						</button>
+					</div>
+				</div>
 
 							<!-- Modal Agregar-->
 							<div class="modal fade" id="modalagregar" tabindex="-1" role="dialog" aria-labelledby="modalagregar" aria-hidden="true" data-backdrop="static" data-keyboard="false">
@@ -502,7 +507,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="nuevodoc.js?v=32"></script>
+	<script type="text/javascript" src="nuevodoc.js?v=33"></script>
 
 	<script>
         document.addEventListener("DOMContentLoaded", function() {

@@ -34,7 +34,8 @@ const CONFIG = {
             mostrarXproducto: "documento.php?op=mostrarXproducto",
             duplicar_linea: "documento.php?op=duplicar_linea",
             eliminar: "documento.php?op=eliminar",
-            eliminar_masivo: "documento.php?op=eliminar_masivo"
+            eliminar_masivo: "documento.php?op=eliminar_masivo",
+            reiniciar_doc_desde_pedido: "../../controller/documento.php?op=reiniciar_doc_desde_pedido"
         }
     }
 };
@@ -398,6 +399,7 @@ function configurarEstadoExportado(exportado) {
             if (el) el.disabled = true;
         });
         $('#tb-doc tbody td.editable-cell').removeClass('editable-cell');
+        $('#btnreiniciar').hide();
     } else {
         documentoExportado = false;
         $("#btnguardar").prop('disabled', false)
@@ -405,6 +407,45 @@ function configurarEstadoExportado(exportado) {
                        .html('Guardar')
                        .removeAttr('title');
     }
+}
+
+function reiniciarDocumento() {
+    const tipo = getUrlParameter('tipo');
+    const consecutivo = getUrlParameter('consecutivo');
+
+    swal({
+        title: "¿Reiniciar documento?",
+        text: "Se eliminarán todas las líneas actuales y se volverán a cargar desde el pedido original. Esta acción no se puede deshacer.",
+        type: "warning",
+        showCancelButton: true,
+        confirmButtonColor: "#d33",
+        confirmButtonText: "Sí, reiniciar",
+        cancelButtonText: "Cancelar",
+        closeOnConfirm: false
+    }, function(confirmed) {
+        if (!confirmed) return;
+        $.blockUI({ message: '<h2>Reiniciando, favor espere...</h2>' });
+        $.ajax({
+            url: CONFIG.endpoints.documento.reiniciar_doc_desde_pedido,
+            type: "POST",
+            data: { tipo: tipo, numdoc: consecutivo },
+            dataType: "json",
+            success: function(resp) {
+                $.unblockUI();
+                if (resp.status === 'success') {
+                    swal("Correcto!", resp.message, "success");
+                    $('#tb-doc').DataTable().ajax.reload();
+                    actualizarTodosLosTotales(tipo, consecutivo);
+                } else {
+                    swal("Error!", resp.message, "error");
+                }
+            },
+            error: function() {
+                $.unblockUI();
+                swal("Error!", "No se pudo reiniciar el documento.", "error");
+            }
+        });
+    });
 }
 
 // FUNCIONES DE GESTIÓN DE DATOS
@@ -530,8 +571,22 @@ function listardetalle(tipo, consecutivo){
         if(data.IdVehiculo){ $('#idVehiculo').val(data.IdVehiculo); }
 
         if(data !== null){
-            configurarInterfazParaDocumentoExistente(data);
-        }      
+            try {
+                configurarInterfazParaDocumentoExistente(data);
+            } catch(e) {
+                console.error('Error en configurarInterfazParaDocumentoExistente:', e);
+            }
+
+            // Mostrar Reiniciar si tiene documento de referencia y no está exportado
+            var tienePedido   = String(data.Tipo_Docto_Base_2) === '9' && data.Numero_Docto_Base_2 && String(data.Numero_Docto_Base_2).trim() !== '';
+            var tieneTraslado = data.Numero_Docto_Base && String(data.Numero_Docto_Base).trim() !== '' && String(data.Numero_Docto_Base).trim() !== '0';
+            console.log('Reiniciar check:', { tienePedido, tieneTraslado, Tipo_Docto_Base_2: data.Tipo_Docto_Base_2, Numero_Docto_Base: data.Numero_Docto_Base, exportado: data.exportado });
+            if ((tienePedido || tieneTraslado) && data.exportado !== 'S') {
+                $('#btnreiniciar').show();
+            } else {
+                $('#btnreiniciar').hide();
+            }
+        }
 
     });
 

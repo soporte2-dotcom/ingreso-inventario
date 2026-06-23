@@ -1442,5 +1442,122 @@
             return $html;
         }
 
+        public function reiniciar_doc_desde_pedido($tipo, $numdoc) {
+            return $this->reiniciar_doc_entrada($tipo, $numdoc);
+        }
+
+        public function reiniciar_doc_entrada($tipo, $numdoc) {
+            $cn = new Conectarserver;
+            try {
+                sqlsrv_begin_transaction($cn->getConecta());
+
+                $sql_check = "SELECT Numero_Docto_Base, Tipo_Docto_Base, Numero_Docto_Base_2, Tipo_Docto_Base_2, exportado
+                              FROM Documentos WHERE tipo = ? AND Numero_Documento = ?";
+                $stmt_check = sqlsrv_query($cn->getConecta(), $sql_check, array($tipo, (int)$numdoc));
+                if ($stmt_check === false) throw new Exception("Error al verificar el documento.");
+                $row_check = sqlsrv_fetch_array($stmt_check, SQLSRV_FETCH_ASSOC);
+                if (!$row_check) throw new Exception("Documento no encontrado.");
+                if ($row_check['exportado'] === 'S') throw new Exception("El documento ya fue exportado y no puede reiniciarse.");
+
+                $tipo_base_2  = trim($row_check['Tipo_Docto_Base_2'] ?? '');
+                $numero_base_2 = trim($row_check['Numero_Docto_Base_2'] ?? '');
+                $tipo_base    = trim($row_check['Tipo_Docto_Base'] ?? '');
+                $numero_base  = trim($row_check['Numero_Docto_Base'] ?? '');
+
+                $sql_del = "DELETE FROM Documentos_Lin WHERE tipo = ? AND Numero_Documento = ?";
+                $stmt_del = sqlsrv_query($cn->getConecta(), $sql_del, array($tipo, (int)$numdoc));
+                if ($stmt_del === false) throw new Exception("Error al eliminar líneas: " . print_r(sqlsrv_errors(), true));
+
+                if ($tipo_base_2 === '9' && $numero_base_2 !== '') {
+                    // Desde pedido (Documentos_Lin_Ped)
+                    $sql_lin = "INSERT INTO Documentos_Lin
+                    (sw, tipo, seq, modelo, Numero_Documento, Numero_Docto_Base, Numero_Lote, Nit_Cedula, Codigo_Direccion, Fecha_Documento,
+                    IdProducto, IdUnidad, Factor_Conversion, Cantidad_Facturada, Cantidad_Pendiente, Cantidad_Orden, Costo_Unitario, Valor_Unitario,
+                    Valor_Impuesto, Porcentaje_Impuesto, Porcentaje_Descuento_1, Porcentaje_Descuento_2, Porcentaje_Descuento_3, IdVendedor, Comision_Vendedor,
+                    Valor_Comision_Vendedor, IdBodega, Maneja_Inventario, Tomador, IdMoneda, Tasa_Moneda_Ext, CentroDeCostosDoc,
+                    Nota_Linea, Unidades, Fecha_Vence, Exportado, Costo_Unitario_Inicial,
+                    Porcentaje_ReteFuente, Envase, Numero_Lote_Destino, serial, Impuesto_Consumo, Porcentaje_ReteFuente_2,
+                    Porcentaje_ReteFuente_3, Porcentaje_ReteFuente_4, Emp_1, Emp_2, Emp_3, Emp_4, Emp_5, Emp_6,
+                    Emp_7, Emp_8, Tara_1, Tara_2, Tara_3, Tara_4, Tara_5, Tara_6, Tara_7, Tara_8)
+                    (SELECT td.tipo AS sw, '$tipo' AS tipo, dp.Linea AS seq, p.contable AS Modelo, $numdoc AS Numero_Documento,
+                    '' AS Numero_Docto_Base, '0' AS Numero_Lote, dp.IdCliente AS Nit_Cedula, dp.DireccionFactura AS codigo_direccion, GETDATE() AS Fecha_Documento,
+                    dp.IdProducto AS IdProducto, dp.und AS IdUnidad, '1' AS Factor_Conversion, dp.cantidad AS Cantidad_Facturada,
+                    0 AS Cantidad_Pendiente, dp.cantidad AS Cantidad_Orden, dp.valor_unitario AS Costo_Unitario, dp.valor_unitario AS Valor_Unitario,
+                    ((dp.porcentaje_iva/100) * dp.valor_unitario) AS Valor_Impuesto, dp.porcentaje_iva AS Porcentaje_Impuesto,
+                    dp.porcentaje_descuento AS Porcentaje_Descuento_1, dp.porc_dcto_2 AS Porcentaje_Descuento_2,
+                    dp.porc_dcto_3 AS Porcentaje_Descuento_3, dp.IdVendedor AS IdVendedor, 0 AS Comision_Vendedor, 0 AS Valor_Comision_Vendedor,
+                    td.IdBodega AS IdBodega, 'S' AS Maneja_Inventario, '' AS Tomador, 1 AS IdMoneda, 1 AS Tasa_Moneda_Ext, '0' AS CentroDeCostosDoc,
+                    ' ' AS Nota_Linea, '1' AS Unidades, GETDATE() AS Fecha_Vence, 'N' AS Exportado, dp.valor_unitario AS Costo_Unitario_Inicial,
+                    dp.Porcentaje_ReteFuente AS Porcentaje_ReteFuente, 0 AS Envase, 0 AS Numero_Lote_Destino, '' AS serial, 0 AS Impuesto_Consumo,
+                    0 AS Porcentaje_ReteFuente_2, 0 AS Porcentaje_ReteFuente_3, 0 AS Porcentaje_ReteFuente_4,
+                    0 AS Emp_1, 0 AS Emp_2, 0 AS Emp_3, 0 AS Emp_4, 0 AS Emp_5, 0 AS Emp_6,
+                    0 AS Emp_7, 0 AS Emp_8, 0 AS Tara_1, 0 AS Tara_2, 0 AS Tara_3, 0 AS Tara_4, 0 AS Tara_5, 0 AS Tara_6, 0 AS Tara_7, 0 AS Tara_8
+                    FROM Documentos_Lin_Ped dp
+                    JOIN TblTipoDoctos td ON td.idTipoDoctos = '$tipo'
+                    JOIN TblProducto p ON p.IdProducto = dp.IdProducto
+                    WHERE dp.numero_pedido = '$numero_base_2' AND dp.sw = '9')";
+
+                } elseif ($tipo_base !== '' && $tipo_base !== '0' && $numero_base !== '') {
+                    // Desde traslado (Documentos_Lin del documento original)
+                    $sql_lin = "INSERT INTO Documentos_Lin
+                    (sw, tipo, seq, modelo, Numero_Documento, Numero_Docto_Base, Numero_Lote, Nit_Cedula, Codigo_Direccion, Fecha_Documento,
+                    IdProducto, IdUnidad, Factor_Conversion, Cantidad_Facturada, Cantidad_Pendiente, Cantidad_Orden, Costo_Unitario, Valor_Unitario,
+                    Valor_Impuesto, Porcentaje_Impuesto, Porcentaje_Descuento_1, Porcentaje_Descuento_2, Porcentaje_Descuento_3, IdVendedor, Comision_Vendedor,
+                    Valor_Comision_Vendedor, IdBodega, Maneja_Inventario, Tomador, IdMoneda, Tasa_Moneda_Ext, CentroDeCostosDoc,
+                    Nota_Linea, Unidades, Fecha_Vence, Exportado, Costo_Unitario_Inicial,
+                    Porcentaje_ReteFuente, Envase, Numero_Lote_Destino, serial, Impuesto_Consumo, Porcentaje_ReteFuente_2,
+                    Porcentaje_ReteFuente_3, Porcentaje_ReteFuente_4, Emp_1, Emp_2, Emp_3, Emp_4, Emp_5, Emp_6,
+                    Emp_7, Emp_8, Tara_1, Tara_2, Tara_3, Tara_4, Tara_5, Tara_6, Tara_7, Tara_8)
+                    (SELECT td.tipo AS sw, '$tipo' AS tipo, dl.seq AS seq, p.contable AS Modelo, $numdoc AS Numero_Documento,
+                    '' AS Numero_Docto_Base, '0' AS Numero_Lote, dl.Nit_Cedula AS Nit_Cedula, dl.codigo_direccion AS codigo_direccion, GETDATE() AS Fecha_Documento,
+                    dl.IdProducto AS IdProducto, dl.IdUnidad AS IdUnidad, '1' AS Factor_Conversion, dl.Cantidad_Facturada AS Cantidad_Facturada,
+                    (dl.Cantidad_Facturada) * -1 AS Cantidad_Pendiente, dl.Cantidad_Orden AS Cantidad_Orden,
+                    dl.Costo_Unitario AS Costo_Unitario, dl.valor_unitario AS Valor_Unitario, 0 AS Valor_Impuesto,
+                    dl.Porcentaje_Impuesto AS Porcentaje_Impuesto, dl.Porcentaje_Descuento_1 AS Porcentaje_Descuento_1,
+                    dl.Porcentaje_Descuento_2 AS Porcentaje_Descuento_2, dl.Porcentaje_Descuento_3 AS Porcentaje_Descuento_3,
+                    dl.IdVendedor AS IdVendedor, 0 AS Comision_Vendedor, 0 AS Valor_Comision_Vendedor,
+                    td.IdBodega AS IdBodega, 'S' AS Maneja_Inventario, '' AS Tomador, 1 AS IdMoneda, 1 AS Tasa_Moneda_Ext, '0' AS CentroDeCostosDoc,
+                    ' ' AS Nota_Linea, '1' AS Unidades, GETDATE() AS Fecha_Vence, 'N' AS Exportado, dl.Costo_Unitario_Inicial AS Costo_Unitario_Inicial,
+                    CASE WHEN LTRIM(RTRIM(t.TipoPersona)) = 'Juridica' THEN r.PorcentajeRetencionJuridica
+                         ELSE r.PorcentajeRetencionNatural END AS Porcentaje_ReteFuente,
+                    0 AS Envase, 0 AS Numero_Lote_Destino, '' AS serial, 0 AS Impuesto_Consumo,
+                    0 AS Porcentaje_ReteFuente_2, 0 AS Porcentaje_ReteFuente_3, 0 AS Porcentaje_ReteFuente_4,
+                    0 AS Emp_1, 0 AS Emp_2, 0 AS Emp_3, 0 AS Emp_4, 0 AS Emp_5, 0 AS Emp_6,
+                    0 AS Emp_7, 0 AS Emp_8, 0 AS Tara_1, 0 AS Tara_2, 0 AS Tara_3, 0 AS Tara_4, 0 AS Tara_5, 0 AS Tara_6, 0 AS Tara_7, 0 AS Tara_8
+                    FROM Documentos_Lin dl
+                    INNER JOIN Documentos d ON d.Numero_documento = dl.Numero_Documento AND d.tipo = dl.tipo
+                    INNER JOIN TblTipoDoctos td ON td.idTipoDoctos = '$tipo'
+                    INNER JOIN TblProducto p ON p.IdProducto = dl.IdProducto
+                    LEFT JOIN TblTerceros t ON dl.Nit_Cedula = t.nit_cedula
+                    LEFT JOIN TblRetencion r ON p.Retencion = r.IdRetencion
+                    WHERE dl.Numero_documento = '$numero_base' AND dl.tipo = '$tipo_base')";
+
+                } else {
+                    throw new Exception("El documento no tiene un documento de referencia válido para reiniciar.");
+                }
+
+                $stmt_lin = sqlsrv_prepare($cn->getConecta(), $sql_lin);
+                if (sqlsrv_execute($stmt_lin) === false) throw new Exception("Error al reinsertar líneas: " . print_r(sqlsrv_errors(), true));
+
+                $sql_tot = "UPDATE Documentos SET
+                    Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = '$tipo' AND Numero_documento = $numdoc),
+                    Valor_impuesto = (SELECT ISNULL(SUM(((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1,0)/100)) * (ISNULL(dl.Porcentaje_Impuesto,0)/100)),0) FROM Documentos_Lin dl WHERE dl.tipo='$tipo' AND dl.Numero_documento=$numdoc),
+                    valor_total = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada*dl.Valor_Unitario)*(1-ISNULL(dl.Porcentaje_Descuento_1,0)/100),2)+((dl.Cantidad_Facturada*dl.Valor_Unitario)*(1-ISNULL(dl.Porcentaje_Descuento_1,0)/100))*(ISNULL(dl.Porcentaje_Impuesto,0)/100)),0) FROM Documentos_Lin dl WHERE dl.tipo='$tipo' AND dl.Numero_documento=$numdoc),
+                    valor_aplicado = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada*dl.Valor_Unitario)*(1-ISNULL(dl.Porcentaje_Descuento_1,0)/100),2)+((dl.Cantidad_Facturada*dl.Valor_Unitario)*(1-ISNULL(dl.Porcentaje_Descuento_1,0)/100))*(ISNULL(dl.Porcentaje_Impuesto,0)/100)),0) FROM Documentos_Lin dl WHERE dl.tipo='$tipo' AND dl.Numero_documento=$numdoc),
+                    costo = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada*dl.Valor_Unitario)*(1-ISNULL(dl.Porcentaje_Descuento_1,0)/100),2)+((dl.Cantidad_Facturada*dl.Valor_Unitario)*(1-ISNULL(dl.Porcentaje_Descuento_1,0)/100))*(ISNULL(dl.Porcentaje_Impuesto,0)/100)),0) FROM Documentos_Lin dl WHERE dl.tipo='$tipo' AND dl.Numero_documento=$numdoc)
+                    WHERE tipo = '$tipo' AND Numero_Documento = $numdoc";
+
+                $stmt_tot = sqlsrv_prepare($cn->getConecta(), $sql_tot);
+                if (sqlsrv_execute($stmt_tot) === false) throw new Exception("Error al actualizar totales: " . print_r(sqlsrv_errors(), true));
+
+                sqlsrv_commit($cn->getConecta());
+                return json_encode(array("status" => "success", "message" => "Documento reiniciado correctamente."));
+
+            } catch (Exception $e) {
+                if (isset($cn) && $cn->getConecta()) sqlsrv_rollback($cn->getConecta());
+                return json_encode(array("status" => "error", "message" => $e->getMessage()));
+            }
+        }
+
     }
 ?>
