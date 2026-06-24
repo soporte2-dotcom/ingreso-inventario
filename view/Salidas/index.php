@@ -7,6 +7,7 @@ require_once("../../models/mdlPermisos.php");
 $_permisos = new Permisos();
 $permiteTraslado = $_permisos->tiene_permiso_especial($_SESSION["Id_Usuario"], 'traslado_sin_os');
 $permiteDevolucionParcial = $_permisos->tiene_permiso_especial($_SESSION["Id_Usuario"], 'devolucion_parcial');
+$permiteDevolucionManual  = $_permisos->tiene_permiso_especial($_SESSION["Id_Usuario"], 'devolucion_manual');
 ?>
 <!DOCTYPE html>
 <html>
@@ -47,6 +48,7 @@ $permiteDevolucionParcial = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 <title>Cervalle::Salidas</title>
 <script>window.permiteTraslado = <?= $permiteTraslado ? 'true' : 'false' ?>;</script>
 <script>window.permiteDevolucionParcial = <?= $permiteDevolucionParcial ? 'true' : 'false' ?>;</script>
+<script>window.permiteDevolucionManual = <?= $permiteDevolucionManual ? 'true' : 'false' ?>;</script>
 </head>
 
 <body class="with-side-menu sidebar-hidden">
@@ -128,11 +130,41 @@ $permiteDevolucionParcial = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 
 				<!-- Fila devolución: tipo del documento original -->
 				<div class="row" id="div_devolucion" style="display:none">
-					<div class="col-lg-3">
+					<div class="col-lg-3" id="col_tipo_doc_orig">
 						<fieldset class="form-group">
 							<label class="form-label semibold">Tipo Doc. Original</label>
 							<select id="tipoDocOrig" name="tipoDocOrig" class="form-control">
 								<option value="" disabled selected>Seleccione tipo...</option>
+							</select>
+						</fieldset>
+					</div>
+					<div class="col-lg-3" id="div_toggle_dev_manual" style="display:none">
+						<fieldset class="form-group">
+							<label class="form-label semibold" style="display:block">&nbsp;</label>
+							<label for="chk_dev_manual" id="lbl_dev_manual"
+								style="display:block; cursor:pointer; margin:0; padding:7px 12px;
+									   border:2px dashed #ccc; border-radius:6px; background:#fafafa;
+									   transition: border-color .2s, background .2s">
+								<input type="checkbox" id="chk_dev_manual"
+									style="margin-right:8px; vertical-align:middle">
+								<span style="vertical-align:middle; font-weight:600; font-size:13px">
+									<i class="fa fa-pencil-square-o" style="margin-right:4px"></i>Manual
+								</span>
+								<div style="margin-left:22px; margin-top:2px">
+									<small class="text-muted" style="font-size:11px">Sin documento de referencia</small>
+								</div>
+							</label>
+						</fieldset>
+					</div>
+				</div>
+
+				<!-- Campos para devolución manual -->
+				<div class="row" id="div_concepto_dev_manual" style="display:none">
+					<div class="col-lg-3">
+						<fieldset class="form-group">
+							<label class="form-label semibold">Concepto de Devolución</label>
+							<select id="conceptoDevManual" name="conceptoDevManual" class="form-control">
+								<option value="" disabled selected>Seleccione concepto...</option>
 							</select>
 						</fieldset>
 					</div>
@@ -791,7 +823,7 @@ $permiteDevolucionParcial = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="salidas.js?v=72"></script>
+	<script type="text/javascript" src="salidas.js?v=77"></script>
 
 	<script>
 		document.addEventListener("DOMContentLoaded", function() {

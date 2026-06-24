@@ -600,8 +600,8 @@
                 1 AS Tasa_Moneda_Ext, '' AS Tomador, 'V' AS Tasa_Fija_o_Variable, d.Punto_FOB AS Punto_FOB,
                 0 AS Fletes_Moneda_Ext, 0 AS Miselaneos_Moneda_Ext, 0 AS Cargo_Por_Fletes, 0 AS Impuesto_Por_Fletes, d.Total_Items AS Total_Items, d.Nombre_Cliente AS Nombre_Cliente,
                 SUBSTRING(d.Ordenado_Por,0,20) AS Ordenado_Por, d.Telefono_De_Envio_1 AS Telefono_De_Envio_1, d.Telefono_De_Envio_2 AS Telefono_De_Envio_2, 'N' AS Factura_Impresa, d.IdFormaEnvio AS IdFormaEnvio, d.IdTRansportador AS IdTransportador,
-                d.nit_Cedula_2 AS nit_Cedula_2, d.codigo_direccion_2 AS codigo_direccion_2, d.Numero_Docto_Base_2 AS Numero_Docto_Base_2, '$tiporef' AS Tipo_Docto_Base,
-                d.Tipo_Docto_Base_2 AS Tipo_Docto_Base_2, d.IdActividadEconomica AS IdActividadEconomica, d.TarifaReteFuenteCree AS TarifaReteFuenteCree, d.Valor_ReteCree AS Valor_ReteCree, d.IdVehiculo AS IdVehiculo
+                d.nit_Cedula_2 AS nit_Cedula_2, d.codigo_direccion_2 AS codigo_direccion_2, '' AS Numero_Docto_Base_2, '$tiporef' AS Tipo_Docto_Base,
+                '0' AS Tipo_Docto_Base_2, d.IdActividadEconomica AS IdActividadEconomica, d.TarifaReteFuenteCree AS TarifaReteFuenteCree, d.Valor_ReteCree AS Valor_ReteCree, d.IdVehiculo AS IdVehiculo
 
                 FROM Documentos d, consecutivos c, TblTipoDoctos td
                 WHERE c.tipo = '$tipo' AND d.Numero_documento = '$numero' AND d.tipo = '$tiporef' AND td.idTipoDoctos = '$tipo')";
@@ -744,6 +744,97 @@
                 $this->registrar_error("Error en insert_devolucion: " . $e->getMessage());
                 return json_encode(array(
                     "status" => "error",
+                    "message" => $e->getMessage()
+                ));
+            }
+        }
+
+        public function insert_devolucion_manual($tipo, $nit1, $dir1, $nit2, $dir2, $usuario, $idConcepto, $nombreConcepto) {
+            $cn = new Conectarserver;
+            try {
+                sqlsrv_begin_transaction($cn->getConecta());
+
+                $sql = "INSERT INTO Documentos(sw, tipo, modelo, Numero_Documento, Numero_Docto_Base,
+                nit_Cedula, codigo_direccion, Fecha_Hora_Factura, Fecha_Hora_Vencimiento, Fecha_orden_Venta,
+                condicion, valor_total, valor_aplicado, Retencion_1, Retencion_2, Retencion_3, retencion_causada, retencion_iva, retencion_ica,
+                retencion_descuento, descuento_pie, DescuentoOrdenVenta, descuento_1, descuento_2, descuento_3, costo, IdVendedor, anulado, usuario,
+                notas, pc, fecha_hora, duracion, bodega, Valor_impuesto, Impuesto_Consumo, impuesto_deporte, concepto, vencimiento_presup,
+                exportado, prefijo, moneda, CentroDeCostosDoc, valor_mercancia, abono, Comision_Vendedor, Tasa_Moneda_Ext, Tomador, Tasa_Fija_o_Variable, Punto_FOB,
+                Fletes_Moneda_Ext, Miselaneos_Moneda_Ext, Cargo_Por_Fletes, Impuesto_Por_Fletes, Total_Items, Nombre_Cliente, Ordenado_Por, Telefono_De_Envio_1,
+                Telefono_De_Envio_2, Factura_Impresa, IdFormaEnvio, IdTransportador, nit_Cedula_2, codigo_direccion_2, Numero_Docto_Base_2, Tipo_Docto_Base,
+                Tipo_Docto_Base_2, IdActividadEconomica, TarifaReteFuenteCree, Valor_ReteCree, IdVehiculo)
+
+                (SELECT td.tipo AS sw, '$tipo' AS tipo, '$tipo' AS modelo, (c.siguiente+1) AS Numero_Documento, '' AS Numero_Docto_Base,
+                '$nit1' AS nit_Cedula, '$dir1' AS codigo_direccion, GETDATE() AS Fecha_Hora_Factura, GETDATE() AS Fecha_Hora_Vencimiento, GETDATE() AS Fecha_orden_Venta,
+                t.condicion AS condicion, 0 AS valor_total, 0 AS valor_aplicado, 0 AS Retencion_1, 0 AS Retencion_2, 0 AS Retencion_3,
+                0 AS retencion_causada, 0 AS retencion_iva, 0 AS retencion_ica, 0 AS retencion_descuento, 0 AS descuento_pie, 0 AS DescuentoOrdenVenta,
+                0 AS descuento_1, 0 AS descuento_2, 0 AS descuento_3, 0 AS costo, 0 AS IdVendedor, 'N' AS anulado, '$usuario' AS usuario,
+                '' AS notas, HOST_NAME() AS pc, GETDATE() AS fecha_hora, 0 AS duracion, td.IdBodega AS bodega,
+                0 AS Valor_impuesto, 0 AS Impuesto_Consumo, 0 AS impuesto_deporte, '' AS concepto, GETDATE() AS vencimiento_presup,
+                'N' AS exportado, '0' AS prefijo, 1 AS moneda, 0 AS CentroDeCostosDoc, 0 AS valor_mercancia, 0 AS abono, 0 AS Comision_Vendedor,
+                1 AS Tasa_Moneda_Ext, '' AS Tomador, 'V' AS Tasa_Fija_o_Variable, 0 AS Punto_FOB,
+                0 AS Fletes_Moneda_Ext, 0 AS Miselaneos_Moneda_Ext, 0 AS Cargo_Por_Fletes, 0 AS Impuesto_Por_Fletes, 0 AS Total_Items,
+                t.nombre AS Nombre_Cliente, '' AS Ordenado_Por, '' AS Telefono_De_Envio_1, '' AS Telefono_De_Envio_2, 'N' AS Factura_Impresa,
+                0 AS IdFormaEnvio, 0 AS IdTransportador,
+                '$nit2' AS nit_Cedula_2, '$dir2' AS codigo_direccion_2, '' AS Numero_Docto_Base_2, '0' AS Tipo_Docto_Base,
+                '2' AS Tipo_Docto_Base_2, '0' AS IdActividadEconomica, 0 AS TarifaReteFuenteCree, 0 AS Valor_ReteCree, '1' AS IdVehiculo
+
+                FROM TblTerceros t, TblTipoDoctos td, consecutivos c
+                WHERE c.tipo = '$tipo' AND td.idTipoDoctos = '$tipo' AND t.nit_cedula = '$nit1')";
+
+                $registros = sqlsrv_prepare($cn->getConecta(), $sql);
+                if (sqlsrv_execute($registros) === false) {
+                    throw new Exception("Error al insertar documento: " . print_r(sqlsrv_errors(), true));
+                }
+
+                // Guardar concepto en RespuestaCorrectaDian
+                $sqlConcepto = "UPDATE Documentos SET RespuestaCorrectaDian = ?
+                    WHERE tipo = '$tipo'
+                      AND Numero_Documento = (SELECT siguiente+1 FROM Consecutivos WHERE tipo = '$tipo')";
+                $stmtConcepto = sqlsrv_prepare($cn->getConecta(), $sqlConcepto, array($nombreConcepto));
+                if (sqlsrv_execute($stmtConcepto) === false) {
+                    throw new Exception("Error al guardar concepto: " . print_r(sqlsrv_errors(), true));
+                }
+
+                // Actualizar idConceptoDevolucion si la columna existe
+                $sqlCheckCol = "SELECT COUNT(*) AS existe FROM sys.columns
+                    WHERE object_id = OBJECT_ID('Documentos') AND name = 'idConceptoDevolucion'";
+                $stmtCheck = sqlsrv_query($cn->getConecta(), $sqlCheckCol);
+                if ($stmtCheck !== false) {
+                    $rowCheck = sqlsrv_fetch_array($stmtCheck, SQLSRV_FETCH_ASSOC);
+                    if ($rowCheck && $rowCheck['existe'] > 0) {
+                        $sqlIdConc = "UPDATE Documentos SET idConceptoDevolucion = ?
+                            WHERE tipo = '$tipo'
+                              AND Numero_Documento = (SELECT siguiente+1 FROM Consecutivos WHERE tipo = '$tipo')";
+                        $stmtIdConc = sqlsrv_prepare($cn->getConecta(), $sqlIdConc, array((int)$idConcepto));
+                        if (sqlsrv_execute($stmtIdConc) === false) {
+                            throw new Exception("Error al guardar idConceptoDevolucion: " . print_r(sqlsrv_errors(), true));
+                        }
+                    }
+                }
+
+                $sql2 = "UPDATE Consecutivos SET siguiente = siguiente+1 WHERE tipo = '$tipo'";
+                $registros2 = sqlsrv_prepare($cn->getConecta(), $sql2);
+                if (sqlsrv_execute($registros2) === false) {
+                    throw new Exception("Error al actualizar consecutivo: " . print_r(sqlsrv_errors(), true));
+                }
+
+                sqlsrv_commit($cn->getConecta());
+
+                return json_encode(array(
+                    "status"      => "success",
+                    "message"     => "Devolución manual creada. Agregue los productos en el detalle y guarde el documento.",
+                    "tipo"        => $tipo,
+                    "consecutivo" => $this->obtener_consecutivo_actual($tipo)
+                ));
+
+            } catch (Exception $e) {
+                if (isset($cn) && $cn->getConecta()) {
+                    sqlsrv_rollback($cn->getConecta());
+                }
+                $this->registrar_error("Error en insert_devolucion_manual: " . $e->getMessage());
+                return json_encode(array(
+                    "status"  => "error",
                     "message" => $e->getMessage()
                 ));
             }

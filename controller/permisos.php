@@ -398,15 +398,24 @@ try {
                   </div>";
 
             $tiene_dev_parcial = $permisos->tiene_permiso_especial($usuario_id, 'devolucion_parcial');
-            $checked = $tiene_dev_parcial ? 'checked' : '';
+            $tiene_dev_manual  = $permisos->tiene_permiso_especial($usuario_id, 'devolucion_manual');
+            $chk_parcial = $tiene_dev_parcial ? 'checked' : '';
+            $chk_manual  = $tiene_dev_manual  ? 'checked' : '';
 
             echo "<h5 style='margin-bottom:15px'><span class='glyphicon glyphicon-star'></span> Permisos Especiales de Salidas</h5>";
             echo "<div class='documentos-list'>
                     <div class='checkbox'>
-                        <input type='checkbox' id='perm_devolucion_parcial' name='especiales[]' value='devolucion_parcial' $checked>
+                        <input type='checkbox' id='perm_devolucion_parcial' name='especiales[]' value='devolucion_parcial' $chk_parcial>
                         <label for='perm_devolucion_parcial'>
                             <strong>Devolución Parcial</strong>
                             <small class='text-muted'> &mdash; Permite seleccionar ítems individuales al hacer devoluciones</small>
+                        </label>
+                    </div>
+                    <div class='checkbox'>
+                        <input type='checkbox' id='perm_devolucion_manual' name='especiales[]' value='devolucion_manual' $chk_manual>
+                        <label for='perm_devolucion_manual'>
+                            <strong>Devolución Manual</strong>
+                            <small class='text-muted'> &mdash; Permite crear devoluciones sin documento de referencia</small>
                         </label>
                     </div>
                   </div>";
@@ -418,7 +427,7 @@ try {
                 echo json_encode(["status" => "error", "message" => "No se recibió ID de usuario"]);
                 break;
             }
-            $todos_especiales = ['devolucion_parcial'];
+            $todos_especiales = ['devolucion_parcial', 'devolucion_manual'];
             $seleccionados = isset($_POST["especiales"]) ? $_POST["especiales"] : [];
             foreach ($todos_especiales as $modulo) {
                 $valor = in_array($modulo, $seleccionados) ? 'S' : 'N';

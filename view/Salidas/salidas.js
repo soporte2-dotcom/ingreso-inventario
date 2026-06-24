@@ -32,8 +32,9 @@ const CONFIG = {
             update_notas_etapa: "../../controller/salidas.php?op=update_notas_etapa",
             validar_os: "../../controller/salidas.php?op=validar_os",
             reiniciar_doc_desde_os: "../../controller/salidas.php?op=reiniciar_doc_desde_os",
-            preview_doc_devolucion: "../../controller/salidas.php?op=preview_doc_devolucion",
-            get_lineas_devolucion:  "../../controller/salidas.php?op=get_lineas_devolucion"
+            preview_doc_devolucion:    "../../controller/salidas.php?op=preview_doc_devolucion",
+            get_lineas_devolucion:     "../../controller/salidas.php?op=get_lineas_devolucion",
+            insert_devolucion_manual:  "../../controller/salidas.php?op=insert_devolucion_manual"
         },
         etapas: {
             listar_activas: "../../controller/etapas.php?op=listar_activas"
@@ -197,6 +198,16 @@ function inicializarEventos() {
                 var el = document.getElementById(id);
                 if (el) el.style.display = 'none';
             });
+            // Resetear modo manual
+            $('#chk_dev_manual').prop('checked', false);
+            $('#col_tipo_doc_orig').show();
+            $('#div_concepto_dev_manual').hide();
+            // Mostrar toggle manual solo si tiene permiso
+            if (window.permiteDevolucionManual) {
+                $('#div_toggle_dev_manual').show();
+            } else {
+                $('#div_toggle_dev_manual').hide();
+            }
             // Mostrar div devolución y cargar tipos originales con permisos del usuario
             $('#div_devolucion').show();
             $.post(CONFIG.baseUrl + CONFIG.endpoints.permisos_tipos_originales, function(data) {
@@ -417,6 +428,68 @@ function mostrarModalEstadoOS(numero, resp, modo, onCrear) {
     $('#modalEstadoOS').modal('show');
 }
 
+// ─── DEVOLUCIÓN MANUAL ───────────────────────────────────────────────────────
+
+$(document).on('change', '#chk_dev_manual', function() {
+    const esManual = $(this).is(':checked');
+    const camposNit = ['hr1','txt_nit1','nit1','txt_nombre1','nombre1','txt_direccion1','direccion1',
+                       'txt_telefono1','telefono1','hr2','txt_nit2','nit2','txt_nombre2','nombre2',
+                       'txt_direccion2','direccion2'];
+
+    // Cambiar visual del label según estado
+    if (esManual) {
+        $('#lbl_dev_manual').css({
+            'border': '2px solid #f0ad4e',
+            'background': '#fff8ec',
+            'border-radius': '6px'
+        });
+        $('#col_tipo_doc_orig').hide();
+        document.getElementById("txt_numero").style.display = "none";
+        document.getElementById("numero").style.display = "none";
+        camposNit.forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.style.display = 'inline-block';
+        });
+        $('#div_concepto_dev_manual').show();
+        cargarConceptosDevManual();
+    } else {
+        $('#lbl_dev_manual').css({
+            'border': '2px dashed #ccc',
+            'background': '#fafafa',
+            'border-radius': '6px'
+        });
+        $('#col_tipo_doc_orig').show();
+        document.getElementById("txt_numero").style.display = "inline-block";
+        document.getElementById("numero").style.display = "inline-block";
+        camposNit.forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+        $('#div_concepto_dev_manual').hide();
+    }
+});
+
+function cargarConceptosDevManual() {
+    $('#conceptoDevManual').html('<option value="" disabled selected>Cargando...</option>');
+    $.ajax({
+        url: CONFIG.endpoints.conceptosDevolucion.listar_activos,
+        type: 'GET',
+        dataType: 'json',
+        success: function(data) {
+            var opts = '<option value="" disabled selected>Seleccione concepto...</option>';
+            if (Array.isArray(data) && data.length > 0) {
+                $.each(data, function(i, c) {
+                    opts += '<option value="' + c.id + '">' + c.nombre + '</option>';
+                });
+            }
+            $('#conceptoDevManual').html(opts);
+        },
+        error: function() {
+            $('#conceptoDevManual').html('<option value="" disabled selected>Error al cargar</option>');
+        }
+    });
+}
+
 // ─── PREVIEW DEVOLUCIÓN ──────────────────────────────────────────────────────
 var devPreviewOk = false;
 var lineasDevolucionSeleccionadas = null;
@@ -546,7 +619,53 @@ function crearDocumento() {
         return false;
     }
 
-    // Devolución
+    // Devolución Manual (sin documento de referencia)
+    if (esDev && $('#chk_dev_manual').is(':checked')) {
+        const nit1 = $('#nit1').val();
+        const dir1 = $('#direccion1').val();
+        const nit2 = $('#nit2').val();
+        const dir2 = $('#direccion2').val();
+        const idConcepto     = $('#conceptoDevManual').val();
+        const nombreConcepto = $('#conceptoDevManual option:selected').text().trim();
+
+        if (!validarCampoRequerido(nit1,          'NIT Facturar A')          ||
+            !validarCampoRequerido(dir1,          'Dirección Facturar A')    ||
+            !validarCampoRequerido(nit2,          'NIT Enviar A')            ||
+            !validarCampoRequerido(dir2,          'Dirección Enviar A')      ||
+            !validarCampoRequerido(idConcepto,    'Concepto de Devolución')) {
+            return false;
+        }
+
+        $.blockUI({ message: '<h2>Creando devolución manual, por favor espere...</h2>' });
+        $.ajax({
+            url:         CONFIG.endpoints.salidas.insert_devolucion_manual,
+            type:        'POST',
+            data:        { idTipo: tipo, nit1: nit1, dir1: dir1, nit2: nit2, dir2: dir2,
+                           idConcepto: idConcepto, nombreConcepto: nombreConcepto },
+            dataType:    'json',
+            success: function(response) {
+                $.unblockUI();
+                if (response.status === 'success') {
+                    swal({ title: 'Devolución creada', text: response.message, type: 'success' }, function() {
+                        window.location.href = 'index.php?tipo=' + response.tipo + '&consecutivo=' + response.consecutivo;
+                    });
+                } else {
+                    swal('Error!', response.message, 'error');
+                    $('#btncrear').prop('disabled', false);
+                }
+            },
+            error: function() {
+                $.unblockUI();
+                swal('Error!', 'Ha ocurrido un error al procesar la solicitud.', 'error');
+                $('#btncrear').prop('disabled', false);
+            }
+        });
+
+        $('#btncrear').prop('disabled', true);
+        return false;
+    }
+
+    // Devolución con documento de referencia
     if (esDev) {
         const tipoDocOrig = $("#tipoDocOrig").val();
         const tipoDocOrigTexto = $("#tipoDocOrig option:selected").text().trim();
@@ -633,60 +752,99 @@ function crearDocumento() {
                 if (!confirmed) return;
                 document.getElementById("tipoDocRef").value = tipoDocOrig;
                 lineasDevolucionSeleccionadas = null;
-                if (window.permiteDevolucionParcial) {
-                    // setTimeout necesario: SweetAlert v1 no permite abrir un segundo swal
-                    // dentro del callback del primero sin que el DOM se limpie primero
-                    setTimeout(function() {
-                        swal({
-                            title: "Tipo de Devolución",
-                            text: "¿Desea hacer una devolución parcial (seleccionar ítems) o completa (todos los ítems)?",
-                            type: "info",
-                            showCancelButton: true,
-                            confirmButtonColor: "#6f42c1",
-                            confirmButtonText: "Parcial",
-                            cancelButtonText: "Completa",
-                            closeOnConfirm: true,
-                            closeOnCancel: true
-                        }, function(esParcial) {
-                            if (esParcial === true) {
-                                abrirModalItemsDevolucion(numeroDev, tipoDocOrig);
-                            } else if (esParcial === false) {
-                                // Completa: cargar disponibles y usar todo lo que queda
-                                $.ajax({
-                                    url: CONFIG.endpoints.salidas.get_lineas_devolucion,
-                                    type: 'POST',
-                                    dataType: 'json',
-                                    data: { tipo: tipoDocOrig, numero: numeroDev },
-                                    success: function(data) {
-                                        if (data.status === 'success' && data.lineas && data.lineas.length > 0) {
-                                            var disponibles = [];
-                                            $.each(data.lineas, function(i, l) {
-                                                var cantDisp = parseFloat(l.cantidad_disponible);
-                                                if (cantDisp > 0) {
-                                                    disponibles.push({ seq: l.seq, cantidad: cantDisp });
-                                                }
-                                            });
-                                            if (disponibles.length === 0) {
-                                                swal('Advertencia', 'Todos los ítems de este documento ya fueron devueltos.', 'warning');
-                                                return;
-                                            }
-                                            lineasDevolucionSeleccionadas = disponibles;
-                                        } else {
-                                            lineasDevolucionSeleccionadas = null;
-                                        }
+
+                // Pre-check: verificar disponibilidad antes de continuar
+                $.ajax({
+                    url: CONFIG.endpoints.salidas.get_lineas_devolucion,
+                    type: 'POST',
+                    dataType: 'json',
+                    data: { tipo: tipoDocOrig, numero: numeroDev },
+                    success: function(preCheck) {
+                        var disponiblesPC = [];
+                        var totalItemsPC  = 0;
+
+                        if (preCheck.status === 'success' && preCheck.lineas && preCheck.lineas.length > 0) {
+                            totalItemsPC = preCheck.lineas.length;
+                            $.each(preCheck.lineas, function(i, l) {
+                                var cantDisp = parseFloat(l.cantidad_disponible);
+                                if (cantDisp > 0) disponiblesPC.push({ seq: l.seq, cantidad: cantDisp });
+                            });
+                        }
+
+                        // Bloquear si ya no hay nada que devolver
+                        if (totalItemsPC > 0 && disponiblesPC.length === 0) {
+                            $('#btncrear').prop('disabled', false);
+                            setTimeout(function() {
+                                swal('Sin disponibilidad',
+                                     'Este documento ya fue devuelto en su totalidad.\nNo hay cantidades pendientes de devolución.',
+                                     'error');
+                            }, 300);
+                            return;
+                        }
+
+                        var itemsAgotados = totalItemsPC - disponiblesPC.length;
+                        var infoAgotados  = itemsAgotados > 0
+                            ? '\n(' + itemsAgotados + ' ítem(s) ya devuelto(s) completamente)'
+                            : '';
+
+                        if (window.permiteDevolucionParcial) {
+                            // setTimeout necesario: SweetAlert v1 no permite abrir un segundo swal
+                            // dentro del callback del primero sin que el DOM se limpie primero
+                            setTimeout(function() {
+                                swal({
+                                    title: "Tipo de Devolución",
+                                    text: "¿Desea hacer una devolución parcial (seleccionar ítems) o completa (todos los ítems disponibles)?" + infoAgotados,
+                                    type: "info",
+                                    showCancelButton: true,
+                                    confirmButtonColor: "#6f42c1",
+                                    confirmButtonText: "Parcial",
+                                    cancelButtonText: "Completa",
+                                    closeOnConfirm: true,
+                                    closeOnCancel: true
+                                }, function(esParcial) {
+                                    if (esParcial === true) {
+                                        abrirModalItemsDevolucion(numeroDev, tipoDocOrig);
+                                    } else if (esParcial === false) {
+                                        // Completa: usar disponibles ya calculados
+                                        lineasDevolucionSeleccionadas = disponiblesPC.length > 0 ? disponiblesPC : null;
                                         abrirModalConceptoDevolucion();
-                                    },
-                                    error: function() {
+                                    }
+                                });
+                            }, 300);
+                        } else {
+                            // Sin permiso parcial: usar disponibles directamente
+                            lineasDevolucionSeleccionadas = disponiblesPC.length > 0 ? disponiblesPC : null;
+                            abrirModalConceptoDevolucion();
+                        }
+                    },
+                    error: function() {
+                        // Si falla el pre-check continuar con flujo normal
+                        if (window.permiteDevolucionParcial) {
+                            setTimeout(function() {
+                                swal({
+                                    title: "Tipo de Devolución",
+                                    text: "¿Desea hacer una devolución parcial (seleccionar ítems) o completa (todos los ítems)?",
+                                    type: "info",
+                                    showCancelButton: true,
+                                    confirmButtonColor: "#6f42c1",
+                                    confirmButtonText: "Parcial",
+                                    cancelButtonText: "Completa",
+                                    closeOnConfirm: true,
+                                    closeOnCancel: true
+                                }, function(esParcial) {
+                                    if (esParcial === true) {
+                                        abrirModalItemsDevolucion(numeroDev, tipoDocOrig);
+                                    } else if (esParcial === false) {
                                         lineasDevolucionSeleccionadas = null;
                                         abrirModalConceptoDevolucion();
                                     }
                                 });
-                            }
-                        });
-                    }, 300);
-                } else {
-                    abrirModalConceptoDevolucion();
-                }
+                            }, 300);
+                        } else {
+                            abrirModalConceptoDevolucion();
+                        }
+                    }
+                });
             });
         }, 'json').fail(function() {
             // Si falla la consulta, mostrar confirmación básica
@@ -2642,6 +2800,7 @@ $(document).on('click', '#btnConfirmarConcepto', function() {
     $.blockUI({ message: '<h2>Generando devolución, por favor espere...</h2>' });
 
     const formDataDev = new FormData($("#doc_form")[0]);
+    formDataDev.set('docref', '3'); // Forzar ruta de devolución independiente del estado del DOM
     formDataDev.append('idConceptoDevolucion',     idConcepto);
     formDataDev.append('nombreConceptoDevolucion', nombreConcepto);
     if (lineasDevolucionSeleccionadas !== null) {

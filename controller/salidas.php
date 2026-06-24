@@ -31,8 +31,36 @@
             echo $resultado;
         break;
 
+        case "insert_devolucion_manual":
+            require_once("../models/mdlConceptosDevolucion.php");
+            $conceptos = new ConceptosDevolucion();
+            $idConcepto     = isset($_POST["idConcepto"]) ? (int)$_POST["idConcepto"] : 0;
+            $nombreConcepto = trim($_POST["nombreConcepto"] ?? '');
+            if ($idConcepto <= 0 || $nombreConcepto === '') {
+                echo json_encode(["status" => "error", "message" => "El concepto de devolución es obligatorio."]);
+                break;
+            }
+            $nombreVerificado = $conceptos->validar_activo($idConcepto);
+            if ($nombreVerificado === null) {
+                echo json_encode(["status" => "error", "message" => "El concepto seleccionado no es válido o está inactivo."]);
+                break;
+            }
+            $dir1dv = $_POST["dir1"] ?? '';
+            if (strpos($dir1dv, ",") !== false) $dir1dv = explode(",", $dir1dv)[0];
+            $dir2dv = $_POST["dir2"] ?? '';
+            if (strpos($dir2dv, ",") !== false) $dir2dv = explode(",", $dir2dv)[0];
+            echo $salidas->insert_devolucion_manual(
+                $_POST["idTipo"],
+                $_POST["nit1"], $dir1dv,
+                $_POST["nit2"], $dir2dv,
+                $_SESSION["Id_Usuario"],
+                $idConcepto, $nombreVerificado
+            );
+        break;
+
         case "insert_doc_salida":
-            if(($_POST["docref"] ?? 0) == 0){
+            $tipoDocRefCheck = trim($_POST["tipoDocRef"] ?? '');
+            if(($_POST["docref"] ?? 0) == 0 && $tipoDocRefCheck === ''){
                 $resultado = $salidas->insert_doc_salida($_POST["idTipo"], $_POST["numero"], $_SESSION["Id_Usuario"]);
             } else {
                 // Validar concepto de devolución obligatorio
