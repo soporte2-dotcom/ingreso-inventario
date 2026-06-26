@@ -430,13 +430,13 @@
                     $sql_chk = "SELECT COUNT(*) AS con_pendiente
                                 FROM Documentos_Lin_Ped dlp
                                 LEFT JOIN (
-                                    SELECT dl.IdProducto, SUM(CASE WHEN d.Tipo_Docto_Base = '0' THEN dl.Cantidad_Facturada ELSE -dl.Cantidad_Facturada END) AS total_facturado
+                                    SELECT dl.IdProducto, dl.Numero_Lote, SUM(CASE WHEN d.Tipo_Docto_Base = '0' THEN dl.Cantidad_Facturada ELSE -dl.Cantidad_Facturada END) AS total_facturado
                                     FROM Documentos d
                                     JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                                     WHERE d.Numero_Docto_Base_2 = '$numero_os' AND d.Tipo_Docto_Base_2 = '10'
                                     AND d.exportado = 'S'
-                                    GROUP BY dl.IdProducto
-                                ) f ON f.IdProducto = dlp.IdProducto
+                                    GROUP BY dl.IdProducto, dl.Numero_Lote
+                                ) f ON f.IdProducto = dlp.IdProducto AND f.Numero_Lote = ISNULL(dlp.Numero_Lote, '0')
                                 WHERE dlp.numero_pedido = '$numero_os' AND dlp.sw = '10'
                                 AND (dlp.cantidad - ISNULL(f.total_facturado, 0)) > 0";
                     $stmt_chk = sqlsrv_query($cn->getConecta(), $sql_chk);
@@ -603,8 +603,8 @@
                 1 AS Tasa_Moneda_Ext, '' AS Tomador, 'V' AS Tasa_Fija_o_Variable, d.Punto_FOB AS Punto_FOB,
                 0 AS Fletes_Moneda_Ext, 0 AS Miselaneos_Moneda_Ext, 0 AS Cargo_Por_Fletes, 0 AS Impuesto_Por_Fletes, d.Total_Items AS Total_Items, d.Nombre_Cliente AS Nombre_Cliente,
                 SUBSTRING(d.Ordenado_Por,0,20) AS Ordenado_Por, d.Telefono_De_Envio_1 AS Telefono_De_Envio_1, d.Telefono_De_Envio_2 AS Telefono_De_Envio_2, 'N' AS Factura_Impresa, d.IdFormaEnvio AS IdFormaEnvio, d.IdTRansportador AS IdTransportador,
-                d.nit_Cedula_2 AS nit_Cedula_2, d.codigo_direccion_2 AS codigo_direccion_2, '' AS Numero_Docto_Base_2, '$tiporef' AS Tipo_Docto_Base,
-                '0' AS Tipo_Docto_Base_2, d.IdActividadEconomica AS IdActividadEconomica, d.TarifaReteFuenteCree AS TarifaReteFuenteCree, d.Valor_ReteCree AS Valor_ReteCree, d.IdVehiculo AS IdVehiculo
+                d.nit_Cedula_2 AS nit_Cedula_2, d.codigo_direccion_2 AS codigo_direccion_2, d.Numero_Docto_Base_2 AS Numero_Docto_Base_2, '$tiporef' AS Tipo_Docto_Base,
+                d.Tipo_Docto_Base_2 AS Tipo_Docto_Base_2, d.IdActividadEconomica AS IdActividadEconomica, d.TarifaReteFuenteCree AS TarifaReteFuenteCree, d.Valor_ReteCree AS Valor_ReteCree, d.IdVehiculo AS IdVehiculo
 
                 FROM Documentos d, consecutivos c, TblTipoDoctos td
                 WHERE c.tipo = '$tipo' AND d.Numero_documento = '$numero' AND d.tipo = '$tiporef' AND td.idTipoDoctos = '$tipo')";
@@ -632,7 +632,7 @@
                 dl.Porcentaje_Descuento_1 AS Porcentaje_Descuento_1, dl.Porcentaje_Descuento_2 AS Porcentaje_Descuento_2,
                 dl.Porcentaje_Descuento_3 AS Porcentaje_Descuento_3, dl.IdVendedor AS IdVendedor, 0 AS Comision_Vendedor, 0 AS Valor_Comision_Vendedor,
                 td.IdBodega AS IdBodega, 'S' AS Maneja_Inventario, '' AS Tomador, 1 AS IdMoneda, 1 AS Tasa_Moneda_Ext, '0' AS CentroDeCostosDoc,
-                ' ' AS Nota_Linea, '1' AS Unidades, GETDATE() AS Fecha_Vence, 'N' AS Exportado, dl.Costo_Unitario_Inicial AS Costo_Unitario_Inicial,
+                ISNULL(dl.Nota_Linea, ' ') AS Nota_Linea, '1' AS Unidades, GETDATE() AS Fecha_Vence, 'N' AS Exportado, dl.Costo_Unitario_Inicial AS Costo_Unitario_Inicial,
                 CASE WHEN LTRIM(RTRIM(t.TipoPersona)) = 'Juridica' THEN r.PorcentajeRetencionJuridica
                 ELSE r.PorcentajeRetencionNatural END AS Porcentaje_ReteFuente, 0 AS Envase, 0 AS Numero_Lote_Destino, '' AS serial, 0 AS Impuesto_Consumo, 0 AS Porcentaje_ReteFuente_2,
                 0 AS Porcentaje_ReteFuente_3, 0 AS Porcentaje_ReteFuente_4, 0 AS Emp_1, 0 AS Emp_2, 0 AS Emp_3, 0 AS Emp_4, 0 AS Emp_5, 0 AS Emp_6,
@@ -878,13 +878,13 @@
                 $sql_pend_chk = "SELECT COUNT(*) AS con_pendiente
                                  FROM Documentos_Lin_Ped dlp
                                  LEFT JOIN (
-                                     SELECT dl.IdProducto,
+                                     SELECT dl.IdProducto, dl.Numero_Lote,
                                             SUM(CASE WHEN d.Tipo_Docto_Base = '0' THEN dl.Cantidad_Facturada ELSE -dl.Cantidad_Facturada END) AS total_facturado
                                      FROM Documentos d
                                      JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                                      WHERE d.Numero_Docto_Base_2 = '$numero' AND d.Tipo_Docto_Base_2 = '10'
-                                     GROUP BY dl.IdProducto
-                                 ) f ON f.IdProducto = dlp.IdProducto
+                                     GROUP BY dl.IdProducto, dl.Numero_Lote
+                                 ) f ON f.IdProducto = dlp.IdProducto AND f.Numero_Lote = ISNULL(dlp.Numero_Lote, '0')
                                  WHERE dlp.numero_pedido = '$numero' AND dlp.sw = '10'
                                  AND (dlp.cantidad - ISNULL(f.total_facturado, 0)) > 0";
                 $stmt_pend_chk = sqlsrv_query($cn->getConecta(), $sql_pend_chk);
@@ -969,13 +969,13 @@
                 JOIN TblTipoDoctos td ON td.idTipoDoctos = '$tipo'
                 JOIN TblProducto p ON p.IdProducto = dp.IdProducto
                 LEFT JOIN (
-                    SELECT dl.IdProducto,
+                    SELECT dl.IdProducto, dl.Numero_Lote,
                            SUM(CASE WHEN d.Tipo_Docto_Base = '0' THEN dl.Cantidad_Facturada ELSE -dl.Cantidad_Facturada END) AS total_facturado
                     FROM Documentos d
                     JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                     WHERE d.Numero_Docto_Base_2 = '$numero' AND d.Tipo_Docto_Base_2 = '10'
-                    GROUP BY dl.IdProducto
-                ) f ON f.IdProducto = dp.IdProducto
+                    GROUP BY dl.IdProducto, dl.Numero_Lote
+                ) f ON f.IdProducto = dp.IdProducto AND f.Numero_Lote = ISNULL(dp.Numero_Lote, '0')
                 WHERE dp.numero_pedido = '$numero' AND dp.sw = '10'
                 AND (dp.cantidad - ISNULL(f.total_facturado, 0)) > 0)";
 
@@ -1008,14 +1008,14 @@
                 $sql_chk_pend = "SELECT COUNT(*) AS con_pendiente
                                  FROM Documentos_Lin_Ped dlp
                                  LEFT JOIN (
-                                     SELECT dl.IdProducto,
+                                     SELECT dl.IdProducto, dl.Numero_Lote,
                                             SUM(CASE WHEN d.Tipo_Docto_Base = '0' THEN dl.Cantidad_Facturada ELSE -dl.Cantidad_Facturada END) AS total_facturado
                                      FROM Documentos d
                                      JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                                      WHERE d.Numero_Docto_Base_2 = '$numero' AND d.Tipo_Docto_Base_2 = '10'
                                      AND d.exportado = 'S'
-                                     GROUP BY dl.IdProducto
-                                 ) f ON f.IdProducto = dlp.IdProducto
+                                     GROUP BY dl.IdProducto, dl.Numero_Lote
+                                 ) f ON f.IdProducto = dlp.IdProducto AND f.Numero_Lote = ISNULL(dlp.Numero_Lote, '0')
                                  WHERE dlp.numero_pedido = '$numero' AND dlp.sw = '10'
                                  AND (dlp.cantidad - ISNULL(f.total_facturado, 0)) > 0";
                 $stmt_chk_pend = sqlsrv_query($cn->getConecta(), $sql_chk_pend);
@@ -1101,12 +1101,12 @@
                 JOIN TblTipoDoctos td ON td.idTipoDoctos = '$tipo'
                 JOIN TblProducto p ON p.IdProducto = dp.IdProducto
                 LEFT JOIN (
-                    SELECT dl.IdProducto, SUM(CASE WHEN d.Tipo_Docto_Base = '0' THEN dl.Cantidad_Facturada ELSE -dl.Cantidad_Facturada END) AS total_facturado
+                    SELECT dl.IdProducto, dl.Numero_Lote, SUM(CASE WHEN d.Tipo_Docto_Base = '0' THEN dl.Cantidad_Facturada ELSE -dl.Cantidad_Facturada END) AS total_facturado
                     FROM Documentos d
                     JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                     WHERE d.Numero_Docto_Base_2 = '$numero_os' AND d.Tipo_Docto_Base_2 = '10'
-                    GROUP BY dl.IdProducto
-                ) f ON f.IdProducto = dp.IdProducto
+                    GROUP BY dl.IdProducto, dl.Numero_Lote
+                ) f ON f.IdProducto = dp.IdProducto AND f.Numero_Lote = ISNULL(dp.Numero_Lote, '0')
                 WHERE dp.numero_pedido = '$numero_os' AND dp.sw = '10'
                 AND (dp.cantidad - ISNULL(f.total_facturado, 0)) > 0)";
 
@@ -1594,13 +1594,13 @@
                                 ISNULL(SUM(f.total_facturado), 0) AS total_despachado
                          FROM Documentos_Lin_Ped dlp
                          LEFT JOIN (
-                             SELECT dl.IdProducto,
+                             SELECT dl.IdProducto, dl.Numero_Lote,
                                     SUM(CASE WHEN d.Tipo_Docto_Base = '0' THEN dl.Cantidad_Facturada ELSE -dl.Cantidad_Facturada END) AS total_facturado
                              FROM Documentos d
                              JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                              WHERE d.Numero_Docto_Base_2 = '$numero' AND d.Tipo_Docto_Base_2 = '10'
-                             GROUP BY dl.IdProducto
-                         ) f ON f.IdProducto = dlp.IdProducto
+                             GROUP BY dl.IdProducto, dl.Numero_Lote
+                         ) f ON f.IdProducto = dlp.IdProducto AND f.Numero_Lote = ISNULL(dlp.Numero_Lote, '0')
                          WHERE dlp.numero_pedido = '$numero' AND dlp.sw = '10'";
             $stmt_pend = sqlsrv_query($cn->getConecta(), $sql_pend);
             $row_pend  = $stmt_pend ? sqlsrv_fetch_array($stmt_pend, SQLSRV_FETCH_ASSOC) : null;

@@ -2580,6 +2580,18 @@ function imprimirDocumento() {
         '<div class="firma-linea"></div>' +
         '<p class="firma-etiqueta">Nombre legible</p>' +
         '</div>' +
+        (tipo === '155' ?
+        '<div class="firma-bloque" style="margin-top:30px">' +
+        '<p class="firma-bloque-titulo">Firma Conductor</p>' +
+        '<div class="firma-linea"></div>' +
+        '<p class="firma-etiqueta">Nombre legible</p>' +
+        '</div>' +
+        '<div class="firma-bloque" style="margin-top:30px">' +
+        '<p class="firma-bloque-titulo">Firma Báscula</p>' +
+        '<div class="firma-linea"></div>' +
+        '<p class="firma-etiqueta">Nombre legible</p>' +
+        '</div>'
+        : '') +
         '</div>'
         : '') +
         (($('#dotacion_epp').prop('checked')) ?

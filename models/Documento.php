@@ -555,25 +555,36 @@
 
             $numero_os = $row_ref['Numero_Docto_Base_2'];
 
-            // Obtener cantidad ordenada en la OS para este producto
+            // Obtener el Numero_Lote de la línea que se está editando
+            $sql_lote = "SELECT Numero_Lote FROM Documentos_Lin
+                         WHERE tipo = ? AND Numero_Documento = ? AND seq = ? AND IdProducto = ?";
+            $stmt_lote = sqlsrv_query($cn->getConecta(), $sql_lote, array($tipo, $consecutivo, $seq, $producto));
+            $numero_lote = '0';
+            if ($stmt_lote) {
+                $row_lote = sqlsrv_fetch_array($stmt_lote, SQLSRV_FETCH_ASSOC);
+                if ($row_lote) $numero_lote = $row_lote['Numero_Lote'] ?? '0';
+            }
+
+            // Obtener cantidad ordenada en la OS para este producto y lote específico
             $sql_os_qty = "SELECT cantidad FROM Documentos_Lin_Ped
-                           WHERE numero_pedido = ? AND sw = '10' AND IdProducto = ?";
-            $stmt_qty = sqlsrv_query($cn->getConecta(), $sql_os_qty, array($numero_os, $producto));
+                           WHERE numero_pedido = ? AND sw = '10' AND IdProducto = ? AND ISNULL(Numero_Lote, '0') = ?";
+            $stmt_qty = sqlsrv_query($cn->getConecta(), $sql_os_qty, array($numero_os, $producto, $numero_lote));
             if (!$stmt_qty) return null;
             $row_qty = sqlsrv_fetch_array($stmt_qty, SQLSRV_FETCH_ASSOC);
             if (!$row_qty) return null;
             $cantidad_os = (float)$row_qty['cantidad'];
 
-            // Sumar lo despachado en OTROS documentos (excluir el actual).
+            // Sumar lo despachado en OTROS documentos (excluir el actual), filtrado por lote.
             // Las devoluciones (Tipo_Docto_Base != '0') restan del total despachado.
             $sql_otros = "SELECT ISNULL(SUM(CASE WHEN d.Tipo_Docto_Base = '0' THEN dl.Cantidad_Facturada ELSE -dl.Cantidad_Facturada END), 0) AS total_otros
                           FROM Documentos d
                           JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                           WHERE d.Numero_Docto_Base_2 = ? AND d.Tipo_Docto_Base_2 = '10'
                           AND NOT (d.tipo = ? AND d.Numero_documento = ?)
-                          AND dl.IdProducto = ?";
+                          AND dl.IdProducto = ?
+                          AND dl.Numero_Lote = ?";
             $stmt_otros = sqlsrv_query($cn->getConecta(), $sql_otros,
-                                       array($numero_os, $tipo, $consecutivo, $producto));
+                                       array($numero_os, $tipo, $consecutivo, $producto, $numero_lote));
             if (!$stmt_otros) return null;
             $row_otros = sqlsrv_fetch_array($stmt_otros, SQLSRV_FETCH_ASSOC);
             $total_otros = (float)($row_otros['total_otros'] ?? 0);
