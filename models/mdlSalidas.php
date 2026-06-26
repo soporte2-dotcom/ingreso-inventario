@@ -384,16 +384,19 @@
             }
         }
 
-        public function guardar_salida($tipo, $numdoc, $nit1, $direccion1, $nit2, $direccion2, $despacho, $notas, $dotacion = false, $fecha_factura = ''){
+        public function guardar_salida($tipo, $numdoc, $nit1, $direccion1, $nit2, $direccion2, $despacho, $notas, $dotacion = false, $fecha_factura = '', $idTransportador = '1', $idVehiculo = '1'){
             $cn = new Conectarserver;
 
+            $idTransportador = $idTransportador ?: '1';
+            $idVehiculo      = $idVehiculo      ?: '1';
             $idVendedorSql = $dotacion ? ", IdVendedor = 12" : "";
             $fechaSql = $fecha_factura ? ", Fecha_Hora_Factura = CONVERT(datetime,'$fecha_factura',120)" : "";
 
             $sql = "UPDATE Documentos SET
                 nit_Cedula = '$nit1', codigo_direccion = '$direccion1',
                 nit_Cedula_2 = '$nit2', codigo_direccion_2 = '$direccion2',
-                Numero_Docto_Base = '$despacho', notas = '$notas', exportado = 'S' $idVendedorSql $fechaSql,
+                Numero_Docto_Base = '$despacho', notas = '$notas', exportado = 'S',
+                IdTransportador = '$idTransportador', IdVehiculo = '$idVehiculo' $idVendedorSql $fechaSql,
                 Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = $tipo AND Numero_documento = $numdoc),
                 valor_total = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $numdoc),
                 costo = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $numdoc),

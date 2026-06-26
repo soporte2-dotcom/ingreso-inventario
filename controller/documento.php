@@ -105,15 +105,39 @@
         /*** ENTRADAS ***/  
 
         case "insert_doc_entrada":
-            
+
             if($_POST["docref"] == 0 ){
                 $resultado = $documento->insert_doc_entrada($_POST["idTipo"],$_POST["numero"], $_SESSION["Id_Usuario"]);
                 echo $resultado;
-            }else{            
+            }else{
                 $resultado = $documento->insert_entrada_traslado($_POST["idTipo"],$_POST["numero"], $_POST["tipoDocRef"], $_SESSION["Id_Usuario"]);
                 echo $resultado;
             }
-                                
+
+        break;
+
+        case "insert_linea_entrada_manual":
+            $resultado = $documento->insert_linea_entrada_manual(
+                $_POST["tipo"],
+                $_POST["consecutivo"],
+                $_POST["idproducto"],
+                $_POST["cantidad"],
+                $_POST["valorUnitario"] ?? 0,
+                $_POST["lote"] ?? '0',
+                $_POST["porcentaje_impuesto"] ?? 0
+            );
+            echo $resultado;
+        break;
+
+        case "insert_doc_entrada_manual":
+            $nit1 = $_POST["nit1"] ?? '';
+            $dir1 = $_POST["dir1"] ?? '';
+            if (strpos($dir1, ",") !== false) $dir1 = explode(",", $dir1)[0];
+            $nit2 = $_POST["nit2"] ?? '';
+            $dir2 = $_POST["dir2"] ?? '';
+            if (strpos($dir2, ",") !== false) $dir2 = explode(",", $dir2)[0];
+            $resultado = $documento->insert_doc_entrada_manual($_POST["idTipo"], $nit1, $dir1, $nit2, $dir2, $_SESSION["Id_Usuario"]);
+            echo $resultado;
         break;
 
         case "listar_entradas":

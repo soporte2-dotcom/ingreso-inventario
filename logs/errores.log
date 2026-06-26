@@ -52,3 +52,27 @@
 
 )
 
+[2026-06-26 16:01:36] Error en insert_doc_entrada_manual: Error al insertar documento manual: Array
+(
+    [0] => Array
+        (
+            [0] => 23000
+            [SQLSTATE] => 23000
+            [1] => 547
+            [code] => 547
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Instrucción INSERT en conflicto con la restricción FOREIGN KEY 'FK_Documentos_Tblterceros'. El conflicto ha aparecido en la base de datos 'DOT_BUGA_NUEVABK20260106', tabla 'dbo.TblTerceros', column 'nit_cedula'.
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Instrucción INSERT en conflicto con la restricción FOREIGN KEY 'FK_Documentos_Tblterceros'. El conflicto ha aparecido en la base de datos 'DOT_BUGA_NUEVABK20260106', tabla 'dbo.TblTerceros', column 'nit_cedula'.
+        )
+
+    [1] => Array
+        (
+            [0] => 01000
+            [SQLSTATE] => 01000
+            [1] => 3621
+            [code] => 3621
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Se terminó la instrucción.
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Se terminó la instrucción.
+        )
+
+)
+

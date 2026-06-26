@@ -419,6 +419,20 @@ try {
                         </label>
                     </div>
                   </div>";
+
+            $tiene_entrada_frigopork = $permisos->tiene_permiso_especial($usuario_id, 'entrada_frigopork_manual');
+            $chk_frigopork = $tiene_entrada_frigopork ? 'checked' : '';
+
+            echo "<h5 style='margin-top:20px; margin-bottom:15px'><span class='glyphicon glyphicon-star'></span> Permisos Especiales de Entradas</h5>";
+            echo "<div class='documentos-list'>
+                    <div class='checkbox'>
+                        <input type='checkbox' id='perm_entrada_frigopork_manual' name='especiales[]' value='entrada_frigopork_manual' $chk_frigopork>
+                        <label for='perm_entrada_frigopork_manual'>
+                            <strong>Entrada Frigopork Manual (294)</strong>
+                            <small class='text-muted'> &mdash; Permite crear el documento 294-Entrada Frigopork sin documento de referencia</small>
+                        </label>
+                    </div>
+                  </div>";
             break;
 
         case "guardar_permisos_especiales":
@@ -427,7 +441,7 @@ try {
                 echo json_encode(["status" => "error", "message" => "No se recibió ID de usuario"]);
                 break;
             }
-            $todos_especiales = ['devolucion_parcial', 'devolucion_manual'];
+            $todos_especiales = ['devolucion_parcial', 'devolucion_manual', 'entrada_frigopork_manual'];
             $seleccionados = isset($_POST["especiales"]) ? $_POST["especiales"] : [];
             foreach ($todos_especiales as $modulo) {
                 $valor = in_array($modulo, $seleccionados) ? 'S' : 'N';

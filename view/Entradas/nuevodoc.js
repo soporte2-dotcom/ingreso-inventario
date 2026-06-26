@@ -20,6 +20,10 @@ const CONFIG = {
         },
         documento: {
             insert_doc_entrada: "documento.php?op=insert_doc_entrada",
+            insert_doc_entrada_manual: "documento.php?op=insert_doc_entrada_manual",
+            insert_linea_entrada_manual: "documento.php?op=insert_linea_entrada_manual",
+            get_info_producto: "salidas.php?op=get_info_producto",
+            combo_lotes: "salidas.php?op=combo_lotes",
             asignar_selecc: "documento.php?op=asignar_selecc",
             update_prod_doc: "documento.php?op=update_prod_doc",
             guardar_entrada: "documento.php?op=guardar_entrada",
@@ -111,6 +115,30 @@ function inicializarEventos() {
             data = JSON.parse(data);
             $("#consecutivo").val(data.consecutivo);
         });
+
+        const tiposRestringidosEntrada = ['294'];
+        if (tiposRestringidosEntrada.includes(idTipo)) {
+            if (!window.permiteEntradaFrigopork) {
+                // Sin permiso: ocultar Manual, forzar Sí (traslado)
+                $("#opt_manual").hide();
+                $("#docref").val("1").prop('disabled', true);
+                showInp();
+                swal("Aviso!", "El documento 294-Entrada Frigopork requiere un documento de referencia. Solo usuarios con permiso especial pueden crearlo manualmente.", "info");
+            } else {
+                // Con permiso: mostrar opción Manual y seleccionarla por defecto
+                $("#opt_manual").show();
+                $("#docref").val("2").prop('disabled', false);
+                showInp();
+            }
+        } else {
+            // Otro tipo: ocultar Manual, restaurar docref a No
+            $("#opt_manual").hide();
+            if ($("#docref").val() === "2") {
+                $("#docref").val("0");
+            }
+            $("#docref").prop('disabled', false);
+            showInp();
+        }
     });
 
     // Eventos para terceros
@@ -134,49 +162,92 @@ function inicializarEventos() {
 function crearDocumento() {
     const tipo = document.getElementById("idTipo").value;
     const consecutivo = document.getElementById("consecutivo").value;
+    const docref = document.getElementById("docref").value;
     const numero = document.getElementById("numero").value;
-    
+
+    const esFrigoporkManual = tipo === '294' && docref === '2' && window.permiteEntradaFrigopork;
+
     if (!validarCampoRequerido(tipo, "Tipo de Documento") ||
-        !validarCampoRequerido(consecutivo, "Consecutivo") ||
-        !validarCampoRequerido(numero, "Número")) {
+        !validarCampoRequerido(consecutivo, "Consecutivo")) {
         return false;
     }
-    
-    $.blockUI({ message: '<h2>Cargando favor Espere...</h2>' });
-    
-    const formData = new FormData($("#doc_form")[0]);
-    
-    $.ajax({
-        url: CONFIG.baseUrl + CONFIG.endpoints.documento.insert_doc_entrada,
-        type: "POST",
-        data: formData,
-        contentType: false,
-        processData: false,
-        dataType: "json",
-        success: function(response) {
-            $.unblockUI();
-            
-            if (response.status === "success") {
-                swal({
-                    title: "Correcto!", 
-                    text: response.message, 
-                    type: "success"
-                }, function() {
-                    window.location.href = 'index.php?tipo='+ response.tipo +'&consecutivo='+ response.consecutivo; 
-                });
-            } else {
-                swal("Error!", response.message, "error");
+
+    if (!esFrigoporkManual && !validarCampoRequerido(numero, "Número")) {
+        return false;
+    }
+
+    if (esFrigoporkManual) {
+        const nit1 = $("#nit1").val();
+        const dir1 = $("#select_dir1").val();
+        const nit2 = $("#nit2").val();
+        const dir2 = $("#select_dir2").val();
+
+        if (!validarCampoRequerido(nit1, "NIT Facturar A") ||
+            !validarCampoRequerido(dir1, "Dirección Facturar A") ||
+            !validarCampoRequerido(nit2, "NIT Enviar A") ||
+            !validarCampoRequerido(dir2, "Dirección Enviar A")) {
+            return false;
+        }
+
+        $.blockUI({ message: '<h2>Cargando favor Espere...</h2>' });
+
+        $.ajax({
+            url: CONFIG.baseUrl + CONFIG.endpoints.documento.insert_doc_entrada_manual,
+            type: "POST",
+            data: { idTipo: tipo, nit1: nit1, dir1: dir1, nit2: nit2, dir2: dir2 },
+            dataType: "json",
+            success: function(response) {
+                $.unblockUI();
+                if (response.status === "success") {
+                    swal({ title: "Correcto!", text: response.message, type: "success" }, function() {
+                        window.location.href = 'index.php?tipo=' + response.tipo + '&consecutivo=' + response.consecutivo;
+                    });
+                } else {
+                    swal("Error!", response.message, "error");
+                    $("#btncrear").prop('disabled', false);
+                }
+            },
+            error: function(xhr, status, error) {
+                $.unblockUI();
+                swal("Error!", "Ha ocurrido un error al procesar la solicitud. Por favor intente nuevamente.", "error");
+                console.error("Error en la petición:", error);
                 $("#btncrear").prop('disabled', false);
             }
-        },
-        error: function(xhr, status, error) {
-            $.unblockUI();
-            swal("Error!", "Ha ocurrido un error al procesar la solicitud. Por favor intente nuevamente.", "error");
-            console.error("Error en la petición:", error);
-            $("#btncrear").prop('disabled', false);
-        }
-    });
-    
+        });
+    } else {
+        $.blockUI({ message: '<h2>Cargando favor Espere...</h2>' });
+        const formData = new FormData($("#doc_form")[0]);
+        $.ajax({
+            url: CONFIG.baseUrl + CONFIG.endpoints.documento.insert_doc_entrada,
+            type: "POST",
+            data: formData,
+            contentType: false,
+            processData: false,
+            dataType: "json",
+            success: function(response) {
+                $.unblockUI();
+                if (response.status === "success") {
+                    swal({
+                        title: "Correcto!",
+                        text: response.message,
+                        type: "success"
+                    }, function() {
+                        window.location.href = 'index.php?tipo=' + response.tipo + '&consecutivo=' + response.consecutivo;
+                    });
+                } else {
+                    swal("Error!", response.message, "error");
+                    $("#btncrear").prop('disabled', false);
+                }
+            },
+            error: function(xhr, status, error) {
+                $.unblockUI();
+                swal("Error!", "Ha ocurrido un error al procesar la solicitud. Por favor intente nuevamente.", "error");
+                console.error("Error en la petición:", error);
+                $("#btncrear").prop('disabled', false);
+            }
+        });
+    }
+
     $("#btncrear").prop('disabled', true);
     return false;
 }
@@ -312,11 +383,59 @@ function procesarGuardado(endpoint) {
 
 // FUNCIONES DE INTERFAZ
 function showInp(){
-    const getSelectValue = document.getElementById("docref").value;
-    const displayStyle = getSelectValue == "0" ? "none" : "inline-block";
-    
-    document.getElementById("txt_tipoDocRef").style.display = displayStyle;
-    document.getElementById("tipoDocRef").style.display = displayStyle;
+    const docref = document.getElementById("docref").value;
+
+    // Mostrar tipo de doc referencia solo cuando docref=1 (Sí/traslado)
+    const showRef = docref === "1" ? "inline-block" : "none";
+    document.getElementById("txt_tipoDocRef").style.display = showRef;
+    document.getElementById("tipoDocRef").style.display = showRef;
+
+    const numeroEl = document.getElementById("numero");
+    const txtNumeroEl = document.getElementById("txt_numero");
+    const preCreacion = document.getElementById("btncrear").style.display !== "none";
+
+    const camposFacturarA = ["hr1", "txt_nit1", "nit1", "txt_nombre1", "nombre1", "txt_telefono1", "telefono1", "txt_direccion1"];
+    const camposEnviarA   = ["hr2", "txt_nit2", "nit2", "txt_nombre2", "nombre2", "txt_direccion2"];
+
+    if (docref === "2" && preCreacion) {
+        // Manual Frigopork: ocultar Número, mostrar Facturar A y Enviar A con selects de dirección
+        numeroEl.style.display = "none";
+        txtNumeroEl.style.display = "none";
+        numeroEl.removeAttribute("required");
+
+        camposFacturarA.forEach(function(id) {
+            const el = document.getElementById(id);
+            if (el) el.style.display = "inline-block";
+        });
+        document.getElementById("select_dir1").style.display = "inline-block";
+        document.getElementById("direccion1").style.display = "none";
+
+        camposEnviarA.forEach(function(id) {
+            const el = document.getElementById(id);
+            if (el) el.style.display = "inline-block";
+        });
+        document.getElementById("select_dir2").style.display = "inline-block";
+        document.getElementById("direccion2").style.display = "none";
+
+    } else {
+        // Modo normal: mostrar Número, ocultar secciones de creación manual
+        numeroEl.style.display = "inline-block";
+        txtNumeroEl.style.display = "inline-block";
+        numeroEl.setAttribute("required", "required");
+
+        if (preCreacion) {
+            camposFacturarA.forEach(function(id) {
+                const el = document.getElementById(id);
+                if (el) el.style.display = "none";
+            });
+            document.getElementById("select_dir1").style.display = "none";
+            camposEnviarA.forEach(function(id) {
+                const el = document.getElementById(id);
+                if (el) el.style.display = "none";
+            });
+            document.getElementById("select_dir2").style.display = "none";
+        }
+    }
 }
 
 function configurarInterfazParaDocumentoExistente(data) {
@@ -505,7 +624,7 @@ function actualizarTodosLosTotales(tipo, consecutivo) {
                    }
                    
                    if (completadas === totalOperaciones) {
-                       console.log('🎉 Todos los totales han sido actualizados');
+                       console.log('Todos los totales han sido actualizados');
                    }
                }
         ).fail(function(xhr, status, error) {
@@ -585,6 +704,14 @@ function listardetalle(tipo, consecutivo){
                 $('#btnreiniciar').show();
             } else {
                 $('#btnreiniciar').hide();
+            }
+
+            // Mostrar "Agregar Producto" solo en entradas manuales (sin pedido ni traslado)
+            const esEntradaManual = !tienePedido && !tieneTraslado && data.exportado !== 'S';
+            if (esEntradaManual) {
+                $('#btnAgregarProd').show();
+            } else {
+                $('#btnAgregarProd').hide();
             }
         }
 
@@ -1362,6 +1489,129 @@ $(document).on("click", "#btnguardar", function() {
 
 $(document).on("click", "#btnImprimirEtiqueta", function() {
     imprimirEtiqueta();
+});
+
+function cargarInfoProductoEntrada() {
+    const idProducto = document.getElementById("idproducto_m").value;
+    if (!idProducto) return;
+    const tipo        = getUrlParameter('tipo');
+    const consecutivo = getUrlParameter('consecutivo');
+    const nit         = $('#nit1').val() || '';
+    let dir           = $('#direccion1').val() || '';
+    if (dir.indexOf(',') !== -1) dir = dir.split(',')[0];
+    $.ajax({
+        url: CONFIG.baseUrl + CONFIG.endpoints.documento.get_info_producto,
+        type: "POST",
+        data: { idProducto, tipo, numdoc: consecutivo, nit, direccion: dir },
+        dataType: "json",
+        success: function(response) {
+            if (response.status === "success") {
+                document.getElementById("nombre_prod_m").value         = response.nombre;
+                document.getElementById("Valor_Unitario_m").value      = response.precio;
+                document.getElementById("porcentaje_iva_m").value      = response.porcentaje_impuesto + '%';
+                document.getElementById("porcentaje_impuesto_m").value = response.porcentaje_impuesto;
+            } else {
+                document.getElementById("nombre_prod_m").value         = '';
+                document.getElementById("Valor_Unitario_m").value      = '';
+                document.getElementById("porcentaje_iva_m").value      = '';
+                document.getElementById("porcentaje_impuesto_m").value = '0';
+                swal("Advertencia!", response.message, "warning");
+            }
+        },
+        error: function() {
+            document.getElementById("nombre_prod_m").value         = '';
+            document.getElementById("Valor_Unitario_m").value      = '';
+            document.getElementById("porcentaje_iva_m").value      = '';
+            document.getElementById("porcentaje_impuesto_m").value = '0';
+            swal("Error!", "Error al consultar el producto.", "error");
+        }
+    });
+}
+
+// Limpiar modal agregar producto al abrir y cargar combo lotes
+$('#modalAgregarProd').on('show.bs.modal', function() {
+    $('#idproducto_m').val('');
+    $('#nombre_prod_m').val('');
+    $('#cantidad_m').val('');
+    $('#Valor_Unitario_m').val('');
+    $('#porcentaje_iva_m').val('');
+    $('#porcentaje_impuesto_m').val('0');
+    $.post(CONFIG.baseUrl + CONFIG.endpoints.documento.combo_lotes, function(data) {
+        $('#lote_m').html(data);
+    });
+});
+
+$('#modalAgregarProd').on('shown.bs.modal', function() {
+    $('#idproducto_m').focus();
+});
+
+$(document).on("blur", "#idproducto_m", function() {
+    cargarInfoProductoEntrada();
+});
+
+$(document).on("keydown", "#idproducto_m", function(e) {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        cargarInfoProductoEntrada();
+        $('#cantidad_m').focus();
+    }
+});
+
+$(document).on("keydown", "#cantidad_m", function(e) {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        $('#lote_m').focus();
+    }
+});
+
+$(document).on("keydown", "#lote_m", function(e) {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        $('#btnRegistrarProd').click();
+    }
+});
+
+// Registrar producto en entrada manual
+$(document).on("click", "#btnRegistrarProd", function() {
+    const tipo            = getUrlParameter('tipo');
+    const consecutivo     = getUrlParameter('consecutivo');
+    const idproducto      = $('#idproducto_m').val();
+    const cantidad        = $('#cantidad_m').val();
+    const valorUnitario   = $('#Valor_Unitario_m').val() || 0;
+    const lote            = $('#lote_m').val() || '0';
+    const porcImpuesto    = $('#porcentaje_impuesto_m').val() || '0';
+
+    if (!idproducto || idproducto.trim() === '') {
+        swal("Advertencia!", "Ingrese el código del producto", "warning");
+        return;
+    }
+    if (!cantidad || parseFloat(cantidad) <= 0) {
+        swal("Advertencia!", "Ingrese una cantidad válida", "warning");
+        return;
+    }
+
+    $('#btnRegistrarProd').prop('disabled', true);
+
+    $.ajax({
+        url: CONFIG.baseUrl + CONFIG.endpoints.documento.insert_linea_entrada_manual,
+        type: "POST",
+        data: { tipo, consecutivo, idproducto, cantidad, valorUnitario, lote, porcentaje_impuesto: porcImpuesto },
+        dataType: "json",
+        success: function(resp) {
+            if (resp.status === 'success') {
+                $('#modalAgregarProd').modal('hide');
+                listardetalle(tipo, consecutivo);
+            } else {
+                swal("Error!", resp.message, "error");
+            }
+        },
+        error: function() {
+            swal("Error!", "No se pudo agregar el producto. Verifique el código.", "error");
+        },
+        complete: function() {
+            $('#btnRegistrarProd').prop('disabled', false);
+        }
+    });
 });
 
 init();

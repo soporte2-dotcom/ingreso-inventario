@@ -355,6 +355,20 @@ $permiteDevolucionManual  = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 						</fieldset>
 					</div>
 
+					<div class="col-lg-2" style="display: none" id="div_transportador">
+						<fieldset class="form-group">
+							<label class="form-label semibold">Transportador</label>
+							<select id="idTransportador" name="idTransportador" class="form-control"></select>
+						</fieldset>
+					</div>
+
+					<div class="col-lg-2" style="display: none" id="div_vehiculo">
+						<fieldset class="form-group">
+							<label class="form-label semibold">Placa</label>
+							<select id="idVehiculo" name="idVehiculo" class="form-control"></select>
+						</fieldset>
+					</div>
+
 				</div>
 
 				<div class="row">
@@ -823,7 +837,7 @@ $permiteDevolucionManual  = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="salidas.js?v=77"></script>
+	<script type="text/javascript" src="salidas.js?v=<?php echo time(); ?>"></script>
 
 	<script>
 		document.addEventListener("DOMContentLoaded", function() {

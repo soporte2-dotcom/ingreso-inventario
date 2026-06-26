@@ -3,6 +3,9 @@ require_once("../../config/conexionserver.php");
 if(isset($_SESSION["Id_Usuario"])){
 date_default_timezone_set("America/Bogota");
 $DateAndTime = date('d-m-Y h:i:s', time());
+require_once("../../models/mdlPermisos.php");
+$_permisos_entradas = new Permisos();
+$permiteEntradaFrigopork = $_permisos_entradas->tiene_permiso_especial($_SESSION["Id_Usuario"], 'entrada_frigopork_manual');
 ?>
 <!DOCTYPE html>
 <html>
@@ -12,9 +15,12 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 <script type="text/javascript">
 	window.currentUser = '<?= strtoupper(trim($_SESSION["Id_Usuario"])) ?>';
 	window.puedeEditarValor = ['LAUREN', 'SA'].indexOf(window.currentUser) !== -1;
+	window.permiteEntradaFrigopork = <?= $permiteEntradaFrigopork ? 'true' : 'false' ?>;
 </script>
 
 <script type="text/javascript">
+
+	var nitEspejo = '';
 
 	$(function() {
 		$("#nit3").autocomplete({
@@ -28,6 +34,73 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 					$('#direccion3').html(html);
 				});
 				$("#nit3").focus();
+			}
+		});
+
+		// Facturar A — autocomplete con espejo automático a Enviar A
+		$("#nit1").autocomplete({
+			source: "../../controller/terceros.php?op=terceroxnit",
+			minLength: 2,
+			select: function(event, ui) {
+				$('#nombre1').val(ui.item.nombre);
+				$('#telefono1').val('');
+				$('#select_dir1').html('<option value="" disabled selected>Seleccione...</option>');
+				$.post('../../controller/terceros.php?op=combo_dir', { nit: ui.item.value }, function(html) {
+					$('#select_dir1').html(html);
+				});
+				// Espejo a Enviar A si está vacío o sigue siendo el espejo anterior
+				const nit2Actual = $('#nit2').val();
+				if (!nit2Actual || nit2Actual === nitEspejo) {
+					nitEspejo = ui.item.value;
+					$('#nit2').val(ui.item.value);
+					$('#nombre2').val(ui.item.nombre);
+					$('#select_dir2').html('<option value="" disabled selected>Seleccione...</option>');
+					$.post('../../controller/terceros.php?op=combo_dir', { nit: ui.item.value }, function(html) {
+						$('#select_dir2').html(html);
+					});
+				}
+				$("#nit1").focus();
+			}
+		});
+
+		// Si el usuario cambia Enviar A manualmente, romper el espejo
+		$("#nit2").autocomplete({
+			source: "../../controller/terceros.php?op=terceroxnit",
+			minLength: 2,
+			select: function(event, ui) {
+				nitEspejo = '';
+				$('#nombre2').val(ui.item.nombre);
+				$('#select_dir2').html('<option value="" disabled selected>Seleccione...</option>');
+				$.post('../../controller/terceros.php?op=combo_dir', { nit: ui.item.value }, function(html) {
+					$('#select_dir2').html(html);
+				});
+				$("#nit2").focus();
+			}
+		});
+
+		// Autocomplete código producto en modal agregar manual
+		$("#idproducto_m").autocomplete({
+			source: "../../controller/productos.php?op=productoxid",
+			minLength: 1,
+			select: function(event, ui) {
+				$('#nombre_prod_m').val(ui.item.Producto);
+				$("#idproducto_m").val(ui.item.value);
+				$("#cantidad_m").focus();
+			}
+		});
+
+		// Teléfono Facturar A al seleccionar dirección
+		$(document).on('change', '#select_dir1', function() {
+			const direccion = $(this).val();
+			if (direccion) {
+				$.post('../../controller/terceros.php?op=telefono_dir', { direccion: direccion }, function(data) {
+					data = JSON.parse(data);
+					$('#telefono1').val(data.telefono_1);
+				});
+				// Espejo de dirección a Enviar A si el NIT es el mismo
+				if ($('#nit2').val() === nitEspejo && nitEspejo) {
+					$('#select_dir2').val(direccion);
+				}
 			}
 		});
 	});
@@ -100,7 +173,8 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 							<label class="form-label semibold" id="txt_docref">¿Tiene documento referencia?</label>
 							<select id="docref" name="docref" class="form-control" onchange="showInp()" required>
 								<option value="0">No</option>
-								<option value="1">Si</option>								
+								<option value="1">Si</option>
+								<option value="2" id="opt_manual" style="display:none">Manual</option>
 							</select>
 						</fieldset>
 					</div>
@@ -177,14 +251,14 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 					<div class="col-lg-2">
 						<fieldset class="form-group">
 							<label class="form-label semibold" style="display: none" id="txt_nit1">Nit/Cedula</label>
-							<input type="text" style="display: none" name="nit1" id="nit1" class="form-control" readonly/>
+							<input type="text" style="display: none" name="nit1" id="nit1" class="form-control ui-autocomplete-input" autocomplete="off"/>
 						</fieldset>
 					</div>
 
 					<div class="col-lg-3">
 						<fieldset class="form-group">
 							<label class="form-label semibold" style="display: none" id="txt_nombre1">Nombre</label>
-							<input type="text" style="display: none" name="nombre1" id="nombre1" class="form-control"  readonly/>
+							<input type="text" style="display: none" name="nombre1" id="nombre1" class="form-control" readonly/>
 						</fieldset>
 					</div>
 
@@ -192,6 +266,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 						<fieldset class="form-group">
 							<label class="form-label semibold" style="display: none" id="txt_direccion1">Direccion</label>
 							<input type="text" style="display: none" id="direccion1" name="direccion1" class="form-control" readonly>
+							<select style="display: none" id="select_dir1" name="select_dir1" class="form-control"></select>
 						</fieldset>
 					</div>
 
@@ -213,24 +288,29 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 					<div class="col-lg-2">
 						<fieldset class="form-group">
 							<label class="form-label semibold" style="display: none" id="txt_nit2">Nit/Cedula</label>
-							<input type="text" style="display: none" name="nit2" id="nit2" class="form-control"/>
+							<input type="text" style="display: none" name="nit2" id="nit2" class="form-control ui-autocomplete-input" autocomplete="off"/>
 						</fieldset>
 					</div>
 
 					<div class="col-lg-3">
 						<fieldset class="form-group">
 							<label class="form-label semibold" style="display: none" id="txt_nombre2">Nombre</label>
-							<input type="text" style="display: none" name="nombre2" id="nombre2" class="form-control"/>
+							<input type="text" style="display: none" name="nombre2" id="nombre2" class="form-control" readonly/>
 						</fieldset>
 					</div>
 
 					<div class="col-lg-3">
 						<fieldset class="form-group">
 							<label class="form-label semibold" style="display: none" id="txt_direccion2">Direccion</label>
-							<input type="text" style="display: none" id="direccion2" name="direccion2" class="form-control">
+							<input type="text" style="display: none" id="direccion2" name="direccion2" class="form-control" readonly>
+							<select style="display: none" id="select_dir2" name="select_dir2" class="form-control"></select>
 						</fieldset>
 					</div>
 
+				</div>
+
+				<div class="col-lg-12" id="hr_prov_manual" style="display: none">
+					<h6 class="m-t-lg with-border">Proveedor: </h6>
 				</div>
 
 				<div class="row">
@@ -315,6 +395,11 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
 						<button type="button" id="btneliminarsel" class="d-flex w-15 btn btn-rounded btn-inline btn-danger" style="display: none" onclick="eliminarSeleccionados()">
 							<i class="fa fa-trash"></i> Eliminar sel.
+						</button>
+					</div>
+					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
+						<button type="button" id="btnAgregarProd" class="d-flex w-15 btn btn-rounded btn-inline btn-primary" style="display: none" data-toggle="modal" data-target="#modalAgregarProd">
+							<i class="fa fa-plus"></i> Agregar Producto
 						</button>
 					</div>
 				</div>
@@ -430,7 +515,56 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 								</div>
 							</div>
 							<!-- Fin modal Agregar -->
-							
+
+							<!-- Modal Agregar Producto Manual -->
+							<div class="modal fade" id="modalAgregarProd" tabindex="-1" role="dialog" aria-labelledby="modalAgregarProdTitle" aria-hidden="true" data-backdrop="static" data-keyboard="false">
+								<div class="modal-dialog" role="document">
+									<div class="modal-content">
+										<div class="modal-header">
+											<h5 class="modal-title" id="modalAgregarProdTitle">Producto</h5>
+											<button type="button" class="close" data-dismiss="modal" aria-label="Close">
+												<span aria-hidden="true">&times;</span>
+											</button>
+										</div>
+										<div class="modal-body">
+											<div class="row">
+												<div class="col-lg-12 col-md-12 col-sm-12">
+													<label>Codigo Producto</label>
+													<input class="form-control" type="number" name="idproducto_m" id="idproducto_m" autocomplete="off">
+												</div>
+												<div class="col-lg-12 col-md-12 col-sm-12">
+													<label>Nombre</label>
+													<input class="form-control" type="text" id="nombre_prod_m" readonly>
+												</div>
+												<div class="col-lg-12 col-md-12 col-sm-12">
+													<label>Cantidad</label>
+													<input class="form-control" type="text" name="cantidad_m" id="cantidad_m">
+												</div>
+												<div class="col-lg-12 col-md-12 col-sm-12">
+													<label>Valor Unitario</label>
+													<input class="form-control" type="text" name="Valor_Unitario_m" id="Valor_Unitario_m" readonly>
+												</div>
+												<div class="col-lg-12 col-md-12 col-sm-12">
+													<label>% IVA</label>
+													<input class="form-control" type="text" id="porcentaje_iva_m" readonly>
+												</div>
+												<div class="col-lg-12 col-md-12 col-sm-12">
+													<label>Lote</label>
+													<select class="form-control" name="lote_m" id="lote_m" required></select>
+												</div>
+												<input type="hidden" id="porcentaje_impuesto_m" name="porcentaje_impuesto_m" value="0">
+												<input type="hidden" name="fecha_vence_m" id="fecha_vence_m">
+											</div>
+										</div>
+										<div class="modal-footer">
+											<button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+											<button type="button" id="btnRegistrarProd" class="btn btn-primary">Registrar</button>
+										</div>
+									</div>
+								</div>
+							</div>
+							<!-- Fin Modal Agregar Producto Manual -->
+
 							<!-- Modal Lote-->
 							<div class="modal fade" id="lot" tabindex="-1" role="dialog" aria-labelledby="lot" aria-hidden="true" data-backdrop="static" data-keyboard="false">
 								<div class="modal-dialog" role="document">
@@ -507,7 +641,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="nuevodoc.js?v=33"></script>
+	<script type="text/javascript" src="nuevodoc.js?v=<?php echo time(); ?>"></script>
 
 	<script>
         document.addEventListener("DOMContentLoaded", function() {

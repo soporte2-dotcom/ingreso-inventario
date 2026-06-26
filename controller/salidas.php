@@ -108,12 +108,14 @@
             $fecha_factura_raw = $_POST["fecha_factura2_iso"] ?? '';
             $fecha_factura = $fecha_factura_raw ? $fecha_factura_raw . ' ' . date("H:i:s") : '';
 
+            $idTransportador = (isset($_POST["idTransportador"]) && $_POST["idTransportador"] !== '') ? $_POST["idTransportador"] : '1';
+            $idVehiculo      = (isset($_POST["idVehiculo"])      && $_POST["idVehiculo"]      !== '') ? $_POST["idVehiculo"]      : '1';
             $salidas->guardar_salida(
                 $_POST["tipo"], $_POST["numdoc"],
                 $_POST["nit1"], $dir1,
                 $_POST["nit2"], $dir2,
                 $_POST["traslfact1"] ?? '', $_POST["notas"] ?? '',
-                $dotacion, $fecha_factura
+                $dotacion, $fecha_factura, $idTransportador, $idVehiculo
             );
         break;
 

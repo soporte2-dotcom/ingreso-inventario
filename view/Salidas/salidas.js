@@ -28,6 +28,8 @@ const CONFIG = {
             agregar_linea_manual: "../../controller/salidas.php?op=agregar_linea_manual",
             get_info_producto: "../../controller/salidas.php?op=get_info_producto",
             combo_lotes: "salidas.php?op=combo_lotes",
+            combo_transportador: "../../controller/documento.php?op=combo_transportador",
+            combo_vehiculo: "../../controller/documento.php?op=combo_vehiculo",
             cargar_masiva_excel: "../../controller/salidas.php?op=cargar_masiva_excel",
             update_notas_etapa: "../../controller/salidas.php?op=update_notas_etapa",
             validar_os: "../../controller/salidas.php?op=validar_os",
@@ -173,6 +175,12 @@ function inicializarComboLotes() {
     $.post(CONFIG.baseUrl + CONFIG.endpoints.salidas.combo_lotes, function(data) {
         $("#lote").html(data);
         $("#lote1").html(data);
+    });
+    $.post(CONFIG.endpoints.salidas.combo_transportador, function(data) {
+        $('#idTransportador').html(data);
+    });
+    $.post(CONFIG.endpoints.salidas.combo_vehiculo, function(data) {
+        $('#idVehiculo').html(data);
     });
 }
 
@@ -1228,7 +1236,8 @@ function configurarInterfazParaDocumentoExistente(data) {
         "txt_tipodoc", "txt_numdoc", "txt_fecha1", "txt_pedido1",
         "txt_traslfact1", "txt_fecha_factura2",
         "tipodoc", "numdoc", "fecha1", "pedido1", "traslfact1", "fecha_factura2",
-        "div_dotacion", "btnlot", "btnetapas", "btneliminarsel", "btnguardar", "btnprint"
+        "div_dotacion", "div_transportador", "div_vehiculo",
+        "btnlot", "btnetapas", "btneliminarsel", "btnguardar", "btnprint"
     ];
     
     elementosMostrar.forEach(id => {
@@ -1462,6 +1471,8 @@ function listardetalle(tipo, consecutivo){
         $('#nombre_vendedor').val(data.NombreVendedor || '');
         $('#ciudad_doc').val(data.ciudad || '');
         $('#dotacion_epp').prop('checked', data.IdVendedor == 12);
+        if (data.IdTransportador) $('#idTransportador').val(data.IdTransportador);
+        if (data.IdVehiculo)      $('#idVehiculo').val(data.IdVehiculo);
         if (data.Fecha_Hora_Factura) {
             var fechaDoc = new Date(data.Fecha_Hora_Factura + "T00:00:00");
             if (!isNaN(fechaDoc)) {
