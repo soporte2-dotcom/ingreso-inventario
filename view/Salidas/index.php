@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once("../../config/conexionserver.php");
 if(isset($_SESSION["Id_Usuario"])){
 date_default_timezone_set("America/Bogota");
@@ -398,6 +398,11 @@ $permiteDevolucionManual  = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 							<i class="fa fa-file-excel-o"></i> Cargar Excel
 						</button>
 					</div>
+					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
+						<button type="button" style="display: none" id="btnflete" class="d-flex w-15 btn btn-rounded btn-inline btn-info">
+							<i class="fa fa-truck"></i> Agregar Flete
+						</button>
+					</div>
 				</div>
 
 				<div class="container-fluid">
@@ -573,7 +578,42 @@ $permiteDevolucionManual  = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 								</div>
 							</div>
 							<!-- Fin modal Agregar -->
-							
+
+							<!-- Modal Flete -->
+							<div class="modal fade" id="modalFlete" tabindex="-1" role="dialog" aria-labelledby="modalFleteTitle" aria-hidden="true" data-backdrop="static" data-keyboard="false">
+								<div class="modal-dialog" role="document">
+									<div class="modal-content">
+										<div class="modal-header bg-info">
+											<h5 class="modal-title" id="modalFleteTitle" style="color:#fff">
+												<i class="fa fa-truck"></i> Agregar Flete — Producto 1810
+											</h5>
+											<button type="button" class="close" data-dismiss="modal" aria-label="Close">
+												<span aria-hidden="true" style="color:#fff">&times;</span>
+											</button>
+										</div>
+										<div class="modal-body">
+											<div class="row">
+												<div class="col-lg-12 col-md-12 col-sm-12 mb-2">
+													<label class="font-weight-bold">Cantidad</label>
+													<input class="form-control" type="number" id="flete_cantidad" min="0.01" step="any" placeholder="Ej: 1">
+												</div>
+												<div class="col-lg-12 col-md-12 col-sm-12">
+													<label class="font-weight-bold">Valor Unitario</label>
+													<input class="form-control" type="number" id="flete_valor" min="0" step="any" placeholder="Ej: 50000">
+												</div>
+											</div>
+										</div>
+										<div class="modal-footer">
+											<button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+											<button type="button" id="btnConfirmarFlete" class="btn btn-info">
+												<i class="fa fa-plus"></i> Agregar
+											</button>
+										</div>
+									</div>
+								</div>
+							</div>
+							<!-- Fin Modal Flete -->
+
 							<!-- Modal Lote-->
 							<div class="modal fade" id="lot" tabindex="-1" role="dialog" aria-labelledby="lot" aria-hidden="true" data-backdrop="static" data-keyboard="false">
 								<div class="modal-dialog" role="document">

@@ -565,16 +565,16 @@
                 if ($row_lote) $numero_lote = $row_lote['Numero_Lote'] ?? '0';
             }
 
-            // Obtener cantidad ordenada en la OS para este producto y lote específico
+            // Obtener cantidad ordenada en la OS para este producto, lote y línea específica
             $sql_os_qty = "SELECT cantidad FROM Documentos_Lin_Ped
-                           WHERE numero_pedido = ? AND sw = '10' AND IdProducto = ? AND ISNULL(Numero_Lote, '0') = ?";
-            $stmt_qty = sqlsrv_query($cn->getConecta(), $sql_os_qty, array($numero_os, $producto, $numero_lote));
+                           WHERE numero_pedido = ? AND sw = '10' AND IdProducto = ? AND ISNULL(Numero_Lote, '0') = ? AND Linea = ?";
+            $stmt_qty = sqlsrv_query($cn->getConecta(), $sql_os_qty, array($numero_os, $producto, $numero_lote, $seq));
             if (!$stmt_qty) return null;
             $row_qty = sqlsrv_fetch_array($stmt_qty, SQLSRV_FETCH_ASSOC);
             if (!$row_qty) return null;
             $cantidad_os = (float)$row_qty['cantidad'];
 
-            // Sumar lo despachado en OTROS documentos (excluir el actual), filtrado por lote.
+            // Sumar lo despachado en OTROS documentos (excluir el actual), filtrado por lote y línea.
             // Las devoluciones (Tipo_Docto_Base != '0') restan del total despachado.
             $sql_otros = "SELECT ISNULL(SUM(CASE WHEN d.Tipo_Docto_Base = '0' THEN dl.Cantidad_Facturada ELSE -dl.Cantidad_Facturada END), 0) AS total_otros
                           FROM Documentos d
@@ -582,9 +582,10 @@
                           WHERE d.Numero_Docto_Base_2 = ? AND d.Tipo_Docto_Base_2 = '10'
                           AND NOT (d.tipo = ? AND d.Numero_documento = ?)
                           AND dl.IdProducto = ?
-                          AND dl.Numero_Lote = ?";
+                          AND dl.Numero_Lote = ?
+                          AND dl.seq = ?";
             $stmt_otros = sqlsrv_query($cn->getConecta(), $sql_otros,
-                                       array($numero_os, $tipo, $consecutivo, $producto, $numero_lote));
+                                       array($numero_os, $tipo, $consecutivo, $producto, $numero_lote, $seq));
             if (!$stmt_otros) return null;
             $row_otros = sqlsrv_fetch_array($stmt_otros, SQLSRV_FETCH_ASSOC);
             $total_otros = (float)($row_otros['total_otros'] ?? 0);

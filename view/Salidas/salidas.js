@@ -1255,6 +1255,10 @@ function configurarInterfazParaDocumentoExistente(data) {
         }
     }
 
+    if (data.tipo == '155') {
+        document.getElementById("btnflete").style.display = "inline-block";
+    }
+
     // Configurar estado de exportación
     configurarEstadoExportado(data.exportado);
 }
@@ -1304,6 +1308,8 @@ function configurarEstadoExportado(exportado) {
         if (el_btnagregar) el_btnagregar.disabled = true;
         const el_btnexcel = document.getElementById("btnexcel");
         if (el_btnexcel) el_btnexcel.disabled = true;
+        const el_btnflete = document.getElementById("btnflete");
+        if (el_btnflete) el_btnflete.disabled = true;
         camposEditables.forEach(id => {
             const el = document.getElementById(id);
             if(el) el.disabled = true;
@@ -2349,6 +2355,63 @@ $(document).on("click", "#btneditar", function(event) {
 
 $(document).on("click", "#btnguardar", function() {
     guardarDocumento();
+});
+
+$(document).on("click", "#btnflete", function() {
+    $('#flete_cantidad').val('');
+    $('#flete_valor').val('');
+    $('#modalFlete').modal('show');
+    setTimeout(function() { $('#flete_cantidad').focus(); }, 400);
+});
+
+$('#modalFlete').on('shown.bs.modal', function() {
+    $('#flete_cantidad').focus();
+});
+
+$(document).on("click", "#btnConfirmarFlete", function() {
+    var tipo        = getUrlParameter('tipo');
+    var consecutivo = getUrlParameter('consecutivo');
+    var cantidad    = parseFloat($('#flete_cantidad').val());
+    var valor       = parseFloat($('#flete_valor').val());
+
+    if (!cantidad || cantidad <= 0) {
+        swal("Atención", "Ingrese una cantidad válida.", "warning");
+        $('#flete_cantidad').focus();
+        return;
+    }
+    if (isNaN(valor) || valor < 0) {
+        swal("Atención", "Ingrese un valor unitario válido.", "warning");
+        $('#flete_valor').focus();
+        return;
+    }
+
+    $.ajax({
+        url: CONFIG.endpoints.salidas.agregar_linea_manual,
+        type: "POST",
+        data: {
+            tipo:               tipo,
+            numdoc:             consecutivo,
+            idProducto:         1810,
+            cantidad:           cantidad,
+            valorUnitario:      valor,
+            lote:               '0',
+            fechaVence:         new Date().toISOString().split('T')[0],
+            porcentajeImpuesto: 0
+        },
+        dataType: "json",
+        success: function(response) {
+            if (response.status === "success") {
+                $('#modalFlete').modal('hide');
+                $('#tb-doc').DataTable().ajax.reload();
+                actualizarTodosLosTotales(tipo, consecutivo);
+            } else {
+                swal("Error!", response.message, "error");
+            }
+        },
+        error: function() {
+            swal("Error!", "No se pudo agregar el flete.", "error");
+        }
+    });
 });
 
 $(document).on("click", "#btnreiniciar", function() {

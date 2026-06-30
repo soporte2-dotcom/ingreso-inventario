@@ -26,7 +26,9 @@
       "Bash(git -C \"c:/xampp/htdocs/ingresoinventario\" diff HEAD -- view/Entradas/nuevodoc.js)",
       "Bash(Select-String -Path \"c:\\\\xampp\\\\htdocs\\\\ingresoinventario\\\\view\\\\Salidas\\\\salidas.js\" -Pattern \"guardar_salida|Registrado|Correcto\")",
       "Bash(Select-Object LineNumber, Line)",
-      "Bash(Format-Table -AutoSize)"
+      "Bash(Format-Table -AutoSize)",
+      "Bash(python3 -c ' *)",
+      "PowerShell([System.IO.File]::ReadAllText\\('c:\\\\xampp\\\\htdocs\\\\ingresoinventario\\\\view\\\\Salidas\\\\index.php'\\) | Select-String -Pattern 'btnexcel' -Context 3,5)"
     ]
   }
 }
