@@ -28,7 +28,8 @@
       "Bash(Select-Object LineNumber, Line)",
       "Bash(Format-Table -AutoSize)",
       "Bash(python3 -c ' *)",
-      "PowerShell([System.IO.File]::ReadAllText\\('c:\\\\xampp\\\\htdocs\\\\ingresoinventario\\\\view\\\\Salidas\\\\index.php'\\) | Select-String -Pattern 'btnexcel' -Context 3,5)"
+      "PowerShell([System.IO.File]::ReadAllText\\('c:\\\\xampp\\\\htdocs\\\\ingresoinventario\\\\view\\\\Salidas\\\\index.php'\\) | Select-String -Pattern 'btnexcel' -Context 3,5)",
+      "Bash(php -l \"c:\\\\xampp\\\\htdocs\\\\ingresoinventario\\\\models\\\\mdlSalidas.php\")"
     ]
   }
 }
