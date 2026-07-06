@@ -44,6 +44,63 @@ $DateAndTime = date('d-m-Y h:i:s', time());
             </div>
 
         <div class="box-typical box-typical-padding">
+
+          <div class="row">
+            <div class="col-lg-3">
+              <div class="form-group">
+                <label for="filtroTipo">Tipo de Documento:</label>
+                <select id="filtroTipo" class="form-control"></select>
+              </div>
+            </div>
+            <div class="col-lg-2">
+              <div class="form-group">
+                <label for="filtroExportado">Exportado:</label>
+                <select id="filtroExportado" class="form-control">
+                  <option value="">Todos</option>
+                  <option value="N">No (borrador)</option>
+                  <option value="S">Sí (guardado)</option>
+                </select>
+              </div>
+            </div>
+            <div class="col-lg-2">
+              <div class="form-group">
+                <label for="filtroFechaDesde">Fecha Desde:</label>
+                <input type="date" class="form-control" id="filtroFechaDesde">
+              </div>
+            </div>
+            <div class="col-lg-2">
+              <div class="form-group">
+                <label for="filtroFechaHasta">Fecha Hasta:</label>
+                <input type="date" class="form-control" id="filtroFechaHasta">
+              </div>
+            </div>
+            <div class="col-lg-1">
+              <div class="form-group">
+                <label for="filtroNumDesde">N° Desde:</label>
+                <input type="number" class="form-control" id="filtroNumDesde" placeholder="—">
+              </div>
+            </div>
+            <div class="col-lg-1">
+              <div class="form-group">
+                <label for="filtroNumHasta">N° Hasta:</label>
+                <input type="number" class="form-control" id="filtroNumHasta" placeholder="—">
+              </div>
+            </div>
+            <div class="col-lg-1 d-flex" style="align-items:flex-end;">
+              <div class="form-group w-100">
+                <button type="button" id="btnFiltrar" class="btn btn-primary btn-block" title="Filtrar"><i class="fa fa-search"></i></button>
+              </div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-lg-12 text-right">
+              <button type="button" id="btnLimpiarFiltro" class="btn btn-default btn-sm">
+                <i class="fa fa-eraser"></i> Limpiar filtro
+              </button>
+            </div>
+          </div>
+          <hr>
+
           <table id="doc_data" class="table table-bordered table-striped table-vcenter js-dataTable-full">
             <thead>
               <tr>
@@ -70,7 +127,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 	
 	<?php require_once("../MainJs/js.php");?>
 	
-	<script type="text/javascript" src="consultar.js?v=6"></script>
+	<script type="text/javascript" src="consultar.js?v=7"></script>
 
   <style>
     /* Estilo para la columna exportado */
@@ -90,7 +147,11 @@ $DateAndTime = date('d-m-Y h:i:s', time());
         background-color: #d9534f;
         color: white;
     }
-    
+    .label-default {
+        background-color: #6c757d;
+        color: white;
+    }
+
     /* Mejorar la apariencia de los botones de acción */
     .btn-rounded {
         border-radius: 50px;

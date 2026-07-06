@@ -1,48 +1,86 @@
 <?php
     class Documento extends Conectarserver{
 
-        public function insert_doc($tipo, $consecutivo, $nit, $direccion, $usuario){
+        public function insert_doc($tipo, $nit, $direccion, $usuario){
             $cn = new Conectarserver;
+            $conn = $cn->getConecta();
 
-            $sql="INSERT INTO Documentos(sw, tipo, modelo, Numero_Documento, Numero_Docto_Base,
-            nit_Cedula, codigo_direccion, Fecha_Hora_Factura,Fecha_Hora_Vencimiento,Fecha_orden_Venta,
-            condicion,valor_total, valor_aplicado, Retencion_1,Retencion_2, Retencion_3, retencion_causada, retencion_iva,retencion_ica,
-            retencion_descuento, descuento_pie, DescuentoOrdenVenta, descuento_1, descuento_2, descuento_3, costo, IdVendedor, anulado, usuario,
-            notas,pc, fecha_hora, duracion, bodega, Valor_impuesto, Impuesto_Consumo, impuesto_deporte, concepto, vencimiento_presup, 
-            exportado, prefijo, moneda, CentroDeCostosDoc, valor_mercancia, abono, Comision_Vendedor, Tasa_Moneda_Ext, Tomador, Tasa_Fija_o_Variable, Punto_FOB,
-            Fletes_Moneda_Ext, Miselaneos_Moneda_Ext, Cargo_Por_Fletes, Impuesto_Por_Fletes, Total_Items, Nombre_Cliente, Ordenado_Por, Telefono_De_Envio_1,
-            Telefono_De_Envio_2, Factura_Impresa, IdFormaEnvio, IdTransportador, nit_Cedula_2, codigo_direccion_2, Numero_Docto_Base_2, Tipo_Docto_Base, 
-            Tipo_Docto_Base_2, IdActividadEconomica, TarifaReteFuenteCree, Valor_ReteCree, IdVehiculo)
-            
-            (SELECT '99' AS sw, '$tipo' AS tipo, '$tipo' AS modelo, '$consecutivo' AS Numero_Documento, '$consecutivo' AS Numero_Docto_Base,
-            '$nit' AS nit_Cedula, '$direccion' AS codigo_direccion,  GETDATE() AS Fecha_Hora_Factura, GETDATE() AS Fecha_Hora_Vencimiento, GETDATE() AS Fecha_orden_Venta,
-            t.condicion, 0 AS valor_total, 0 AS valor_aplicado, 0 AS Retencion_1, 0 AS Retencion_2, 0 AS Retencion_3, 0 AS retencion_causada, 0 AS retencion_iva, 
-            0 AS retencion_ica, 0 AS retencion_descuento, 0 AS descuento_pie, 0 AS DescuentoOrdenVenta, 0 AS descuento_1, 0 AS descuento_2,0 AS descuento_3, 
-            0 AS costo, td.IdVendedor, 'N' AS anulado, u.Id_Usuario AS usuario,
-            '' AS notas, HOST_NAME() AS pc, GETDATE() AS fecha_hora, 0 AS duracion, do.IdBodega AS bodega, 0 AS Valor_impuesto, 0 AS Impuesto_Consumo, 
-            0 AS impuesto_deporte, 0 AS concepto, GETDATE() AS vencimiento_presup, 
-            'N' AS exportado, '0' AS prefijo, 1 AS moneda, 0 AS CentroDeCostosDoc, 0 AS valor_mercancia, 0 AS abono, 0 AS Comision_Vendedor, 
-            1 AS Tasa_Moneda_Ext, '' AS Tomador, 'V' AS Tasa_Fija_o_Variable, td.idLista AS Punto_FOB,
-            0 AS Fletes_Moneda_Ext, 0 AS Miselaneos_Moneda_Ext, 0 AS Cargo_Por_Fletes, 0 AS Impuesto_Por_Fletes, 2 AS Total_Items, t.nombre AS Nombre_Cliente, 
-            'Cerdos del Valle S.A' AS Ordenado_Por, td.telefono_1 AS Telefono_De_Envio_1, '' AS Telefono_De_Envio_2, 'N' AS Factura_Impresa, '1' AS IdFormaEnvio, '1' AS IdTransportador, 
-            '$nit' AS nit_Cedula_2, '$direccion' AS codigo_direccion_2, '0' AS Numero_Docto_Base_2, '0' AS Tipo_Docto_Base, 
-            '0' AS Tipo_Docto_Base_2, '0' AS IdActividadEconomica, 0 AS TarifaReteFuenteCree, 0 AS Valor_ReteCree, '1' AS IdVehiculo            
-            FROM TblTerceros t, Terceros_Dir td, TblUsuarios u, TblTipoDoctos do            
-            WHERE td.codigo_direccion = '$direccion' AND u.Id_Usuario = '$usuario' AND td.nit = t.nit_cedula AND td.nit = '$nit' AND do.idTipoDoctos = '$tipo') ";
+            try {
+                sqlsrv_begin_transaction($conn);
 
-            $registros = sqlsrv_prepare($cn->getConecta(), $sql);            
-            if(sqlsrv_execute($registros)){
-                echo"Agregado correctamente \n";
-            }else{
-                echo"No Agregado \n";
-            }
+                // Reserva atómica del consecutivo: el UPDATE toma un lock exclusivo de fila
+                // que se mantiene hasta el COMMIT/ROLLBACK, sin importar el nivel de aislamiento.
+                // Dos creaciones concurrentes del mismo tipo de documento quedan serializadas
+                // aquí (la segunda espera a que la primera confirme) en vez de recibir el mismo número.
+                $sqlSeq = "UPDATE Consecutivos SET siguiente = siguiente + 1
+                            OUTPUT INSERTED.siguiente AS nuevo
+                            WHERE tipo = ?";
+                $stmtSeq = sqlsrv_query($conn, $sqlSeq, array($tipo));
+                if ($stmtSeq === false) {
+                    throw new Exception("Error al reservar consecutivo: " . print_r(sqlsrv_errors(), true));
+                }
+                $rowSeq = sqlsrv_fetch_array($stmtSeq, SQLSRV_FETCH_ASSOC);
+                if (!$rowSeq) {
+                    throw new Exception("No existe un consecutivo configurado para el tipo de documento $tipo");
+                }
+                $consecutivo = (int)$rowSeq['nuevo'];
 
-            $sql2="UPDATE Consecutivos SET siguiente = siguiente+1 WHERE tipo = '$tipo' ";
-            $registros =  sqlsrv_prepare($cn->getConecta(), $sql2);
-            if(sqlsrv_execute($registros)){
-                echo" Consecutivo Actualizado correctamente \n";
-            }else{
-                echo" No Actualizado consecutivo \n";
+                $sql = "INSERT INTO Documentos(sw, tipo, modelo, Numero_Documento, Numero_Docto_Base,
+                nit_Cedula, codigo_direccion, Fecha_Hora_Factura,Fecha_Hora_Vencimiento,Fecha_orden_Venta,
+                condicion,valor_total, valor_aplicado, Retencion_1,Retencion_2, Retencion_3, retencion_causada, retencion_iva,retencion_ica,
+                retencion_descuento, descuento_pie, DescuentoOrdenVenta, descuento_1, descuento_2, descuento_3, costo, IdVendedor, anulado, usuario,
+                notas,pc, fecha_hora, duracion, bodega, Valor_impuesto, Impuesto_Consumo, impuesto_deporte, concepto, vencimiento_presup,
+                exportado, prefijo, moneda, CentroDeCostosDoc, valor_mercancia, abono, Comision_Vendedor, Tasa_Moneda_Ext, Tomador, Tasa_Fija_o_Variable, Punto_FOB,
+                Fletes_Moneda_Ext, Miselaneos_Moneda_Ext, Cargo_Por_Fletes, Impuesto_Por_Fletes, Total_Items, Nombre_Cliente, Ordenado_Por, Telefono_De_Envio_1,
+                Telefono_De_Envio_2, Factura_Impresa, IdFormaEnvio, IdTransportador, nit_Cedula_2, codigo_direccion_2, Numero_Docto_Base_2, Tipo_Docto_Base,
+                Tipo_Docto_Base_2, IdActividadEconomica, TarifaReteFuenteCree, Valor_ReteCree, IdVehiculo)
+
+                (SELECT do.tipo AS sw, ? AS tipo, ? AS modelo, ? AS Numero_Documento, ? AS Numero_Docto_Base,
+                ? AS nit_Cedula, ? AS codigo_direccion,  GETDATE() AS Fecha_Hora_Factura, GETDATE() AS Fecha_Hora_Vencimiento, GETDATE() AS Fecha_orden_Venta,
+                t.condicion, 0 AS valor_total, 0 AS valor_aplicado, 0 AS Retencion_1, 0 AS Retencion_2, 0 AS Retencion_3, 0 AS retencion_causada, 0 AS retencion_iva,
+                0 AS retencion_ica, 0 AS retencion_descuento, 0 AS descuento_pie, 0 AS DescuentoOrdenVenta, 0 AS descuento_1, 0 AS descuento_2,0 AS descuento_3,
+                0 AS costo, td.IdVendedor, 'N' AS anulado, u.Id_Usuario AS usuario,
+                '' AS notas, HOST_NAME() AS pc, GETDATE() AS fecha_hora, 0 AS duracion, do.IdBodega AS bodega, 0 AS Valor_impuesto, 0 AS Impuesto_Consumo,
+                0 AS impuesto_deporte, 0 AS concepto, GETDATE() AS vencimiento_presup,
+                'N' AS exportado, '0' AS prefijo, 1 AS moneda, 0 AS CentroDeCostosDoc, 0 AS valor_mercancia, 0 AS abono, 0 AS Comision_Vendedor,
+                1 AS Tasa_Moneda_Ext, '' AS Tomador, 'V' AS Tasa_Fija_o_Variable, td.idLista AS Punto_FOB,
+                0 AS Fletes_Moneda_Ext, 0 AS Miselaneos_Moneda_Ext, 0 AS Cargo_Por_Fletes, 0 AS Impuesto_Por_Fletes, 2 AS Total_Items, t.nombre AS Nombre_Cliente,
+                'Cerdos del Valle S.A' AS Ordenado_Por, td.telefono_1 AS Telefono_De_Envio_1, '' AS Telefono_De_Envio_2, 'N' AS Factura_Impresa, '1' AS IdFormaEnvio, '1' AS IdTransportador,
+                ? AS nit_Cedula_2, ? AS codigo_direccion_2, '0' AS Numero_Docto_Base_2, '0' AS Tipo_Docto_Base,
+                '0' AS Tipo_Docto_Base_2, '0' AS IdActividadEconomica, 0 AS TarifaReteFuenteCree, 0 AS Valor_ReteCree, '1' AS IdVehiculo
+                FROM TblTerceros t, Terceros_Dir td, TblUsuarios u, TblTipoDoctos do
+                WHERE td.codigo_direccion = ? AND u.Id_Usuario = ? AND td.nit = t.nit_cedula AND td.nit = ? AND do.idTipoDoctos = ?) ";
+
+                $params = array(
+                    $tipo, $tipo, $consecutivo, $consecutivo,
+                    $nit, $direccion,
+                    $nit, $direccion,
+                    $direccion, $usuario, $nit, $tipo
+                );
+
+                $registros = sqlsrv_prepare($conn, $sql, $params);
+                if (sqlsrv_execute($registros) === false) {
+                    throw new Exception("Error al insertar documento: " . print_r(sqlsrv_errors(), true));
+                }
+
+                sqlsrv_commit($conn);
+
+                return json_encode(array(
+                    "status" => "success",
+                    "message" => "Documento registrado correctamente",
+                    "tipo" => $tipo,
+                    "consecutivo" => $consecutivo
+                ));
+
+            } catch (Exception $e) {
+                if (isset($conn) && $conn) {
+                    sqlsrv_rollback($conn);
+                }
+                $this->registrar_error("Error en insert_doc: " . $e->getMessage());
+                return json_encode(array(
+                    "status" => "error",
+                    "message" => $e->getMessage()
+                ));
             }
         }
         
@@ -58,7 +96,7 @@
             Porcentaje_ReteFuente_3, Porcentaje_ReteFuente_4, Emp_1, Emp_2, Emp_3, Emp_4, Emp_5, Emp_6,
             Emp_7, Emp_8, Tara_1, Tara_2, Tara_3, Tara_4, Tara_5, Tara_6, Tara_7, Tara_8)
             
-            (SELECT '99' AS sw, '$tipo' AS tipo,  $seq+1 AS seq, p.contable AS Modelo,  $consecutivo AS Numero_Documento,
+            (SELECT do.tipo AS sw, '$tipo' AS tipo,  $seq+1 AS seq, p.contable AS Modelo,  $consecutivo AS Numero_Documento,
             0 AS Numero_Docto_Base, '0' AS Numero_Lote, '$nit' AS Nit_Cedula, d.codigo_direccion AS codigo_direccion,  GETDATE() AS Fecha_Documento,
             '$producto' AS IdProducto, p.unidad_Inventario AS IdUnidad, '1' AS Factor_Conversion,  $cantidad AS Cantidad_Facturada,
             ($cantidad)* -1 AS Cantidad_Pendiente, 0 AS Cantidad_Orden, p.costo_unitario AS costo_unitario, p.costo_unitario AS Valor_Unitario, 0 AS Valor_Impuesto, 
@@ -73,13 +111,654 @@
                         
             WHERE p.IdProducto = '$producto' AND d.tipo = '$tipo' AND d.Numero_Documento = '$consecutivo' AND do.idTipoDoctos = d.tipo) ";
 
-            $registros = sqlsrv_prepare($cn->getConecta(), $sql);            
+            $registros = sqlsrv_prepare($cn->getConecta(), $sql);
             if(sqlsrv_execute($registros)){
                 echo"Agregado correctamente \n";
             }else{
                 echo"No Agregado \n";
             }
 
+        }
+
+        private function limpiar_namespaces_xml($xml) {
+            // 1. Quitar declaraciones de namespace: xmlns="..." y xmlns:prefix="..."
+            $xml = preg_replace('/\s+xmlns(?::\w+)?="[^"]*"/', '', $xml);
+            // 2. Quitar atributos con prefijo de namespace: mc:Ignorable="...", x14ac:dyDescent="...", xr:uid="..."
+            $xml = preg_replace('/\s+\w+:\w+="[^"]*"/', '', $xml);
+            return $xml;
+        }
+
+        private function leer_xlsx($filePath) {
+            if (!class_exists('ZipArchive')) {
+                return ['error' => 'ZipArchive no disponible en el servidor'];
+            }
+            $zip = new ZipArchive();
+            if ($zip->open($filePath) !== true) {
+                return ['error' => 'No se pudo abrir el archivo Excel'];
+            }
+
+            libxml_use_internal_errors(true); // suprimir warnings de namespace en stderr/output
+
+            // Shared strings
+            $sharedStrings = [];
+            $ssRaw = $zip->getFromName('xl/sharedStrings.xml');
+            if ($ssRaw) {
+                $ssRaw = $this->limpiar_namespaces_xml($ssRaw);
+                $ss    = simplexml_load_string($ssRaw, 'SimpleXMLElement', LIBXML_NOERROR | LIBXML_NOWARNING);
+                if ($ss) {
+                    foreach ($ss->si as $si) {
+                        $text = '';
+                        if (isset($si->r)) {
+                            foreach ($si->r as $r) {
+                                $text .= (string)$r->t;
+                            }
+                        }
+                        if ($text === '' && isset($si->t)) {
+                            $text = (string)$si->t;
+                        }
+                        $sharedStrings[] = $text;
+                    }
+                }
+            }
+
+            $sheetRaw = $zip->getFromName('xl/worksheets/sheet1.xml');
+            $zip->close();
+            if (!$sheetRaw) {
+                return ['error' => 'No se encontró la hoja de cálculo (sheet1)'];
+            }
+
+            $sheetRaw = $this->limpiar_namespaces_xml($sheetRaw);
+            $sheet    = simplexml_load_string($sheetRaw, 'SimpleXMLElement', LIBXML_NOERROR | LIBXML_NOWARNING);
+            if (!$sheet || !isset($sheet->sheetData)) {
+                return ['error' => 'No se pudo leer el contenido de la hoja'];
+            }
+
+            $rows = [];
+            foreach ($sheet->sheetData->row as $rowNode) {
+                $rowData = [];
+                foreach ($rowNode->c as $cell) {
+                    $ref = (string)$cell['r'];
+                    preg_match('/^([A-Z]+)/', $ref, $m);
+                    $colLetter = $m[1];
+                    $colIndex  = 0;
+                    for ($k = 0; $k < strlen($colLetter); $k++) {
+                        $colIndex = $colIndex * 26 + (ord($colLetter[$k]) - 64);
+                    }
+                    $colIndex--; // 0-based
+
+                    while (count($rowData) < $colIndex) {
+                        $rowData[] = '';
+                    }
+
+                    $type  = (string)$cell['t'];
+                    $value = isset($cell->v) ? (string)$cell->v : '';
+                    if ($type === 's') {
+                        $idx   = (int)$value;
+                        $value = isset($sharedStrings[$idx]) ? $sharedStrings[$idx] : '';
+                    }
+                    $rowData[] = trim($value);
+                }
+                $rows[] = $rowData;
+            }
+            return $rows;
+        }
+
+        // Valida una fila del Excel de inventario (idProducto/cantidad/lote) sin escribir nada.
+        // La usan tanto validar_excel_inventario (vista previa) como confirmar_masiva_excel_inventario
+        // (revalida por si el catálogo cambió entre que se mostró la vista previa y se confirmó).
+        private function validar_fila_inventario($conn, $cnDev, $idProducto, $cantidad, $lote, &$procesados) {
+            if ($idProducto === '') {
+                return ['ok' => false, 'mensaje' => 'IdProducto vacío'];
+            }
+            if (!is_numeric($cantidad) || (float)$cantidad <= 0) {
+                return ['ok' => false, 'mensaje' => 'Cantidad debe ser un número mayor a 0'];
+            }
+            if (in_array($idProducto, $procesados)) {
+                return ['ok' => false, 'mensaje' => 'Producto duplicado dentro del archivo'];
+            }
+
+            $sqlProd = "SELECT p.Producto, p.unidad_Inventario, p.costo_unitario
+                        FROM TblProducto p WHERE p.IdProducto = ?";
+            $stProd  = sqlsrv_query($conn, $sqlProd, array((int)$idProducto));
+            if ($stProd === false) {
+                return ['ok' => false, 'mensaje' => 'Error al consultar producto'];
+            }
+            $rProd = sqlsrv_fetch_array($stProd, SQLSRV_FETCH_ASSOC);
+            if (!$rProd) {
+                return ['ok' => false, 'mensaje' => 'Producto no existe en el sistema'];
+            }
+
+            if ($lote !== '' && $cnDev !== null) {
+                $sqlLote = "SELECT COUNT(*) AS cnt FROM cvapptblfarmbatch WHERE numberBatch = ? AND statusBatch = 'S'";
+                $stLote  = sqlsrv_query($cnDev, $sqlLote, array($lote));
+                if ($stLote !== false) {
+                    $rLote = sqlsrv_fetch_array($stLote, SQLSRV_FETCH_ASSOC);
+                    if (!$rLote || (int)$rLote['cnt'] === 0) {
+                        return ['ok' => false, 'mensaje' => 'Lote "' . $lote . '" no válido o inactivo'];
+                    }
+                }
+            }
+
+            $procesados[] = $idProducto;
+            return ['ok' => true, 'mensaje' => htmlspecialchars($rProd['Producto']), 'producto' => $rProd];
+        }
+
+        private function abrir_conexion_dev_lotes() {
+            require_once(dirname(__FILE__) . '/../config/conexiondev.php');
+            $devConn = new ConectarDev();
+            return $devConn->getConecta() ?: null;
+        }
+
+        // Paso 1: lee y valida el archivo completo, sin tocar Documentos_Lin.
+        // Devuelve, además del detalle por fila, la lista de filas válidas ("validos") para
+        // que el frontend las reenvíe tal cual al paso de confirmación sin tener que resubir el archivo.
+        public function validar_excel_inventario($filePath) {
+            $rows = $this->leer_xlsx($filePath);
+            if (isset($rows['error'])) {
+                return json_encode(['status' => 'error', 'message' => $rows['error']]);
+            }
+            if (count($rows) < 2) {
+                return json_encode(['status' => 'error', 'message' => 'El archivo no contiene datos (solo encabezado o vacío)']);
+            }
+
+            $cn    = new Conectarserver;
+            $conn  = $cn->getConecta();
+            $cnDev = $this->abrir_conexion_dev_lotes();
+
+            $resultados = [];
+            $validos    = [];
+            $procesados = [];
+
+            for ($i = 1; $i < count($rows); $i++) {
+                $row        = $rows[$i];
+                $idProducto = trim($row[0] ?? '');
+                $cantidad   = trim($row[1] ?? '');
+                $nota       = trim($row[2] ?? '');
+                $lote       = trim($row[3] ?? '');
+
+                if ($idProducto === '' && $cantidad === '') continue; // fila vacía
+
+                $check = $this->validar_fila_inventario($conn, $cnDev, $idProducto, $cantidad, $lote, $procesados);
+
+                $resultados[] = [
+                    'fila'       => $i + 1,
+                    'idProducto' => $idProducto,
+                    'cantidad'   => $cantidad,
+                    'lote'       => $lote,
+                    'status'     => $check['ok'] ? 'ok' : 'error',
+                    'mensaje'    => $check['mensaje']
+                ];
+
+                if ($check['ok']) {
+                    $validos[] = [
+                        'fila'       => $i + 1,
+                        'idProducto' => $idProducto,
+                        'cantidad'   => $cantidad,
+                        'nota'       => $nota,
+                        'lote'       => $lote
+                    ];
+                }
+            }
+
+            $ok    = count($validos);
+            $error = count($resultados) - $ok;
+
+            return json_encode([
+                'status'     => 'ok',
+                'ok'         => $ok,
+                'error'      => $error,
+                'resultados' => $resultados,
+                'validos'    => $validos
+            ]);
+        }
+
+        // Paso 2: inserta únicamente las filas ya validadas y confirmadas por el usuario.
+        // Revalida cada una por si el catálogo cambió entre la vista previa y la confirmación.
+        public function confirmar_masiva_excel_inventario($tipo, $consecutivo, $validos) {
+            if (!is_array($validos) || count($validos) === 0) {
+                return json_encode(['status' => 'error', 'message' => 'No hay filas válidas para procesar']);
+            }
+
+            $cn    = new Conectarserver;
+            $conn  = $cn->getConecta();
+            $cnDev = $this->abrir_conexion_dev_lotes();
+
+            $resultados = [];
+            $procesados = [];
+
+            try {
+                sqlsrv_begin_transaction($conn);
+
+                // Reserva del rango de seq para todo el lote en una sola lectura bloqueante:
+                // UPDLOCK+HOLDLOCK evita que una carga simultánea al mismo documento lea el mismo
+                // punto de partida (un SELECT normal libera su lock de inmediato bajo READ COMMITTED).
+                $sqlSeq = "SELECT ISNULL(MAX(seq), 0) AS max_seq FROM Documentos_Lin WITH (UPDLOCK, HOLDLOCK)
+                           WHERE tipo = ? AND Numero_documento = ?";
+                $stmtSeq = sqlsrv_query($conn, $sqlSeq, array($tipo, $consecutivo));
+                if ($stmtSeq === false) {
+                    throw new Exception("Error al calcular la secuencia: " . print_r(sqlsrv_errors(), true));
+                }
+                $rowSeq = sqlsrv_fetch_array($stmtSeq, SQLSRV_FETCH_ASSOC);
+                $seq    = $rowSeq ? (int)$rowSeq['max_seq'] : 0;
+
+                foreach ($validos as $fila) {
+                    $idProducto = trim($fila['idProducto'] ?? '');
+                    $cantidad   = trim($fila['cantidad'] ?? '');
+                    $nota       = trim($fila['nota'] ?? '');
+                    $lote       = trim($fila['lote'] ?? '');
+
+                    $resultado = [
+                        'fila'       => $fila['fila'] ?? '',
+                        'idProducto' => $idProducto,
+                        'cantidad'   => $cantidad,
+                        'lote'       => $lote,
+                        'status'     => 'error',
+                        'mensaje'    => ''
+                    ];
+
+                    $check = $this->validar_fila_inventario($conn, $cnDev, $idProducto, $cantidad, $lote, $procesados);
+                    if (!$check['ok']) {
+                        $resultado['mensaje'] = $check['mensaje'];
+                        $resultados[] = $resultado; continue;
+                    }
+
+                    $seq++;
+                    $loteVal = $lote !== '' ? $lote : '0';
+                    $notaVal = $nota !== '' ? $nota : ' ';
+                    $costo   = (float)$check['producto']['costo_unitario'];
+
+                    $sqlLin = "INSERT INTO Documentos_Lin (sw, tipo, seq, modelo, Numero_Documento, Numero_Docto_Base, Numero_Lote,
+                    Nit_Cedula, Codigo_Direccion, Fecha_Documento, IdProducto, IdUnidad, Factor_Conversion,
+                    Cantidad_Facturada, Cantidad_Pendiente, Cantidad_Orden, Costo_Unitario, Valor_Unitario,
+                    Valor_Impuesto, Porcentaje_Impuesto, Porcentaje_Descuento_1, Porcentaje_Descuento_2, Porcentaje_Descuento_3,
+                    IdVendedor, Comision_Vendedor, Valor_Comision_Vendedor, IdBodega, Maneja_Inventario, Tomador,
+                    IdMoneda, Tasa_Moneda_Ext, CentroDeCostosDoc, Nota_Linea, Unidades, Fecha_Vence, Exportado,
+                    Costo_Unitario_Inicial, Porcentaje_ReteFuente, Envase, Numero_Lote_Destino, serial, Impuesto_Consumo,
+                    Porcentaje_ReteFuente_2, Porcentaje_ReteFuente_3, Porcentaje_ReteFuente_4,
+                    Emp_1, Emp_2, Emp_3, Emp_4, Emp_5, Emp_6, Emp_7, Emp_8,
+                    Tara_1, Tara_2, Tara_3, Tara_4, Tara_5, Tara_6, Tara_7, Tara_8)
+
+                    SELECT '99', ?, ?, p.contable, d.Numero_Documento, 0, ?,
+                    d.nit_Cedula, d.codigo_direccion, GETDATE(), ?, p.unidad_Inventario, 1,
+                    ?, ?, 0, ?, ?,
+                    0, 0, 0, 0, 0,
+                    1, 0, 0, do.IdBodega, 'S', '',
+                    1, 1, '0', ?, '1', '2000-01-01 00:00:00.000', 'N',
+                    ?, 0, 0, 0, '', 0,
+                    0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0
+
+                    FROM Documentos d, TblProducto p, TblTipoDoctos do
+                    WHERE p.IdProducto = ? AND d.tipo = ? AND d.Numero_Documento = ? AND do.idTipoDoctos = d.tipo";
+
+                    $paramsLin = array(
+                        $tipo, $seq, $loteVal,
+                        $idProducto,
+                        (float)$cantidad, (float)$cantidad * -1, $costo, $costo,
+                        $notaVal,
+                        $costo,
+                        $idProducto, $tipo, $consecutivo
+                    );
+
+                    $stmtLin = sqlsrv_prepare($conn, $sqlLin, $paramsLin);
+                    if (sqlsrv_execute($stmtLin) === false) {
+                        throw new Exception("Error al insertar la línea del producto $idProducto: " . print_r(sqlsrv_errors(), true));
+                    }
+
+                    $resultado['status']  = 'ok';
+                    $resultado['mensaje'] = $check['mensaje'];
+                    $resultados[] = $resultado;
+                }
+
+                sqlsrv_commit($conn);
+
+            } catch (Exception $e) {
+                if (isset($conn) && $conn) {
+                    sqlsrv_rollback($conn);
+                }
+                $this->registrar_error("Error en confirmar_masiva_excel_inventario: " . $e->getMessage());
+                return json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+            }
+
+            $ok    = count(array_filter($resultados, function($r) { return $r['status'] === 'ok'; }));
+            $error = count(array_filter($resultados, function($r) { return $r['status'] === 'error'; }));
+
+            return json_encode([
+                'status'     => 'ok',
+                'ok'         => $ok,
+                'error'      => $error,
+                'resultados' => $resultados
+            ]);
+        }
+
+        public function generar_plantilla_excel_inventario() {
+            $tmpFile = tempnam(sys_get_temp_dir(), 'plantilla_inv_');
+            $zip = new ZipArchive();
+            $zip->open($tmpFile, ZipArchive::OVERWRITE);
+
+            $zip->addFromString('[Content_Types].xml',
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' .
+                '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' .
+                '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' .
+                '<Default Extension="xml" ContentType="application/xml"/>' .
+                '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' .
+                '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' .
+                '<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>' .
+                '</Types>'
+            );
+
+            $zip->addFromString('_rels/.rels',
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' .
+                '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' .
+                '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' .
+                '</Relationships>'
+            );
+
+            $zip->addFromString('xl/workbook.xml',
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' .
+                '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' .
+                '<sheets><sheet name="Inventario" sheetId="1" r:id="rId1"/></sheets>' .
+                '</workbook>'
+            );
+
+            $zip->addFromString('xl/_rels/workbook.xml.rels',
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' .
+                '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' .
+                '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' .
+                '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>' .
+                '</Relationships>'
+            );
+
+            // Índices: 0=IdProducto 1=Cantidad 2=Nota 3=Lote 4=(nota ejemplo) 5=(lote ejemplo)
+            $zip->addFromString('xl/sharedStrings.xml',
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' .
+                '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="6" uniqueCount="6">' .
+                '<si><t>IdProducto</t></si>' .
+                '<si><t>Cantidad</t></si>' .
+                '<si><t>Nota</t></si>' .
+                '<si><t>Lote</t></si>' .
+                '<si><t>Ingreso inicial de inventario</t></si>' .
+                '<si><t>L001</t></si>' .
+                '</sst>'
+            );
+
+            $zip->addFromString('xl/worksheets/sheet1.xml',
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' .
+                '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' .
+                '<sheetData>' .
+                '<row r="1">' .
+                '<c r="A1" t="s"><v>0</v></c>' .
+                '<c r="B1" t="s"><v>1</v></c>' .
+                '<c r="C1" t="s"><v>2</v></c>' .
+                '<c r="D1" t="s"><v>3</v></c>' .
+                '</row>' .
+                '<row r="2">' .
+                '<c r="A2"><v>1000</v></c>' .
+                '<c r="B2"><v>10</v></c>' .
+                '<c r="C2" t="s"><v>4</v></c>' .
+                '<c r="D2" t="s"><v>5</v></c>' .
+                '</row>' .
+                '</sheetData>' .
+                '</worksheet>'
+            );
+
+            $zip->close();
+            return $tmpFile;
+        }
+
+        // ─── Excel de Pedidos (idTipoDoctos=948) — mismo flujo validar→confirmar que Inventario,
+        // reutilizando leer_xlsx/validar_fila_inventario/abrir_conexion_dev_lotes (genéricos),
+        // pero con el INSERT fijando "sw" dinámicamente (do.tipo) en vez del '99' de Inventario.
+
+        public function validar_excel_pedidos($filePath) {
+            $rows = $this->leer_xlsx($filePath);
+            if (isset($rows['error'])) {
+                return json_encode(['status' => 'error', 'message' => $rows['error']]);
+            }
+            if (count($rows) < 2) {
+                return json_encode(['status' => 'error', 'message' => 'El archivo no contiene datos (solo encabezado o vacío)']);
+            }
+
+            $cn    = new Conectarserver;
+            $conn  = $cn->getConecta();
+            $cnDev = $this->abrir_conexion_dev_lotes();
+
+            $resultados = [];
+            $validos    = [];
+            $procesados = [];
+
+            for ($i = 1; $i < count($rows); $i++) {
+                $row        = $rows[$i];
+                $idProducto = trim($row[0] ?? '');
+                $cantidad   = trim($row[1] ?? '');
+                $nota       = trim($row[2] ?? '');
+                $lote       = trim($row[3] ?? '');
+
+                if ($idProducto === '' && $cantidad === '') continue; // fila vacía
+
+                $check = $this->validar_fila_inventario($conn, $cnDev, $idProducto, $cantidad, $lote, $procesados);
+
+                $resultados[] = [
+                    'fila'       => $i + 1,
+                    'idProducto' => $idProducto,
+                    'cantidad'   => $cantidad,
+                    'lote'       => $lote,
+                    'status'     => $check['ok'] ? 'ok' : 'error',
+                    'mensaje'    => $check['mensaje']
+                ];
+
+                if ($check['ok']) {
+                    $validos[] = [
+                        'fila'       => $i + 1,
+                        'idProducto' => $idProducto,
+                        'cantidad'   => $cantidad,
+                        'nota'       => $nota,
+                        'lote'       => $lote
+                    ];
+                }
+            }
+
+            $ok    = count($validos);
+            $error = count($resultados) - $ok;
+
+            return json_encode([
+                'status'     => 'ok',
+                'ok'         => $ok,
+                'error'      => $error,
+                'resultados' => $resultados,
+                'validos'    => $validos
+            ]);
+        }
+
+        public function confirmar_masiva_excel_pedidos($tipo, $consecutivo, $validos) {
+            if (!is_array($validos) || count($validos) === 0) {
+                return json_encode(['status' => 'error', 'message' => 'No hay filas válidas para procesar']);
+            }
+
+            $cn    = new Conectarserver;
+            $conn  = $cn->getConecta();
+            $cnDev = $this->abrir_conexion_dev_lotes();
+
+            $resultados = [];
+            $procesados = [];
+
+            try {
+                sqlsrv_begin_transaction($conn);
+
+                $sqlSeq = "SELECT ISNULL(MAX(seq), 0) AS max_seq FROM Documentos_Lin WITH (UPDLOCK, HOLDLOCK)
+                           WHERE tipo = ? AND Numero_documento = ?";
+                $stmtSeq = sqlsrv_query($conn, $sqlSeq, array($tipo, $consecutivo));
+                if ($stmtSeq === false) {
+                    throw new Exception("Error al calcular la secuencia: " . print_r(sqlsrv_errors(), true));
+                }
+                $rowSeq = sqlsrv_fetch_array($stmtSeq, SQLSRV_FETCH_ASSOC);
+                $seq    = $rowSeq ? (int)$rowSeq['max_seq'] : 0;
+
+                foreach ($validos as $fila) {
+                    $idProducto = trim($fila['idProducto'] ?? '');
+                    $cantidad   = trim($fila['cantidad'] ?? '');
+                    $nota       = trim($fila['nota'] ?? '');
+                    $lote       = trim($fila['lote'] ?? '');
+
+                    $resultado = [
+                        'fila'       => $fila['fila'] ?? '',
+                        'idProducto' => $idProducto,
+                        'cantidad'   => $cantidad,
+                        'lote'       => $lote,
+                        'status'     => 'error',
+                        'mensaje'    => ''
+                    ];
+
+                    $check = $this->validar_fila_inventario($conn, $cnDev, $idProducto, $cantidad, $lote, $procesados);
+                    if (!$check['ok']) {
+                        $resultado['mensaje'] = $check['mensaje'];
+                        $resultados[] = $resultado; continue;
+                    }
+
+                    $seq++;
+                    $loteVal = $lote !== '' ? $lote : '0';
+                    $notaVal = $nota !== '' ? $nota : ' ';
+                    $costo   = (float)$check['producto']['costo_unitario'];
+
+                    $sqlLin = "INSERT INTO Documentos_Lin (sw, tipo, seq, modelo, Numero_Documento, Numero_Docto_Base, Numero_Lote,
+                    Nit_Cedula, Codigo_Direccion, Fecha_Documento, IdProducto, IdUnidad, Factor_Conversion,
+                    Cantidad_Facturada, Cantidad_Pendiente, Cantidad_Orden, Costo_Unitario, Valor_Unitario,
+                    Valor_Impuesto, Porcentaje_Impuesto, Porcentaje_Descuento_1, Porcentaje_Descuento_2, Porcentaje_Descuento_3,
+                    IdVendedor, Comision_Vendedor, Valor_Comision_Vendedor, IdBodega, Maneja_Inventario, Tomador,
+                    IdMoneda, Tasa_Moneda_Ext, CentroDeCostosDoc, Nota_Linea, Unidades, Fecha_Vence, Exportado,
+                    Costo_Unitario_Inicial, Porcentaje_ReteFuente, Envase, Numero_Lote_Destino, serial, Impuesto_Consumo,
+                    Porcentaje_ReteFuente_2, Porcentaje_ReteFuente_3, Porcentaje_ReteFuente_4,
+                    Emp_1, Emp_2, Emp_3, Emp_4, Emp_5, Emp_6, Emp_7, Emp_8,
+                    Tara_1, Tara_2, Tara_3, Tara_4, Tara_5, Tara_6, Tara_7, Tara_8)
+
+                    SELECT do.tipo, ?, ?, p.contable, d.Numero_Documento, 0, ?,
+                    d.nit_Cedula, d.codigo_direccion, GETDATE(), ?, p.unidad_Inventario, 1,
+                    ?, ?, 0, ?, ?,
+                    0, 0, 0, 0, 0,
+                    1, 0, 0, do.IdBodega, 'S', '',
+                    1, 1, '0', ?, '1', '2000-01-01 00:00:00.000', 'N',
+                    ?, 0, 0, 0, '', 0,
+                    0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0
+
+                    FROM Documentos d, TblProducto p, TblTipoDoctos do
+                    WHERE p.IdProducto = ? AND d.tipo = ? AND d.Numero_Documento = ? AND do.idTipoDoctos = d.tipo";
+
+                    $paramsLin = array(
+                        $tipo, $seq, $loteVal,
+                        $idProducto,
+                        (float)$cantidad, (float)$cantidad * -1, $costo, $costo,
+                        $notaVal,
+                        $costo,
+                        $idProducto, $tipo, $consecutivo
+                    );
+
+                    $stmtLin = sqlsrv_prepare($conn, $sqlLin, $paramsLin);
+                    if (sqlsrv_execute($stmtLin) === false) {
+                        throw new Exception("Error al insertar la línea del producto $idProducto: " . print_r(sqlsrv_errors(), true));
+                    }
+
+                    $resultado['status']  = 'ok';
+                    $resultado['mensaje'] = $check['mensaje'];
+                    $resultados[] = $resultado;
+                }
+
+                sqlsrv_commit($conn);
+
+            } catch (Exception $e) {
+                if (isset($conn) && $conn) {
+                    sqlsrv_rollback($conn);
+                }
+                $this->registrar_error("Error en confirmar_masiva_excel_pedidos: " . $e->getMessage());
+                return json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+            }
+
+            $ok    = count(array_filter($resultados, function($r) { return $r['status'] === 'ok'; }));
+            $error = count(array_filter($resultados, function($r) { return $r['status'] === 'error'; }));
+
+            return json_encode([
+                'status'     => 'ok',
+                'ok'         => $ok,
+                'error'      => $error,
+                'resultados' => $resultados
+            ]);
+        }
+
+        public function generar_plantilla_excel_pedidos() {
+            $tmpFile = tempnam(sys_get_temp_dir(), 'plantilla_ped_');
+            $zip = new ZipArchive();
+            $zip->open($tmpFile, ZipArchive::OVERWRITE);
+
+            $zip->addFromString('[Content_Types].xml',
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' .
+                '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' .
+                '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' .
+                '<Default Extension="xml" ContentType="application/xml"/>' .
+                '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' .
+                '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' .
+                '<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>' .
+                '</Types>'
+            );
+
+            $zip->addFromString('_rels/.rels',
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' .
+                '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' .
+                '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' .
+                '</Relationships>'
+            );
+
+            $zip->addFromString('xl/workbook.xml',
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' .
+                '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' .
+                '<sheets><sheet name="Pedidos" sheetId="1" r:id="rId1"/></sheets>' .
+                '</workbook>'
+            );
+
+            $zip->addFromString('xl/_rels/workbook.xml.rels',
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' .
+                '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' .
+                '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' .
+                '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>' .
+                '</Relationships>'
+            );
+
+            // Índices: 0=IdProducto 1=Cantidad 2=Nota 3=Lote 4=(nota ejemplo) 5=(lote ejemplo)
+            $zip->addFromString('xl/sharedStrings.xml',
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' .
+                '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="6" uniqueCount="6">' .
+                '<si><t>IdProducto</t></si>' .
+                '<si><t>Cantidad</t></si>' .
+                '<si><t>Nota</t></si>' .
+                '<si><t>Lote</t></si>' .
+                '<si><t>Pedido inicial</t></si>' .
+                '<si><t>L001</t></si>' .
+                '</sst>'
+            );
+
+            $zip->addFromString('xl/worksheets/sheet1.xml',
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' .
+                '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' .
+                '<sheetData>' .
+                '<row r="1">' .
+                '<c r="A1" t="s"><v>0</v></c>' .
+                '<c r="B1" t="s"><v>1</v></c>' .
+                '<c r="C1" t="s"><v>2</v></c>' .
+                '<c r="D1" t="s"><v>3</v></c>' .
+                '</row>' .
+                '<row r="2">' .
+                '<c r="A2"><v>1000</v></c>' .
+                '<c r="B2"><v>10</v></c>' .
+                '<c r="C2" t="s"><v>4</v></c>' .
+                '<c r="D2" t="s"><v>5</v></c>' .
+                '</row>' .
+                '</sheetData>' .
+                '</worksheet>'
+            );
+
+            $zip->close();
+            return $tmpFile;
         }
 
         public function update_doc($tipo, $consecutivo, $notas, $remision){
@@ -133,42 +812,59 @@
 
         }
 
-        public function listar_entradas_x_usuario($usuario){
+        // Lista documentos de Entrada visibles para el usuario según los tipos de documento
+        // que tiene permiso de ver (no según quién los creó), acotado opcionalmente por
+        // rango de fecha y rango de número de documento.
+        public function listar_entradas_filtro($tipos_permitidos, $tipo, $fechaDesde, $fechaHasta, $numDesde, $numHasta, $exportado = ''){
             $cn = new Conectarserver;
             $resultado = array();
 
-            if($usuario == 'LAUREN' || $usuario == 'SA'){
-
-                $sql="SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
-                    d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, d.exportado, d.usuario
-
-                    FROM Documentos d, Terceros_Dir td, TblTipoDoctos tt, TblTerceros t
-
-                    WHERE CONVERT(date, Fecha_Hora_Factura) > '2025/12/31' AND tt.tipo IN ('12', '3')
-                    AND tt.idTipoDoctos = d.tipo AND td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion
-                    AND t.nit_cedula = d.nit_Cedula
-                    ORDER BY d.Fecha_Hora_Factura DESC";
-
-                $registros = sqlsrv_query($cn->getConecta(), $sql);
-
-            } else {
-
-                $sql="SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
-                    d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, d.exportado, d.usuario
-
-                    FROM Documentos d, Terceros_Dir td, TblTipoDoctos tt, TblTerceros t
-
-                    WHERE d.usuario = ? AND CONVERT(date, Fecha_Hora_Factura) > '2025/12/31' AND tt.tipo IN ('12', '3')
-                    AND tt.idTipoDoctos = d.tipo AND td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion
-                    AND t.nit_cedula = d.nit_Cedula
-                    ORDER BY d.Fecha_Hora_Factura DESC";
-
-                $params = array($usuario);
-                $registros = sqlsrv_query($cn->getConecta(), $sql, $params);
+            if (empty($tipos_permitidos)) {
+                return $resultado;
             }
 
+            // Si viene un tipo específico (ya validado por el controlador contra $tipos_permitidos),
+            // se filtra solo por ese; si no, se filtra por todos los tipos permitidos del usuario.
+            $tiposFiltro = ($tipo !== '' && in_array($tipo, $tipos_permitidos)) ? array($tipo) : $tipos_permitidos;
+
+            $placeholders = implode(',', array_fill(0, count($tiposFiltro), '?'));
+            $params = $tiposFiltro;
+
+            $where = "tt.idTipoDoctos IN ($placeholders) AND tt.tipo IN ('12', '3')
+                      AND tt.idTipoDoctos = d.tipo AND td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion
+                      AND t.nit_cedula = d.nit_Cedula";
+
+            if ($fechaDesde !== '') {
+                $where .= " AND CONVERT(date, d.Fecha_Hora_Factura) >= ?";
+                $params[] = $fechaDesde;
+            }
+            if ($fechaHasta !== '') {
+                $where .= " AND CONVERT(date, d.Fecha_Hora_Factura) <= ?";
+                $params[] = $fechaHasta;
+            }
+            if ($numDesde !== '') {
+                $where .= " AND d.Numero_documento >= ?";
+                $params[] = (int)$numDesde;
+            }
+            if ($numHasta !== '') {
+                $where .= " AND d.Numero_documento <= ?";
+                $params[] = (int)$numHasta;
+            }
+            if ($exportado === 'S' || $exportado === 'N') {
+                $where .= " AND d.exportado = ?";
+                $params[] = $exportado;
+            }
+
+            $sql = "SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
+                    d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, d.exportado, d.anulado, d.usuario
+                    FROM Documentos d, Terceros_Dir td, TblTipoDoctos tt, TblTerceros t
+                    WHERE $where
+                    ORDER BY d.Fecha_Hora_Factura DESC";
+
+            $registros = sqlsrv_query($cn->getConecta(), $sql, $params);
+
             if($registros === false) {
-                $this->registrar_error("Error en listar_entradas_x_usuario: " . print_r(sqlsrv_errors(), true));
+                $this->registrar_error("Error en listar_entradas_filtro: " . print_r(sqlsrv_errors(), true));
                 return $resultado;
             }
 
@@ -178,14 +874,139 @@
 
             return $resultado;
         }
-        
+
+
+        // Lista documentos de Inventario visibles para el usuario según los tipos de documento
+        // que tiene permiso de ver (no según quién los creó), acotado opcionalmente por
+        // rango de fecha, rango de número de documento y estado de exportado.
+        public function listar_inventario_filtro($tipos_permitidos, $tipo, $fechaDesde, $fechaHasta, $numDesde, $numHasta, $exportado = ''){
+            $cn = new Conectarserver;
+            $resultado = array();
+
+            if (empty($tipos_permitidos)) {
+                return $resultado;
+            }
+
+            $tiposFiltro = ($tipo !== '' && in_array($tipo, $tipos_permitidos)) ? array($tipo) : $tipos_permitidos;
+
+            $placeholders = implode(',', array_fill(0, count($tiposFiltro), '?'));
+            $params = $tiposFiltro;
+
+            $where = "tt.idTipoDoctos IN ($placeholders) AND tt.tipo = '99'
+                      AND tt.idTipoDoctos = d.tipo AND td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion
+                      AND t.nit_cedula = d.nit_Cedula";
+
+            if ($fechaDesde !== '') {
+                $where .= " AND CONVERT(date, d.Fecha_Hora_Factura) >= ?";
+                $params[] = $fechaDesde;
+            }
+            if ($fechaHasta !== '') {
+                $where .= " AND CONVERT(date, d.Fecha_Hora_Factura) <= ?";
+                $params[] = $fechaHasta;
+            }
+            if ($numDesde !== '') {
+                $where .= " AND d.Numero_documento >= ?";
+                $params[] = (int)$numDesde;
+            }
+            if ($numHasta !== '') {
+                $where .= " AND d.Numero_documento <= ?";
+                $params[] = (int)$numHasta;
+            }
+            if ($exportado === 'S' || $exportado === 'N') {
+                $where .= " AND d.exportado = ?";
+                $params[] = $exportado;
+            }
+
+            $sql = "SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
+                    d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, d.exportado, d.anulado, d.usuario
+                    FROM Documentos d, Terceros_Dir td, TblTipoDoctos tt, TblTerceros t
+                    WHERE $where
+                    ORDER BY d.Fecha_Hora_Factura DESC";
+
+            $registros = sqlsrv_query($cn->getConecta(), $sql, $params);
+
+            if($registros === false) {
+                $this->registrar_error("Error en listar_inventario_filtro: " . print_r(sqlsrv_errors(), true));
+                return $resultado;
+            }
+
+            while($stmt = sqlsrv_fetch_array($registros, SQLSRV_FETCH_ASSOC)) {
+                $resultado[] = $stmt;
+            }
+
+            return $resultado;
+        }
+
+        // Lista documentos de Pedidos visibles para el usuario según los tipos de documento
+        // que tiene permiso de ver (no según quién los creó), acotado opcionalmente por
+        // rango de fecha, rango de número de documento y estado de exportado.
+        // A diferencia de Inventario/Entradas/Salidas, Pedidos está acotado a un único
+        // idTipoDoctos (948, "Pedidos Granja"), no a una categoría "tipo".
+        public function listar_pedidos_filtro($tipos_permitidos, $tipo, $fechaDesde, $fechaHasta, $numDesde, $numHasta, $exportado = ''){
+            $cn = new Conectarserver;
+            $resultado = array();
+
+            if (empty($tipos_permitidos)) {
+                return $resultado;
+            }
+
+            $tiposFiltro = ($tipo !== '' && in_array($tipo, $tipos_permitidos)) ? array($tipo) : $tipos_permitidos;
+
+            $placeholders = implode(',', array_fill(0, count($tiposFiltro), '?'));
+            $params = $tiposFiltro;
+
+            $where = "tt.idTipoDoctos IN ($placeholders) AND tt.idTipoDoctos = 948
+                      AND tt.idTipoDoctos = d.tipo AND td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion
+                      AND t.nit_cedula = d.nit_Cedula";
+
+            if ($fechaDesde !== '') {
+                $where .= " AND CONVERT(date, d.Fecha_Hora_Factura) >= ?";
+                $params[] = $fechaDesde;
+            }
+            if ($fechaHasta !== '') {
+                $where .= " AND CONVERT(date, d.Fecha_Hora_Factura) <= ?";
+                $params[] = $fechaHasta;
+            }
+            if ($numDesde !== '') {
+                $where .= " AND d.Numero_documento >= ?";
+                $params[] = (int)$numDesde;
+            }
+            if ($numHasta !== '') {
+                $where .= " AND d.Numero_documento <= ?";
+                $params[] = (int)$numHasta;
+            }
+            if ($exportado === 'S' || $exportado === 'N') {
+                $where .= " AND d.exportado = ?";
+                $params[] = $exportado;
+            }
+
+            $sql = "SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
+                    d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, d.exportado, d.anulado, d.usuario
+                    FROM Documentos d, Terceros_Dir td, TblTipoDoctos tt, TblTerceros t
+                    WHERE $where
+                    ORDER BY d.Fecha_Hora_Factura DESC";
+
+            $registros = sqlsrv_query($cn->getConecta(), $sql, $params);
+
+            if($registros === false) {
+                $this->registrar_error("Error en listar_pedidos_filtro: " . print_r(sqlsrv_errors(), true));
+                return $resultado;
+            }
+
+            while($stmt = sqlsrv_fetch_array($registros, SQLSRV_FETCH_ASSOC)) {
+                $resultado[] = $stmt;
+            }
+
+            return $resultado;
+        }
+
 
         public function listar_doc_x_id($tipo, $consecutivo){
             $cn = new Conectarserver;
 
             $sql="SELECT d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
                 d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, LTRIM(RTRIM(td.ciudad)) AS ciudad,
-                d.nit_Cedula_2, t.nombre AS nombre2, d.codigo_direccion_2, td2.direccion AS direccion2, d.notas, d.exportado, d.IdVendedor, d.Fecha_Hora_Factura,
+                d.nit_Cedula_2, t.nombre AS nombre2, d.codigo_direccion_2, td2.direccion AS direccion2, d.notas, d.exportado, d.anulado, d.IdVendedor, d.Fecha_Hora_Factura,
                 d.IdTransportador, d.IdVehiculo, d.RespuestaCorrectaDian,
                 LTRIM(RTRIM(tb.Bodega)) AS NombreBodega, LTRIM(RTRIM(tv.Vendedor)) AS NombreVendedor
                 FROM Documentos d
@@ -227,7 +1048,7 @@
         
         public function listar_docdetalle_x_id($tipo, $consecutivo){
             $cn = new Conectarserver;
-            $sql="SELECT d.tipo, d.Numero_Documento, d.seq, d.IdProducto, p.Producto, u.Unidad, d.Cantidad_Facturada, d.Porcentaje_Descuento_1, d.Porcentaje_Impuesto, d.Valor_Unitario, d.Numero_Lote, d.Fecha_Vence, d.Nota_Linea, d.Unidades, o.exportado
+            $sql="SELECT d.tipo, d.Numero_Documento, d.seq, d.IdProducto, p.Producto, u.Unidad, d.Cantidad_Facturada, d.Porcentaje_Descuento_1, d.Porcentaje_Impuesto, d.Valor_Unitario, d.Numero_Lote, d.Fecha_Vence, d.Nota_Linea, d.Unidades, o.exportado, o.anulado, p.IdGrupoProducto
             FROM Documentos_Lin d, TblProducto p, TblUnidad u, Documentos o
             WHERE d.IdProducto = p.IdProducto AND d.IdUnidad = u.idUnidad
                 AND  d.tipo = '$tipo' AND d.Numero_documento = '$consecutivo'

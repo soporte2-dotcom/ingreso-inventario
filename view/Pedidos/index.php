@@ -43,7 +43,7 @@ $DateAndTime = date('d-m-Y h:i:s a', time());
 
 </script>
 
-<title>Cervalle:: Inventario</title>
+<title>Cervalle:: Pedidos</title>
 </head>
 
 <body class="with-side-menu sidebar-hidden">
@@ -62,10 +62,10 @@ $DateAndTime = date('d-m-Y h:i:s a', time());
 				<div class="tbl">
 					<div class="tbl-row">
 						<div class="tbl-cell">
-							<h3>Inventario</h3>
+							<h3>Pedidos</h3>
 							<ol class="breadcrumb breadcrumb-simple">
 								<li><a href="#">Home</a></li>
-								<li><a href="../ConsultarInventarios/">Inventario</a></li>
+								<li><a href="../ConsultarPedidos/">Pedidos</a></li>
 								<li class="active">Nuevo Documento</li>
 							</ol>
 						</div>
@@ -156,9 +156,9 @@ $DateAndTime = date('d-m-Y h:i:s a', time());
 
 				<div class="row">
 
-					
-					<input type="hidden" name="tipo" id="tipo" class="form-control" />				
-					
+
+					<input type="hidden" name="tipo" id="tipo" class="form-control" />
+
 
 					<div class="col-lg-4">
 						<fieldset class="form-group">
@@ -180,7 +180,7 @@ $DateAndTime = date('d-m-Y h:i:s a', time());
 							<input type="text" style="display: none" id="fecha1" class="form-control" value="<?php echo $DateAndTime ?>" readonly />
 						</fieldset>
 					</div>
-											
+
 				</div>
 
 				<div class="row">
@@ -236,27 +236,27 @@ $DateAndTime = date('d-m-Y h:i:s a', time());
 										<th class="text-center">Producto</th>
 										<th class="text-center">Nombre</th>
 										<th class="text-center">U medida</th>
-										<th class="text-center">Cantidad</th>										
+										<th class="text-center">Cantidad</th>
 										<th class="text-center">Eliminar</th>
 									</tr>
-								</thead>								
+								</thead>
 							</table>
 						</div>
 					</div>
 				</div>
 
 				<br/>
-				
+
 				<div class="form-group py-5">
 					<label class="font-weight-bold">Notas: </label>
 					<textarea class="form-control" rows="4" name="notas" id="notas"></textarea>
         		</div>
 
-				<div class="row">								 
+				<div class="row">
 					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
 						<button type="button" id="btnguardar" class="d-flex w-15 btn btn-rounded btn-inline btn-success">Guardar</button>
 					</div>
-				</div>	
+				</div>
 
 							<!-- Modal Agregar-->
 							<div class="modal fade" id="modalagregar" tabindex="-1" role="dialog" aria-labelledby="modalagregar" aria-hidden="true" data-backdrop="static" data-keyboard="false">
@@ -270,14 +270,14 @@ $DateAndTime = date('d-m-Y h:i:s a', time());
 										</div>
 										<div class="modal-body">
 											<div class="row">
-												
+
 												<input class="form-control" type="hidden" name="seq" id="seq">
-												
+
 												<div class="col-lg-12 col-md-12 col-sm-12">
 													<label>Codigo Producto</label>
 													<input class="form-control" type="number" name="idproducto" id="idproducto">
 												</div>
-												
+
 												<div class="col-lg-12 col-md-12 col-sm-12">
 													<label>Producto</label>
 													<input class="form-control" type="text" name="producto" id="producto" readonly>
@@ -316,7 +316,7 @@ $DateAndTime = date('d-m-Y h:i:s a', time());
 												Columna D: <b>lote</b> (opcional)<br>
 												<small>La primera fila debe ser el encabezado (se omite automáticamente, su contenido no importa).</small>
 												<br>
-												<a href="../../controller/documento.php?op=descargar_plantilla_inventario" target="_blank" class="btn btn-outline-secondary btn-sm mt-2">
+												<a href="../../controller/documento.php?op=descargar_plantilla_pedidos" target="_blank" class="btn btn-outline-secondary btn-sm mt-2">
 													<i class="fa fa-download"></i> Descargar plantilla de ejemplo
 												</a>
 											</div>
@@ -362,14 +362,14 @@ $DateAndTime = date('d-m-Y h:i:s a', time());
 							<!-- Fin modal Cargar Excel -->
 
 
-							
+
 						</form>
 
 			</div>
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="nuevodoc.js?v=7"></script>
+	<script type="text/javascript" src="pedidos.js?v=1"></script>
 
 </body>
 

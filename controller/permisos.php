@@ -269,6 +269,118 @@ try {
             echo $html;
             break;
 
+        case "cargar_permisos_inventario":
+            $usuario_id = $_POST["usuario_id"];
+
+            // Verificar que el usuario existe
+            $usuario_info = $permisos->get_usuario($usuario_id);
+            if (!$usuario_info) {
+                echo "<div class='alert alert-danger'>Usuario no encontrado</div>";
+                break;
+            }
+
+            // Mostrar información del usuario
+            $nombre_completo = $usuario_info['Nom_Usuario'] . ' ' . $usuario_info['Ape_Usuario'];
+            echo "<div class='user-info alert alert-info'>
+                    <h5><span class='glyphicon glyphicon-user'></span> Información del Usuario</h5>
+                    <strong>ID:</strong> {$usuario_info['Id_Usuario']}<br>
+                    <strong>Nombre:</strong> {$nombre_completo}
+                  </div>";
+
+            // Cargar tipos de documento de inventario
+            $tipos_documento_inventario = $permisos->get_tipos_documento_inventario();
+            $permisos_documentos = $permisos->get_permisos_documentos_usuario($usuario_id);
+
+            $html = "<h5><span class='glyphicon glyphicon-list-alt'></span> Permisos de Documentos de Inventario</h5>";
+
+            if (is_array($tipos_documento_inventario) && count($tipos_documento_inventario) > 0) {
+                $html .= "<div class='select-all-container'>
+                            <input type='checkbox' id='select_all_documentos_inventario'>
+                            <label for='select_all_documentos_inventario'>
+                                <span class='glyphicon glyphicon-check'></span>
+                                Seleccionar Todos los Documentos de Inventario
+                            </label>
+                          </div>";
+
+                $html .= "<div class='documentos-list documentos-inventario'>";
+                $html .= "<p class='text-muted'>Selecciona los tipos de documento de inventario que este usuario puede usar:</p>";
+
+                foreach ($tipos_documento_inventario as $tipo) {
+                    $checked = (isset($permisos_documentos[$tipo['idTipoDoctos']]) &&
+                              $permisos_documentos[$tipo['idTipoDoctos']] == 'S') ? 'checked' : '';
+
+                    $html .= "<div class='checkbox'>
+                                <input type='checkbox' id='doc_inventario_{$tipo['idTipoDoctos']}'
+                                      name='documentos[]' value='{$tipo['idTipoDoctos']}' $checked>
+                                <label for='doc_inventario_{$tipo['idTipoDoctos']}'>
+                                    <strong>{$tipo['TipoDoctos']}</strong>
+                                    <small class='text-muted'>(Tipo: {$tipo['tipo']})</small>
+                                </label>
+                            </div>";
+                }
+                $html .= "</div>";
+            } else {
+                $html .= "<div class='alert alert-warning'>No hay tipos de documento de inventario configurados</div>";
+            }
+            echo $html;
+            break;
+
+        case "cargar_permisos_pedidos":
+            $usuario_id = $_POST["usuario_id"];
+
+            // Verificar que el usuario existe
+            $usuario_info = $permisos->get_usuario($usuario_id);
+            if (!$usuario_info) {
+                echo "<div class='alert alert-danger'>Usuario no encontrado</div>";
+                break;
+            }
+
+            // Mostrar información del usuario
+            $nombre_completo = $usuario_info['Nom_Usuario'] . ' ' . $usuario_info['Ape_Usuario'];
+            echo "<div class='user-info alert alert-info'>
+                    <h5><span class='glyphicon glyphicon-user'></span> Información del Usuario</h5>
+                    <strong>ID:</strong> {$usuario_info['Id_Usuario']}<br>
+                    <strong>Nombre:</strong> {$nombre_completo}
+                  </div>";
+
+            // Cargar tipo de documento de Pedidos
+            $tipos_documento_pedidos = $permisos->get_tipos_documento_pedidos();
+            $permisos_documentos = $permisos->get_permisos_documentos_usuario($usuario_id);
+
+            $html = "<h5><span class='glyphicon glyphicon-shopping-cart'></span> Permisos de Documentos de Pedidos</h5>";
+
+            if (is_array($tipos_documento_pedidos) && count($tipos_documento_pedidos) > 0) {
+                $html .= "<div class='select-all-container'>
+                            <input type='checkbox' id='select_all_documentos_pedidos'>
+                            <label for='select_all_documentos_pedidos'>
+                                <span class='glyphicon glyphicon-check'></span>
+                                Seleccionar Todos los Documentos de Pedidos
+                            </label>
+                          </div>";
+
+                $html .= "<div class='documentos-list documentos-pedidos'>";
+                $html .= "<p class='text-muted'>Selecciona los tipos de documento de pedidos que este usuario puede usar:</p>";
+
+                foreach ($tipos_documento_pedidos as $tipo) {
+                    $checked = (isset($permisos_documentos[$tipo['idTipoDoctos']]) &&
+                              $permisos_documentos[$tipo['idTipoDoctos']] == 'S') ? 'checked' : '';
+
+                    $html .= "<div class='checkbox'>
+                                <input type='checkbox' id='doc_pedidos_{$tipo['idTipoDoctos']}'
+                                      name='documentos[]' value='{$tipo['idTipoDoctos']}' $checked>
+                                <label for='doc_pedidos_{$tipo['idTipoDoctos']}'>
+                                    <strong>{$tipo['TipoDoctos']}</strong>
+                                    <small class='text-muted'>(Tipo: {$tipo['tipo']})</small>
+                                </label>
+                            </div>";
+                }
+                $html .= "</div>";
+            } else {
+                $html .= "<div class='alert alert-warning'>No hay tipos de documento de pedidos configurados</div>";
+            }
+            echo $html;
+            break;
+
         case "guardar_permisos_documentos":
           if (!isset($_POST["usuario_id"])) {
               echo json_encode(["status" => "error", "message" => "No se recibió ID de usuario"]);
@@ -302,7 +414,8 @@ try {
               $permisos_nuevos = $permisos->obtener_permisos_json($usuario_id, 'documentos');
 
               // Registrar en el log de auditoría
-              $tipo_texto = ($tipo_documentos === 'entradas') ? 'entrada' : 'salida';
+              $tipos_texto = ['entradas' => 'entrada', 'salidas' => 'salida', 'inventario' => 'inventario', 'pedidos' => 'pedidos'];
+              $tipo_texto = $tipos_texto[$tipo_documentos] ?? 'salida';
               $permisos->registrar_log_permisos([
                   'usuario_modificado' => $usuario_id,
                   'usuario_modificador' => $_SESSION["Id_Usuario"],
@@ -348,6 +461,38 @@ try {
             $usuario_id = $_SESSION["Id_Usuario"];
             $tipos_permitidos = $permisos->get_tipos_documento_salidas_permitidos($usuario_id);
             
+            $html = "";
+            if (is_array($tipos_permitidos) && count($tipos_permitidos) > 0) {
+                $html .= "<option value='' disabled selected>Seleccione...</option>";
+                foreach ($tipos_permitidos as $tipo) {
+                    $html .= "<option value='" . $tipo['idTipoDoctos'] . "'>" . $tipo['TipoDoctos'] . "</option>";
+                }
+            } else {
+                $html .= "<option value='' disabled selected>No tiene permisos para ningún documento</option>";
+            }
+            echo $html;
+            break;
+
+        case "combo_inventario_permisos":
+            $usuario_id = $_SESSION["Id_Usuario"];
+            $tipos_permitidos = $permisos->get_tipos_documento_inventario_permitidos($usuario_id);
+
+            $html = "";
+            if (is_array($tipos_permitidos) && count($tipos_permitidos) > 0) {
+                $html .= "<option value='' disabled selected>Seleccione...</option>";
+                foreach ($tipos_permitidos as $tipo) {
+                    $html .= "<option value='" . $tipo['idTipoDoctos'] . "'>" . $tipo['TipoDoctos'] . "</option>";
+                }
+            } else {
+                $html .= "<option value='' disabled selected>No tiene permisos para ningún documento</option>";
+            }
+            echo $html;
+            break;
+
+        case "combo_pedidos_permisos":
+            $usuario_id = $_SESSION["Id_Usuario"];
+            $tipos_permitidos = $permisos->get_tipos_documento_pedidos_permitidos($usuario_id);
+
             $html = "";
             if (is_array($tipos_permitidos) && count($tipos_permitidos) > 0) {
                 $html .= "<option value='' disabled selected>Seleccione...</option>";

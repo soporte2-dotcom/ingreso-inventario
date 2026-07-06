@@ -155,7 +155,25 @@
         break;
 
         case "listar_salidas":
-            $datos=$salidas->listar_salidas_x_usuario($_SESSION["Id_Usuario"]);
+            require_once("../models/mdlPermisos.php");
+            $permisos = new Permisos();
+            $tipos_permitidos_rows = $permisos->get_tipos_documento_salidas_permitidos($_SESSION["Id_Usuario"]);
+            $tipos_permitidos = array_column($tipos_permitidos_rows, 'idTipoDoctos');
+
+            $tipoSolicitado = $_POST['tipo'] ?? '';
+            if ($tipoSolicitado !== '' && !in_array($tipoSolicitado, $tipos_permitidos)) {
+                $tipoSolicitado = '';
+            }
+
+            $datos = $salidas->listar_salidas_filtro(
+                $tipos_permitidos,
+                $tipoSolicitado,
+                $_POST['fechaDesde'] ?? '',
+                $_POST['fechaHasta'] ?? '',
+                $_POST['numDesde']   ?? '',
+                $_POST['numHasta']   ?? '',
+                $_POST['exportado']  ?? ''
+            );
             $data= Array();
             foreach($datos as $row){
                 $sub_array = array();
@@ -166,8 +184,10 @@
                 $sub_array[] = $row["Nombre_Cliente"];
                 $sub_array[] = $row["direccion"];
                 $sub_array[] = $row["usuario"];
-                
-                if($row["exportado"] == "S"){
+
+                if(($row["anulado"] ?? 'N') == "S"){
+                    $sub_array[] = '<span class="label label-default">Anulado</span>';
+                } elseif($row["exportado"] == "S"){
                     $sub_array[] = '<span class="label label-success">Sí</span>';
                 } else {
                     $sub_array[] = '<span class="label label-danger">No</span>';
@@ -204,7 +224,7 @@
             }   
         break;
 
-        case "cargar_masiva_excel":
+        case "validar_excel_salidas":
             if (!isset($_FILES['archivo']) || $_FILES['archivo']['error'] !== UPLOAD_ERR_OK) {
                 echo json_encode(['status' => 'error', 'message' => 'No se recibió el archivo o hubo un error al subir']);
                 break;
@@ -215,12 +235,23 @@
                 echo json_encode(['status' => 'error', 'message' => 'Solo se aceptan archivos .xlsx']);
                 break;
             }
-            echo $salidas->cargar_masiva_excel(
+            echo $salidas->validar_excel_salidas(
                 $_POST['tipo']      ?? '',
                 $_POST['numdoc']    ?? '',
                 $_POST['nit']       ?? '',
                 $_POST['direccion'] ?? '',
                 $tmpPath
+            );
+        break;
+
+        case "confirmar_excel_salidas":
+            $validos = isset($_POST['validos']) ? json_decode($_POST['validos'], true) : [];
+            echo $salidas->confirmar_masiva_excel_salidas(
+                $_POST['tipo']      ?? '',
+                $_POST['numdoc']    ?? '',
+                $_POST['nit']       ?? '',
+                $_POST['direccion'] ?? '',
+                $validos
             );
         break;
 
@@ -246,7 +277,7 @@
                 $sub_array[] = $row["IdProducto"];
                 $sub_array[] = $row["Producto"];
                 $sub_array[] = $row["Unidad"];
-                $sub_array[] = number_format($row["Cantidad_Facturada"], 2);
+                $sub_array[] = number_format($row["Cantidad_Facturada"], 3);
                 $sub_array[] = number_format($row["Porcentaje_Descuento_1"], 2);
                 $sub_array[] = number_format($row["Valor_Unitario"], 2);
                 $sub_array[] = $row["Numero_Lote"];

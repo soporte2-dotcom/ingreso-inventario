@@ -30,7 +30,8 @@ const CONFIG = {
             combo_lotes: "salidas.php?op=combo_lotes",
             combo_transportador: "../../controller/documento.php?op=combo_transportador",
             combo_vehiculo: "../../controller/documento.php?op=combo_vehiculo",
-            cargar_masiva_excel: "../../controller/salidas.php?op=cargar_masiva_excel",
+            validar_excel_salidas: "../../controller/salidas.php?op=validar_excel_salidas",
+            confirmar_excel_salidas: "../../controller/salidas.php?op=confirmar_excel_salidas",
             update_notas_etapa: "../../controller/salidas.php?op=update_notas_etapa",
             validar_os: "../../controller/salidas.php?op=validar_os",
             reiniciar_doc_desde_os: "../../controller/salidas.php?op=reiniciar_doc_desde_os",
@@ -1111,6 +1112,46 @@ function guardarDocumento() {
         return false;
     }
 
+    // Grupos de producto que corresponden a Dotación/EPP (Calzado, Prendas, Otros Dotación, EPP).
+    // Si hay alguno en el detalle y el checkbox "Dotación y EPP" no está marcado, se advierte
+    // antes de guardar en vez de guardar silenciosamente.
+    const GRUPOS_DOTACION = [14, 10, 37, 12];
+    const productosDotacion = [];
+    tabla.rows().every(function(){
+        const grupo = parseInt(this.data()[14], 10);
+        if (GRUPOS_DOTACION.includes(grupo)) {
+            productosDotacion.push(this.data()[2]); // nombre del producto
+        }
+    });
+
+    if (productosDotacion.length > 0 && !$('#dotacion_epp').is(':checked')) {
+        swal({
+            title: "Productos de Dotación/EPP",
+            text: "Hay productos de Dotación/EPP en el detalle y no ha marcado el checkbox \"Dotación y EPP\". ¿Desea marcarlo antes de guardar?",
+            type: "warning",
+            showCancelButton: true,
+            confirmButtonClass: "btn-warning",
+            confirmButtonText: "Sí, marcar",
+            cancelButtonText: "No, guardar así",
+            closeOnConfirm: true
+        }, function(marcar){
+            if (marcar) {
+                // Marcar el checkbox dispara el flujo existente de selección de concepto
+                // (modal #modalConceptoDotacion). Se deja que el usuario lo complete y
+                // vuelva a presionar Guardar, en vez de continuar guardando en paralelo.
+                $('#dotacion_epp').prop('checked', true).trigger('change');
+                swal("Listo", "Selecciona el concepto de Dotación/EPP y luego presiona Guardar de nuevo.", "info");
+                return;
+            }
+            continuarGuardarDocumento();
+        });
+        return;
+    }
+
+    continuarGuardarDocumento();
+}
+
+function continuarGuardarDocumento() {
     const sw = document.getElementById("sw").value;
 
     if (sw == 10 || sw == 2) {
@@ -1409,7 +1450,16 @@ function listardetalle(tipo, consecutivo){
            function (data) {
         data = JSON.parse(data);
         console.log(data);
-        
+
+        // Un documento anulado se bloquea exactamente igual que uno ya exportado:
+        // se reutiliza toda la lógica existente basada en data.exportado en vez de duplicarla.
+        if (data.anulado === 'S') {
+            data.exportado = 'S';
+            $('#avisoAnulado').show();
+        } else {
+            $('#avisoAnulado').hide();
+        }
+
         // Llenar campos del formulario
         $('#tipo').val(data.tipo);
         $('#tipodoc').val(data.TipoDoctos);
@@ -1522,6 +1572,9 @@ function listardetalle(tipo, consecutivo){
                 console.log(consecutivo.responseText);
             }
         },
+        "columnDefs": [
+            { "targets": [14], "visible": false, "searchable": false } // Grupo de producto (oculta, usada para validar Dotación/EPP)
+        ],
         "bDestroy": true,
         "responsive": true,
         "bInfo": true,
@@ -2704,7 +2757,10 @@ function imprimirDocumento() {
 
 init();
 
-// ─── CARGA MASIVA EXCEL ───────────────────────────────────────────────────────
+// ─── CARGA MASIVA EXCEL (validar → confirmar) ─────────────────────────────────
+
+let excelEstadoModalSalidas      = 'inicial'; // 'inicial' | 'validado'
+let excelValidosPendientesSalidas = [];
 
 function resetModalExcel() {
     document.getElementById('archivoExcel').value = '';
@@ -2712,11 +2768,14 @@ function resetModalExcel() {
     document.getElementById('tbExcelBody').innerHTML = '';
     document.getElementById('excelResumen').innerHTML = '';
 
+    excelEstadoModalSalidas = 'inicial';
+    excelValidosPendientesSalidas = [];
+
     // Restaurar botones al estado inicial
     var btnProcesar = document.getElementById('btnCargarExcel');
     btnProcesar.disabled = false;
     btnProcesar.style.display = 'inline-block';
-    btnProcesar.innerHTML = '<i class="fa fa-upload"></i> Procesar';
+    btnProcesar.innerHTML = '<i class="fa fa-upload"></i> Validar Archivo';
 
     document.getElementById('btnNuevoArchivo').style.display = 'none';
 
@@ -2730,10 +2789,58 @@ $('#modalexcel').on('hidden.bs.modal', function() {
     resetModalExcel();
 });
 
+function pintarResumenExcelSalidas(ok, warning, error) {
+    const resumenClass = error > 0 ? (ok > 0 || warning > 0 ? 'alert-warning' : 'alert-danger') : (warning > 0 ? 'alert-warning' : 'alert-success');
+    document.getElementById('excelResumen').innerHTML =
+        `<div class="alert ${resumenClass} py-2 mb-0">
+            <strong>Resultado:</strong>
+            <span class="badge badge-success ml-2">${ok} válidos</span>
+            <span class="badge badge-warning ml-1">${warning} con advertencia</span>
+            <span class="badge badge-danger ml-1">${error} con error</span>
+        </div>`;
+}
+
+function pintarResultadosExcelSalidas(resultados) {
+    const tbody = document.getElementById('tbExcelBody');
+    tbody.innerHTML = '';
+    (resultados || []).forEach(function(r) {
+        let statusBadge, rowClass;
+        if (r.status === 'ok') {
+            statusBadge = '<span class="badge badge-success">OK</span>';
+            rowClass = 'table-success';
+        } else if (r.status === 'warning') {
+            statusBadge = '<span class="badge badge-warning">Advertencia</span>';
+            rowClass = 'table-warning';
+        } else {
+            statusBadge = '<span class="badge badge-danger">Error</span>';
+            rowClass = 'table-danger';
+        }
+        const tr = document.createElement('tr');
+        tr.className = rowClass;
+        tr.innerHTML = `<td>${r.fila}</td><td>${r.idProducto}</td><td>${r.cantidad}</td><td>${r.lote || '-'}</td><td>${statusBadge}</td><td>${r.mensaje}</td>`;
+        tbody.appendChild(tr);
+    });
+    document.getElementById('excelResultados').style.display = 'block';
+}
+
+function obtenerNitDireccionActual() {
+    const nit       = (document.getElementById('nit1')       || document.getElementById('nit3'))?.value || '';
+    const direccion = (document.getElementById('direccion1') || document.getElementById('direccion3'))?.value || '';
+    const dirLimpia = direccion.indexOf(',') !== -1 ? direccion.split(',')[0] : direccion;
+    return { nit, direccion: dirLimpia };
+}
+
+// El botón único del modal cambia de rol según el estado: primero valida, luego procesa.
 function cargarExcelMasivo() {
-    const tipo       = getUrlParameter('tipo');
-    const consecutivo = getUrlParameter('consecutivo');
-    const fileInput  = document.getElementById('archivoExcel');
+    if (excelEstadoModalSalidas === 'validado') {
+        confirmarExcelSalidas();
+    } else {
+        validarExcelSalidas();
+    }
+}
+
+function validarExcelSalidas() {
+    const fileInput = document.getElementById('archivoExcel');
 
     if (!fileInput.files || fileInput.files.length === 0) {
         swal("Advertencia!", "Seleccione un archivo Excel (.xlsx) primero.", "warning");
@@ -2746,23 +2853,23 @@ function cargarExcelMasivo() {
         return;
     }
 
-    const nit       = (document.getElementById('nit1')        || document.getElementById('nit3'))?.value || '';
-    const direccion = (document.getElementById('direccion1')  || document.getElementById('direccion3'))?.value || '';
-    const dirLimpia = direccion.indexOf(',') !== -1 ? direccion.split(',')[0] : direccion;
+    const tipo       = getUrlParameter('tipo');
+    const consecutivo = getUrlParameter('consecutivo');
+    const { nit, direccion } = obtenerNitDireccionActual();
 
     const formData = new FormData();
     formData.append('archivo',   file);
     formData.append('tipo',      tipo);
     formData.append('numdoc',    consecutivo);
     formData.append('nit',       nit);
-    formData.append('direccion', dirLimpia);
+    formData.append('direccion', direccion);
 
     const btnProcesar = document.getElementById('btnCargarExcel');
     btnProcesar.disabled = true;
-    btnProcesar.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Procesando...';
+    btnProcesar.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Validando...';
 
     $.ajax({
-        url:         CONFIG.endpoints.salidas.cargar_masiva_excel,
+        url:         CONFIG.endpoints.salidas.validar_excel_salidas,
         type:        'POST',
         data:        formData,
         processData: false,
@@ -2770,57 +2877,100 @@ function cargarExcelMasivo() {
         dataType:    'json',
         success: function(response) {
             btnProcesar.disabled = false;
-            btnProcesar.innerHTML = '<i class="fa fa-upload"></i> Procesar';
 
             if (response.status === 'error') {
+                btnProcesar.innerHTML = '<i class="fa fa-upload"></i> Validar Archivo';
                 swal("Error!", response.message, "error");
                 return;
             }
 
-            // Mostrar resumen
-            const ok    = response.ok    || 0;
-            const error = response.error || 0;
-            const resumenClass = error > 0 ? (ok > 0 ? 'alert-warning' : 'alert-danger') : 'alert-success';
-            document.getElementById('excelResumen').innerHTML =
-                `<div class="alert ${resumenClass} py-2 mb-0">
-                    <strong>Resultado:</strong>
-                    <span class="badge badge-success ml-2">${ok} agregados</span>
-                    <span class="badge badge-danger ml-1">${error} con error</span>
-                </div>`;
+            const ok      = response.ok      || 0;
+            const warning = response.warning || 0;
+            const error   = response.error   || 0;
+            pintarResumenExcelSalidas(ok, warning, error);
+            pintarResultadosExcelSalidas(response.resultados);
+            document.getElementById('excelAvisoNoGuardado').style.display = 'block';
 
-            // Llenar tabla
-            const tbody = document.getElementById('tbExcelBody');
-            tbody.innerHTML = '';
-            (response.resultados || []).forEach(function(r) {
-                const statusBadge = r.status === 'ok'
-                    ? '<span class="badge badge-success">OK</span>'
-                    : '<span class="badge badge-danger">Error</span>';
-                const tr = document.createElement('tr');
-                tr.className = r.status === 'ok' ? 'table-success' : 'table-danger';
-                tr.innerHTML = `<td>${r.fila}</td><td>${r.idProducto}</td><td>${r.cantidad}</td><td>${r.lote || '-'}</td><td>${statusBadge}</td><td>${r.mensaje}</td>`;
-                tbody.appendChild(tr);
-            });
+            excelEstadoModalSalidas = 'validado';
+            excelValidosPendientesSalidas = response.validos || [];
 
-            document.getElementById('excelResultados').style.display = 'block';
-
-            // Cambiar botones: ocultar "Procesar", mostrar "Cargar otro" y cambiar "Cerrar" → "Listo"
-            btnProcesar.style.display = 'none';
             document.getElementById('btnNuevoArchivo').style.display = 'inline-block';
+
+            const totalValidos = ok + warning;
+            if (totalValidos > 0) {
+                btnProcesar.innerHTML = '<i class="fa fa-check"></i> Procesar ' + totalValidos + ' registro(s) válido(s)';
+                btnProcesar.disabled = false;
+            } else {
+                btnProcesar.innerHTML = '<i class="fa fa-upload"></i> Validar Archivo';
+                btnProcesar.disabled = true;
+            }
+        },
+        error: function(xhr, status, errorThrown) {
+            btnProcesar.disabled = false;
+            btnProcesar.innerHTML = '<i class="fa fa-upload"></i> Validar Archivo';
+            console.error('[validarExcelSalidas] Error HTTP:', status, errorThrown, xhr.responseText);
+            swal("Error!", "Error de comunicación con el servidor.", "error");
+        }
+    });
+}
+
+function confirmarExcelSalidas() {
+    const tipo        = getUrlParameter('tipo');
+    const consecutivo = getUrlParameter('consecutivo');
+    const { nit, direccion } = obtenerNitDireccionActual();
+
+    if (!excelValidosPendientesSalidas.length) {
+        swal("Advertencia!", "No hay registros válidos para procesar.", "warning");
+        return;
+    }
+
+    const btnProcesar = document.getElementById('btnCargarExcel');
+    btnProcesar.disabled = true;
+    btnProcesar.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Procesando...';
+
+    $.ajax({
+        url:  CONFIG.endpoints.salidas.confirmar_excel_salidas,
+        type: 'POST',
+        data: {
+            tipo:      tipo,
+            numdoc:    consecutivo,
+            nit:       nit,
+            direccion: direccion,
+            validos:   JSON.stringify(excelValidosPendientesSalidas)
+        },
+        dataType: 'json',
+        success: function(response) {
+            if (response.status === 'error') {
+                btnProcesar.disabled = false;
+                swal("Error!", response.message, "error");
+                return;
+            }
+
+            const ok      = response.ok      || 0;
+            const warning = response.warning || 0;
+            const error   = response.error   || 0;
+            pintarResumenExcelSalidas(ok, warning, error);
+            pintarResultadosExcelSalidas(response.resultados);
+            document.getElementById('excelAvisoNoGuardado').style.display = 'none';
+
+            excelEstadoModalSalidas = 'inicial';
+            excelValidosPendientesSalidas = [];
+
+            btnProcesar.style.display = 'none';
             var btnCerrar = document.getElementById('btnCerrarExcel');
             btnCerrar.innerHTML = '<i class="fa fa-check"></i> Listo';
             btnCerrar.classList.remove('btn-secondary');
             btnCerrar.classList.add('btn-success');
 
-            // Refrescar detalle si hubo al menos un OK
-            if (ok > 0) {
+            if (ok > 0 || warning > 0) {
                 listardetalle(tipo, consecutivo);
                 actualizarTodosLosTotales(tipo, consecutivo);
             }
         },
         error: function(xhr, status, errorThrown) {
             btnProcesar.disabled = false;
-            btnProcesar.innerHTML = '<i class="fa fa-upload"></i> Procesar';
-            console.error('[cargarExcelMasivo] Error HTTP:', status, errorThrown, xhr.responseText);
+            btnProcesar.innerHTML = '<i class="fa fa-check"></i> Procesar registros válidos';
+            console.error('[confirmarExcelSalidas] Error HTTP:', status, errorThrown, xhr.responseText);
             swal("Error!", "Error de comunicación con el servidor.", "error");
         }
     });

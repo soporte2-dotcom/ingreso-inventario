@@ -231,6 +231,70 @@ class Permisos {
       }
   }
 
+  // Obtener tipos de documento de inventario desde SQL Server
+  public function get_tipos_documento_inventario() {
+      try {
+          require_once(__DIR__ . "/../config/conexionserver.php");
+          $cn_sqlserver = new Conectarserver();
+
+          $query = "SELECT idTipoDoctos, TipoDoctos, tipo
+                    FROM TblTipoDoctos
+                    WHERE Activo = 'S' AND tipo = '99'
+                    ORDER BY TipoDoctos ASC";
+
+          $registros = sqlsrv_query($cn_sqlserver->getConecta(), $query);
+
+          if ($registros === false) {
+              error_log("Error get_tipos_documento_inventario: " . print_r(sqlsrv_errors(), true));
+              return [];
+          }
+
+          $tipos = [];
+          while ($fila = sqlsrv_fetch_array($registros, SQLSRV_FETCH_ASSOC)) {
+              $tipos[] = $fila;
+          }
+
+          sqlsrv_free_stmt($registros);
+          return $tipos;
+
+      } catch (Exception $e) {
+          error_log("Error get_tipos_documento_inventario: " . $e->getMessage());
+          return [];
+      }
+  }
+
+  // Obtener tipo de documento de Pedidos (acotado a idTipoDoctos=948, "Pedidos Granja")
+  public function get_tipos_documento_pedidos() {
+      try {
+          require_once(__DIR__ . "/../config/conexionserver.php");
+          $cn_sqlserver = new Conectarserver();
+
+          $query = "SELECT idTipoDoctos, TipoDoctos, tipo
+                    FROM TblTipoDoctos
+                    WHERE Activo = 'S' AND idTipoDoctos = 948
+                    ORDER BY TipoDoctos ASC";
+
+          $registros = sqlsrv_query($cn_sqlserver->getConecta(), $query);
+
+          if ($registros === false) {
+              error_log("Error get_tipos_documento_pedidos: " . print_r(sqlsrv_errors(), true));
+              return [];
+          }
+
+          $tipos = [];
+          while ($fila = sqlsrv_fetch_array($registros, SQLSRV_FETCH_ASSOC)) {
+              $tipos[] = $fila;
+          }
+
+          sqlsrv_free_stmt($registros);
+          return $tipos;
+
+      } catch (Exception $e) {
+          error_log("Error get_tipos_documento_pedidos: " . $e->getMessage());
+          return [];
+      }
+  }
+
   // Obtener permisos de documentos de un usuario
   public function get_permisos_documentos_usuario($usuario_id) {
       try {
@@ -299,6 +363,10 @@ class Permisos {
 
           if ($tipo_documentos === 'entradas') {
               $query_tipos = "SELECT idTipoDoctos FROM TblTipoDoctos WHERE tipo IN ('12', '3') AND Activo = 'S'";
+          } elseif ($tipo_documentos === 'inventario') {
+              $query_tipos = "SELECT idTipoDoctos FROM TblTipoDoctos WHERE tipo = '99' AND Activo = 'S'";
+          } elseif ($tipo_documentos === 'pedidos') {
+              $query_tipos = "SELECT idTipoDoctos FROM TblTipoDoctos WHERE idTipoDoctos = 948 AND Activo = 'S'";
           } else {
               $query_tipos = "SELECT idTipoDoctos FROM TblTipoDoctos WHERE tipo IN ('11', '2') AND Activo = 'S'";
           }
@@ -472,6 +540,154 @@ class Permisos {
           
       } catch (Exception $e) {
           error_log("Error get_tipos_documento_permitidos: " . $e->getMessage());
+          return [];
+      }
+  }
+
+  // Obtener tipos de documento de inventario permitidos para un usuario (para el combo)
+    public function get_tipos_documento_inventario_permitidos($usuario_id) {
+      try {
+          // Si es admin, mostrar todos
+          if (in_array($usuario_id, ['LAUREN'])) {
+              require_once(__DIR__ . "/../config/conexionserver.php");
+              $cn_sqlserver = new Conectarserver();
+
+              $query = "SELECT idTipoDoctos, TipoDoctos, tipo
+                        FROM TblTipoDoctos
+                        WHERE tipo = '99' AND Activo = 'S'
+                        ORDER BY TipoDoctos ASC";
+
+              $registros = sqlsrv_query($cn_sqlserver->getConecta(), $query);
+
+              $tipos = [];
+              while ($fila = sqlsrv_fetch_array($registros, SQLSRV_FETCH_ASSOC)) {
+                  $tipos[] = $fila;
+              }
+
+              sqlsrv_free_stmt($registros);
+              return $tipos;
+          }
+
+          // Para usuarios normales: primero obtener permisos de MySQL
+          $conn = $this->mysql->obtenerConexion();
+          $query_permisos = "SELECT tipo_documento_id
+                            FROM usuario_permisos_documentos
+                            WHERE usuario_id = ? AND permiso = 'S'";
+
+          $stmt = $conn->prepare($query_permisos);
+          $stmt->execute([$usuario_id]);
+          $permisos = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+          // Si no tiene permisos, retornar vacío
+          if (empty($permisos)) {
+              return [];
+          }
+
+          // Ahora obtener los tipos de documento de SQL Server
+          require_once(__DIR__ . "/../config/conexionserver.php");
+          $cn_sqlserver = new Conectarserver();
+
+          // Crear lista de IDs para la consulta
+          $ids_string = implode(',', $permisos);
+
+          $query = "SELECT idTipoDoctos, TipoDoctos, tipo
+                    FROM TblTipoDoctos
+                    WHERE idTipoDoctos IN ($ids_string)
+                      AND tipo = '99'
+                      AND Activo = 'S'
+                    ORDER BY TipoDoctos ASC";
+
+          $registros = sqlsrv_query($cn_sqlserver->getConecta(), $query);
+
+          if ($registros === false) {
+              error_log("Error get_tipos_documento_inventario_permitidos: " . print_r(sqlsrv_errors(), true));
+              return [];
+          }
+
+          $tipos = [];
+          while ($fila = sqlsrv_fetch_array($registros, SQLSRV_FETCH_ASSOC)) {
+              $tipos[] = $fila;
+          }
+
+          sqlsrv_free_stmt($registros);
+          return $tipos;
+
+      } catch (Exception $e) {
+          error_log("Error get_tipos_documento_inventario_permitidos: " . $e->getMessage());
+          return [];
+      }
+  }
+
+  // Obtener el tipo de documento de Pedidos (idTipoDoctos=948) permitido para un usuario (para el combo)
+    public function get_tipos_documento_pedidos_permitidos($usuario_id) {
+      try {
+          // Si es admin, mostrar todos
+          if (in_array($usuario_id, ['LAUREN'])) {
+              require_once(__DIR__ . "/../config/conexionserver.php");
+              $cn_sqlserver = new Conectarserver();
+
+              $query = "SELECT idTipoDoctos, TipoDoctos, tipo
+                        FROM TblTipoDoctos
+                        WHERE idTipoDoctos = 948 AND Activo = 'S'
+                        ORDER BY TipoDoctos ASC";
+
+              $registros = sqlsrv_query($cn_sqlserver->getConecta(), $query);
+
+              $tipos = [];
+              while ($fila = sqlsrv_fetch_array($registros, SQLSRV_FETCH_ASSOC)) {
+                  $tipos[] = $fila;
+              }
+
+              sqlsrv_free_stmt($registros);
+              return $tipos;
+          }
+
+          // Para usuarios normales: primero obtener permisos de MySQL
+          $conn = $this->mysql->obtenerConexion();
+          $query_permisos = "SELECT tipo_documento_id
+                            FROM usuario_permisos_documentos
+                            WHERE usuario_id = ? AND permiso = 'S'";
+
+          $stmt = $conn->prepare($query_permisos);
+          $stmt->execute([$usuario_id]);
+          $permisos = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+          // Si no tiene permisos, retornar vacío
+          if (empty($permisos)) {
+              return [];
+          }
+
+          // Ahora obtener los tipos de documento de SQL Server
+          require_once(__DIR__ . "/../config/conexionserver.php");
+          $cn_sqlserver = new Conectarserver();
+
+          // Crear lista de IDs para la consulta
+          $ids_string = implode(',', $permisos);
+
+          $query = "SELECT idTipoDoctos, TipoDoctos, tipo
+                    FROM TblTipoDoctos
+                    WHERE idTipoDoctos IN ($ids_string)
+                      AND idTipoDoctos = 948
+                      AND Activo = 'S'
+                    ORDER BY TipoDoctos ASC";
+
+          $registros = sqlsrv_query($cn_sqlserver->getConecta(), $query);
+
+          if ($registros === false) {
+              error_log("Error get_tipos_documento_pedidos_permitidos: " . print_r(sqlsrv_errors(), true));
+              return [];
+          }
+
+          $tipos = [];
+          while ($fila = sqlsrv_fetch_array($registros, SQLSRV_FETCH_ASSOC)) {
+              $tipos[] = $fila;
+          }
+
+          sqlsrv_free_stmt($registros);
+          return $tipos;
+
+      } catch (Exception $e) {
+          error_log("Error get_tipos_documento_pedidos_permitidos: " . $e->getMessage());
           return [];
       }
   }

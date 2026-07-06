@@ -6,17 +6,19 @@
     switch($_GET["op"]){
 
         case "insert_doc":
-        
+
             $direccion = $_POST["direccion"];
 
             if (strpos($direccion, ",") !== false) {
-                    
+
                 $direccion = explode(",", $direccion);
 
-                $documento->insert_doc($_POST["idTipo"],$_POST["consecutivo"],$_POST["nit"],$direccion[0], $_SESSION["Id_Usuario"]);
-                
+                echo $documento->insert_doc($_POST["idTipo"],$_POST["nit"],$direccion[0], $_SESSION["Id_Usuario"]);
+
+            } else {
+                echo json_encode(["status" => "error", "message" => "Dirección inválida"]);
             }
-                                   
+
         break;
         
         case "insert_detalle":          
@@ -39,10 +41,14 @@
                 $sub_array[] = $row["IdProducto"];
                 $sub_array[] = $row["Producto"];
                 $sub_array[] = $row["Unidad"];
-                $sub_array[] = round($row["Cantidad_Facturada"],2);
+                $sub_array[] = round($row["Cantidad_Facturada"],3);
                 /*$sub_array[] = number_format($row["Valor_Unitario"]);
                 $sub_array[] = $row["Numero_Lote"];*/
-                $sub_array[] = '<button type="button" onClick="eliminar('.$_POST["tipo"].','.$_POST["consecutivo"].','.$row["IdProducto"].');"  id="'.$_POST["tipo"].','.$_POST["consecutivo"].','.$row["IdProducto"].'" class="btn btn-inline btn-danger btn-sm ladda-button"><i class="fa fa-trash"></i></button>';
+                if ($row["exportado"] === 'S' || ($row["anulado"] ?? 'N') === 'S') {
+                    $sub_array[] = '<span class="text-muted">-</span>';
+                } else {
+                    $sub_array[] = '<button type="button" onClick="eliminar('.$_POST["tipo"].','.$_POST["consecutivo"].','.$row["IdProducto"].');"  id="'.$_POST["tipo"].','.$_POST["consecutivo"].','.$row["IdProducto"].'" class="btn btn-inline btn-danger btn-sm ladda-button"><i class="fa fa-trash"></i></button>';
+                }
                 $data[] = $sub_array;
             }
 
@@ -67,6 +73,9 @@
                         $output["codigo_direccion"] = $row["codigo_direccion"];
                         $output["direccion"] = $row["direccion"];
                         $output["telefono_1"] = $row["telefono_1"];
+                        $output["notas"] = $row["notas"];
+                        $output["exportado"] = $row["exportado"];
+                        $output["anulado"] = $row["anulado"];
                     }
                     echo json_encode($output);
     
@@ -88,6 +97,70 @@
         
         case "eliminar":
                 $documento->delete_id($_POST["tipo"], $_POST["consecutivo"],  $_POST["producto"], $_POST["seq"]);
+        break;
+
+        case "validar_excel_inventario":
+            if (!isset($_FILES['archivo']) || $_FILES['archivo']['error'] !== UPLOAD_ERR_OK) {
+                echo json_encode(['status' => 'error', 'message' => 'No se recibió el archivo o hubo un error al subir']);
+                break;
+            }
+            $tmpPath  = $_FILES['archivo']['tmp_name'];
+            $origName = strtolower($_FILES['archivo']['name']);
+            if (pathinfo($origName, PATHINFO_EXTENSION) !== 'xlsx') {
+                echo json_encode(['status' => 'error', 'message' => 'Solo se aceptan archivos .xlsx']);
+                break;
+            }
+            echo $documento->validar_excel_inventario($tmpPath);
+        break;
+
+        case "confirmar_excel_inventario":
+            $validos = isset($_POST['validos']) ? json_decode($_POST['validos'], true) : [];
+            echo $documento->confirmar_masiva_excel_inventario(
+                $_POST['tipo']   ?? '',
+                $_POST['numdoc'] ?? '',
+                $validos
+            );
+        break;
+
+        case "descargar_plantilla_inventario":
+            $tmpFile = $documento->generar_plantilla_excel_inventario();
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment; filename="plantilla_inventario.xlsx"');
+            header('Content-Length: ' . filesize($tmpFile));
+            readfile($tmpFile);
+            unlink($tmpFile);
+        break;
+
+        case "validar_excel_pedidos":
+            if (!isset($_FILES['archivo']) || $_FILES['archivo']['error'] !== UPLOAD_ERR_OK) {
+                echo json_encode(['status' => 'error', 'message' => 'No se recibió el archivo o hubo un error al subir']);
+                break;
+            }
+            $tmpPath  = $_FILES['archivo']['tmp_name'];
+            $origName = strtolower($_FILES['archivo']['name']);
+            if (pathinfo($origName, PATHINFO_EXTENSION) !== 'xlsx') {
+                echo json_encode(['status' => 'error', 'message' => 'Solo se aceptan archivos .xlsx']);
+                break;
+            }
+            echo $documento->validar_excel_pedidos($tmpPath);
+        break;
+
+        case "confirmar_excel_pedidos":
+            $validos = isset($_POST['validos']) ? json_decode($_POST['validos'], true) : [];
+            echo $documento->confirmar_masiva_excel_pedidos(
+                $_POST['tipo']   ?? '',
+                $_POST['numdoc'] ?? '',
+                $validos
+            );
+        break;
+
+        case "descargar_plantilla_pedidos":
+            $tmpFile = $documento->generar_plantilla_excel_pedidos();
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment; filename="plantilla_pedidos.xlsx"');
+            header('Content-Length: ' . filesize($tmpFile));
+            readfile($tmpFile);
+            unlink($tmpFile);
         break;
 
         case "eliminar_masivo":
@@ -141,7 +214,26 @@
         break;
 
         case "listar_entradas":
-            $datos=$documento->listar_entradas_x_usuario($_SESSION["Id_Usuario"]);
+            require_once("../models/mdlPermisos.php");
+            $permisos = new Permisos();
+            $tipos_permitidos_rows = $permisos->get_tipos_documento_permitidos($_SESSION["Id_Usuario"]);
+            $tipos_permitidos = array_column($tipos_permitidos_rows, 'idTipoDoctos');
+
+            $tipoSolicitado = $_POST['tipo'] ?? '';
+            if ($tipoSolicitado !== '' && !in_array($tipoSolicitado, $tipos_permitidos)) {
+                // No tiene permiso sobre ese tipo puntual: se ignora y se usan todos los permitidos.
+                $tipoSolicitado = '';
+            }
+
+            $datos = $documento->listar_entradas_filtro(
+                $tipos_permitidos,
+                $tipoSolicitado,
+                $_POST['fechaDesde'] ?? '',
+                $_POST['fechaHasta'] ?? '',
+                $_POST['numDesde']   ?? '',
+                $_POST['numHasta']   ?? '',
+                $_POST['exportado']  ?? ''
+            );
             $data= Array();
             foreach($datos as $row){
                 $sub_array = array();
@@ -152,14 +244,124 @@
                 $sub_array[] = $row["Nombre_Cliente"];
                 $sub_array[] = $row["direccion"];
                 $sub_array[] = $row["usuario"];
-                
-                if($row["exportado"] == "S"){
+
+                if(($row["anulado"] ?? 'N') == "S"){
+                    $sub_array[] = '<span class="label label-default">Anulado</span>';
+                } elseif($row["exportado"] == "S"){
                     $sub_array[] = '<span class="label label-success">Sí</span>';
                 } else {
                     $sub_array[] = '<span class="label label-danger">No</span>';
                 }
 
-                $sub_array[] = '<a href="../Entradas/?tipo='.$row["tipo"].'&consecutivo='.$row["Numero_documento"].'" 
+                $sub_array[] = '<a href="../Entradas/?tipo='.$row["tipo"].'&consecutivo='.$row["Numero_documento"].'"
+                class="btn btn-rounded btn-sm btn-primary" title="Ver Detalle">
+                <i class="fa fa-eye"></i> </a>';
+
+                $data[] = $sub_array;
+            }
+
+            $results = array(
+                "sEcho"=>1,
+                "iTotalRecords"=>count($data),
+                "iTotalDisplayRecords"=>count($data),
+                "aaData"=>$data);
+            echo json_encode($results);
+        break;
+
+        case "listar_inventario":
+            require_once("../models/mdlPermisos.php");
+            $permisos = new Permisos();
+            $tipos_permitidos_rows = $permisos->get_tipos_documento_inventario_permitidos($_SESSION["Id_Usuario"]);
+            $tipos_permitidos = array_column($tipos_permitidos_rows, 'idTipoDoctos');
+
+            $tipoSolicitado = $_POST['tipo'] ?? '';
+            if ($tipoSolicitado !== '' && !in_array($tipoSolicitado, $tipos_permitidos)) {
+                $tipoSolicitado = '';
+            }
+
+            $datos = $documento->listar_inventario_filtro(
+                $tipos_permitidos,
+                $tipoSolicitado,
+                $_POST['fechaDesde'] ?? '',
+                $_POST['fechaHasta'] ?? '',
+                $_POST['numDesde']   ?? '',
+                $_POST['numHasta']   ?? '',
+                $_POST['exportado']  ?? ''
+            );
+            $data= Array();
+            foreach($datos as $row){
+                $sub_array = array();
+                $sub_array[] = date_format($row["Fecha_Hora_Factura"], "d-m-Y H:i:s");
+                $sub_array[] = $row["TipoDoctos"];
+                $sub_array[] = $row["Numero_documento"];
+                $sub_array[] = $row["nit_Cedula"];
+                $sub_array[] = $row["Nombre_Cliente"];
+                $sub_array[] = $row["direccion"];
+                $sub_array[] = $row["usuario"];
+
+                if(($row["anulado"] ?? 'N') == "S"){
+                    $sub_array[] = '<span class="label label-default">Anulado</span>';
+                } elseif($row["exportado"] == "S"){
+                    $sub_array[] = '<span class="label label-success">Sí</span>';
+                } else {
+                    $sub_array[] = '<span class="label label-danger">No</span>';
+                }
+
+                $sub_array[] = '<a href="../NuevoDoc/index.php?tipo='.$row["tipo"].'&consecutivo='.$row["Numero_documento"].'"
+                class="btn btn-rounded btn-sm btn-primary" title="Ver Detalle">
+                <i class="fa fa-eye"></i> </a>';
+
+                $data[] = $sub_array;
+            }
+
+            $results = array(
+                "sEcho"=>1,
+                "iTotalRecords"=>count($data),
+                "iTotalDisplayRecords"=>count($data),
+                "aaData"=>$data);
+            echo json_encode($results);
+        break;
+
+        case "listar_pedidos":
+            require_once("../models/mdlPermisos.php");
+            $permisos = new Permisos();
+            $tipos_permitidos_rows = $permisos->get_tipos_documento_pedidos_permitidos($_SESSION["Id_Usuario"]);
+            $tipos_permitidos = array_column($tipos_permitidos_rows, 'idTipoDoctos');
+
+            $tipoSolicitado = $_POST['tipo'] ?? '';
+            if ($tipoSolicitado !== '' && !in_array($tipoSolicitado, $tipos_permitidos)) {
+                $tipoSolicitado = '';
+            }
+
+            $datos = $documento->listar_pedidos_filtro(
+                $tipos_permitidos,
+                $tipoSolicitado,
+                $_POST['fechaDesde'] ?? '',
+                $_POST['fechaHasta'] ?? '',
+                $_POST['numDesde']   ?? '',
+                $_POST['numHasta']   ?? '',
+                $_POST['exportado']  ?? ''
+            );
+            $data= Array();
+            foreach($datos as $row){
+                $sub_array = array();
+                $sub_array[] = date_format($row["Fecha_Hora_Factura"], "d-m-Y H:i:s");
+                $sub_array[] = $row["TipoDoctos"];
+                $sub_array[] = $row["Numero_documento"];
+                $sub_array[] = $row["nit_Cedula"];
+                $sub_array[] = $row["Nombre_Cliente"];
+                $sub_array[] = $row["direccion"];
+                $sub_array[] = $row["usuario"];
+
+                if(($row["anulado"] ?? 'N') == "S"){
+                    $sub_array[] = '<span class="label label-default">Anulado</span>';
+                } elseif($row["exportado"] == "S"){
+                    $sub_array[] = '<span class="label label-success">Sí</span>';
+                } else {
+                    $sub_array[] = '<span class="label label-danger">No</span>';
+                }
+
+                $sub_array[] = '<a href="../Pedidos/index.php?tipo='.$row["tipo"].'&consecutivo='.$row["Numero_documento"].'"
                 class="btn btn-rounded btn-sm btn-primary" title="Ver Detalle">
                 <i class="fa fa-eye"></i> </a>';
 
@@ -196,6 +398,7 @@
                     $output["direccion2"] = $row["direccion2"];
                     $output["notas"] = $row["notas"];
                     $output["exportado"] = $row["exportado"];
+                    $output["anulado"] = $row["anulado"];
                     $output["IdVendedor"] = $row["IdVendedor"];
                     $output["Fecha_Hora_Factura"] = $row["Fecha_Hora_Factura"] ? date_format($row["Fecha_Hora_Factura"], "Y-m-d") : date("Y-m-d");
                     $output["IdTransportador"] = $row["IdTransportador"];
@@ -262,7 +465,7 @@
                 $sub_array[] = $row["IdProducto"];
                 $sub_array[] = $row["Producto"];
                 $sub_array[] = $row["Unidad"];
-                $sub_array[] = number_format($row["Cantidad_Facturada"], 2);
+                $sub_array[] = number_format($row["Cantidad_Facturada"], 3);
                 $sub_array[] = number_format($row["Porcentaje_Descuento_1"], 2);
                 $sub_array[] = number_format($row["Porcentaje_Impuesto"], 2);
                 $sub_array[] = number_format($row["Valor_Unitario"], 2);
@@ -271,7 +474,7 @@
                 $sub_array[] = $row["Nota_Linea"];
                 $sub_array[] = $row["Unidades"];
 
-                if($row["exportado"] == 'N') {
+                if($row["exportado"] == 'N' && ($row["anulado"] ?? 'N') != 'S') {
                     $sub_array[] = '
                         <div class="edit-actions">
                             <button type="button" class="btn btn-success btn-sm btn-action btn-imprimir-etiqueta" title="Imprimir Etiqueta">
@@ -302,7 +505,9 @@
                     ';
                     $sub_array[] = '-';
                 }
-                
+
+                $sub_array[] = $row["IdGrupoProducto"] ?? ''; // columna oculta, usada para validar Dotación/EPP en Salidas
+
                 $data[] = $sub_array;
             }
 
@@ -323,7 +528,7 @@
                     $output["tipo"] = $row["tipo"];
                     $output["Numero_Documento"] = $row["Numero_Documento"];
                     $output["IdProducto"] = $row["IdProducto"];
-                    $output["Cantidad_Facturada"] = round($row["Cantidad_Facturada"],2);
+                    $output["Cantidad_Facturada"] = round($row["Cantidad_Facturada"],3);
                     $output["Valor_Unitario"] = round($row["Valor_Unitario"],2);
                     $output["Numero_Lote"] = $row["Numero_Lote"];
                     $output["Fecha_Vence"] = date_format($row["Fecha_Vence"],"Y-m-d");

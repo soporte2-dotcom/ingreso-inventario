@@ -3,22 +3,22 @@ var usu_id =  $('#user_idx').val();
 var rol_id =  $('#rol_idx').val();
 
 
-function init(){   
-   
+function init(){
+
     $("#doc_form").on("click","#btnguardar",function(e){
-        guardar(e);	
+        guardar(e);
     });
-    
+
 }
 
-$(document).ready(function() {   
-    
-    $.post("../../controller/permisos.php?op=combo_inventario_permisos",function(data, status){
+$(document).ready(function() {
+
+    $.post("../../controller/permisos.php?op=combo_pedidos_permisos",function(data, status){
        $('#idTipo').html(data);
     });
 
     $("#idTipo").change(function () {
-        
+
         $("#idTipo option:selected").each(function () {
             idTipo = $(this).val();
             $.post("../../controller/tipodoctos.php?op=consecutivos", { idTipo : idTipo }, function(data){
@@ -26,36 +26,36 @@ $(document).ready(function() {
                $("#consecutivo").val(data.consecutivo);
 
                console.log(data.consecutivo);
-            });            
+            });
         });
     });
 
     $("#nit").change(function () {
-        
+
         $("#nit").each(function () {
             nit = $(this).val();
-            $.post("../../controller/terceros.php?op=combo_dir", { nit : nit }, function(data){               
+            $.post("../../controller/terceros.php?op=combo_dir", { nit : nit }, function(data){
                $("#direccion").html(data);
             });
         });
     });
 
     $("#direccion").change(function () {
-        
+
         $("#direccion option:selected").each(function () {
             direccion = $(this).val();
             $.post("../../controller/terceros.php?op=telefono_dir", { direccion : direccion}, function(data){
                 data = JSON.parse(data);
                $("#telefono").val(data.telefono_1);
-            });            
+            });
         });
     });
 
     var tipo =  getUrlParameter('tipo');
     var consecutivo =  getUrlParameter('consecutivo');
     listardetalle(tipo, consecutivo);
-    
- 
+
+
 
 });
 
@@ -133,7 +133,7 @@ $("#numerodocumento").keypress(function(event) {
 });
 
 $(document).on("click","#btnagregar", function(){
-    
+
     var tipo =  getUrlParameter('tipo');
     var consecutivo =  getUrlParameter('consecutivo');
     let idproducto = document.getElementById("idproducto").value;
@@ -158,7 +158,7 @@ $(document).on("click","#btnagregar", function(){
                     data: formData,
                     contentType: false,
                     processData: false,
-                    success: function(datos){ 
+                    success: function(datos){
 
                         $('#cantidad').val('');
                         $('#idproducto').val('');
@@ -172,38 +172,38 @@ $(document).on("click","#btnagregar", function(){
                 });
             }
 
-        
-        
+
+
         });
-    } 
-          
-  
+    }
+
+
 });
 
 
-$(document).on("click","#btnguardar", function(){ 
-    
-    var formData = new FormData($("#doc_form")[0]);      
+$(document).on("click","#btnguardar", function(){
+
+    var formData = new FormData($("#doc_form")[0]);
         $.ajax({
             url: "../../controller/documento.php?op=guardar_doc",
             type: "POST",
             data: formData,
             contentType: false,
             processData: false,
-            success: function(datos){                  
+            success: function(datos){
                 swal({
-                    title: "Correcto!", 
-                    text: "Documento Registrado Correctamente", 
+                    title: "Correcto!",
+                    text: "Documento Registrado Correctamente",
                     type: "success"
                 }, function(){
-                    window.location.href = 'index.php'; 
+                    window.location.href = 'index.php';
                 });
                 console.log(datos);
-                
-            }        
 
-        });   
-    
+            }
+
+        });
+
 });
 
 
@@ -213,7 +213,7 @@ function listardetalle(tipo, consecutivo){
         data = JSON.parse(data);
         console.log(data);
         $('#seq').val(data.seq);
-    
+
     });
 
     $.post("../../controller/documento.php?op=mostrar", { tipo : tipo, consecutivo : consecutivo }, function (data) {
@@ -231,7 +231,7 @@ function listardetalle(tipo, consecutivo){
 
         $('#tipo').val(data.tipo);
         $('#tipodoc').val(data.TipoDoctos);
-        $('#numdoc').val(data.Numero_documento);        
+        $('#numdoc').val(data.Numero_documento);
         $('#nit1').val(data.nit_Cedula);
         $('#nombre1').val(data.Nombre_Cliente);
         $('#direcc').val(data.codigo_direccion);
@@ -292,10 +292,10 @@ function listardetalle(tipo, consecutivo){
       }
     }
 
-      
+
 
     });
-        
+
     tabla=$('#tb-doc').dataTable({
         "aProcessing": true,
         "aServerSide": true,
@@ -305,18 +305,18 @@ function listardetalle(tipo, consecutivo){
         "searching": false,
         lengthChange: false,
         colReorder: false,
-        buttons: [		          
-                
+        buttons: [
+
                 ],
         "ajax":{
             url: '../../controller/documento.php?op=listar_detalle',
             type : "post",
-            dataType : "json",	
+            dataType : "json",
             data:{ tipo : tipo, consecutivo : consecutivo },
             error: function(consecutivo){
-                console.log(consecutivo.responseText);	
+                console.log(consecutivo.responseText);
             }
-            
+
         },
         "bDestroy": true,
         "responsive": true,
@@ -346,7 +346,7 @@ function listardetalle(tipo, consecutivo){
                 "sSortAscending":  ": Activar para ordenar la columna de manera ascendente",
                 "sSortDescending": ": Activar para ordenar la columna de manera descendente"
             }
-        }     
+        }
     }).DataTable()
 }
 
@@ -369,7 +369,7 @@ function eliminar(tipo, consecutivo, producto){
         if (isConfirm) {
             $.post("../../controller/documento.php?op=eliminar", {tipo : tipo, consecutivo : consecutivo, producto : producto}, function (data) {
                 console.log(data);
-            }); 
+            });
 
             swal({
                 title: "Documento!",
@@ -377,10 +377,10 @@ function eliminar(tipo, consecutivo, producto){
                 type: "success",
                 confirmButtonClass: "btn-success"
             });
-            
+
             listardetalle(tipo, consecutivo);
             $('#tb-doc').DataTable().ajax.reload();
-            
+
         }
     });
 }
@@ -445,13 +445,13 @@ function pintarResumenExcel(ok, error, textoOk) {
 // El botón único del modal cambia de rol según el estado: primero valida, luego procesa.
 function procesarBotonExcel() {
     if (excelEstadoModal === 'validado') {
-        confirmarExcelInventario();
+        confirmarExcelPedidos();
     } else {
-        validarExcelInventario();
+        validarExcelPedidos();
     }
 }
 
-function validarExcelInventario() {
+function validarExcelPedidos() {
     const fileInput = document.getElementById('archivoExcel');
 
     if (!fileInput.files || fileInput.files.length === 0) {
@@ -473,7 +473,7 @@ function validarExcelInventario() {
     btnProcesar.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Validando...';
 
     $.ajax({
-        url:         "../../controller/documento.php?op=validar_excel_inventario",
+        url:         "../../controller/documento.php?op=validar_excel_pedidos",
         type:        'POST',
         data:        formData,
         processData: false,
@@ -510,13 +510,13 @@ function validarExcelInventario() {
         error: function(xhr, status, errorThrown) {
             btnProcesar.disabled = false;
             btnProcesar.innerHTML = '<i class="fa fa-upload"></i> Validar Archivo';
-            console.error('[validarExcelInventario] Error HTTP:', status, errorThrown, xhr.responseText);
+            console.error('[validarExcelPedidos] Error HTTP:', status, errorThrown, xhr.responseText);
             swal("Error!", "Error de comunicación con el servidor.", "error");
         }
     });
 }
 
-function confirmarExcelInventario() {
+function confirmarExcelPedidos() {
     const tipo        = getUrlParameter('tipo');
     const consecutivo = getUrlParameter('consecutivo');
 
@@ -530,7 +530,7 @@ function confirmarExcelInventario() {
     btnProcesar.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Procesando...';
 
     $.ajax({
-        url:  "../../controller/documento.php?op=confirmar_excel_inventario",
+        url:  "../../controller/documento.php?op=confirmar_excel_pedidos",
         type: 'POST',
         data: {
             tipo:    tipo,
@@ -567,7 +567,7 @@ function confirmarExcelInventario() {
         error: function(xhr, status, errorThrown) {
             btnProcesar.disabled = false;
             btnProcesar.innerHTML = '<i class="fa fa-check"></i> Procesar registros válidos';
-            console.error('[confirmarExcelInventario] Error HTTP:', status, errorThrown, xhr.responseText);
+            console.error('[confirmarExcelPedidos] Error HTTP:', status, errorThrown, xhr.responseText);
             swal("Error!", "Error de comunicación con el servidor.", "error");
         }
     });

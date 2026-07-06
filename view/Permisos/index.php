@@ -140,6 +140,18 @@ $DateAndTime = date('d-m-Y h:i:s', time());
     color: #ffffff !important;
 }
 
+.tipo-permisos-selector .permiso-btn.inventario-btn.active {
+    background-color: #fd7e14 !important;
+    border-color: #fd7e14 !important;
+    color: #ffffff !important;
+}
+
+.tipo-permisos-selector .permiso-btn.pedidos-btn.active {
+    background-color: #17a2b8 !important;
+    border-color: #17a2b8 !important;
+    color: #ffffff !important;
+}
+
 /* === Usuario Seleccionado === */
 .user-selection {
     margin-top: 20px;
@@ -221,6 +233,14 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 
                                 <button type="button" id="btn_permisos_salidas" class="permiso-btn salidas-btn">
                                     <span class="glyphicon glyphicon-log-out"></span> Permisos de Salidas
+                                </button>
+
+                                <button type="button" id="btn_permisos_inventario" class="permiso-btn inventario-btn">
+                                    <span class="glyphicon glyphicon-list-alt"></span> Permisos de Inventario
+                                </button>
+
+                                <button type="button" id="btn_permisos_pedidos" class="permiso-btn pedidos-btn">
+                                    <span class="glyphicon glyphicon-shopping-cart"></span> Permisos de Pedidos
                                 </button>
 
                                 <button type="button" id="btn_permisos_especiales" class="permiso-btn especiales-btn">

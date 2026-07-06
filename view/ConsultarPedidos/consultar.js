@@ -1,9 +1,9 @@
 var tabla;
 
 function init(){
-    // Si quieres añadir algún botón para crear nueva salida
+    // Si quieres añadir algún botón para crear nuevo documento
     $("#btnNueva").click(function(){
-        window.location.href = "../Salidas/index.php";
+        window.location.href = "../Pedidos/index.php";
     });
 }
 
@@ -31,13 +31,13 @@ function fijarFiltrosPorDefecto() {
 
 $(document).ready(function(){
 
-    // Combo de tipos de documento de salida/consumo permitidos para el usuario (mismo endpoint
-    // que ya usa el formulario de creación de Salidas).
-    $.post("../../controller/permisos.php?op=combo_salidas_permisos", function(data){
-        console.log("combo_salidas_permisos respuesta:", data);
+    // Combo del tipo de documento de pedidos permitido para el usuario (mismo endpoint
+    // que ya usa el formulario de creación de Pedidos).
+    $.post("../../controller/permisos.php?op=combo_pedidos_permisos", function(data){
+        console.log("combo_pedidos_permisos respuesta:", data);
         $('#filtroTipo').html('<option value="">Todos mis tipos permitidos</option>' + data);
     }).fail(function(xhr, status, error){
-        console.error("Error cargando combo_salidas_permisos:", status, error, xhr.responseText);
+        console.error("Error cargando combo_pedidos_permisos:", status, error, xhr.responseText);
         swal("Error!", "No se pudo cargar el combo de tipos de documento.", "error");
     });
 
@@ -56,7 +56,7 @@ $(document).ready(function(){
             'csvHtml5',
             {
                 extend: 'pdfHtml5',
-                title: 'Consulta de Salida',
+                title: 'Consulta de Pedidos',
                 orientation: 'landscape', // Orientación apaisada para más columnas
                 pageSize: 'LETTER',
                 exportOptions: {
@@ -65,7 +65,7 @@ $(document).ready(function(){
             }
         ],
         "ajax":{
-            url: '../../controller/salidas.php?op=listar_salidas',
+            url: '../../controller/documento.php?op=listar_pedidos',
             type : "post",
             dataType : "json",
             data: function(d) {
@@ -102,9 +102,9 @@ $(document).ready(function(){
             "sLengthMenu":     "Mostrar _MENU_ registros",
             "sZeroRecords":    "No se encontraron resultados",
             "sEmptyTable":     "Ningún dato disponible en esta tabla",
+            "sInfoFiltered":   "(filtrado de un total de _MAX_ registros)",
             "sInfo":           "Mostrando un total de _TOTAL_ registros",
             "sInfoEmpty":      "Mostrando un total de 0 registros",
-            "sInfoFiltered":   "(filtrado de un total de _MAX_ registros)",
             "sInfoPostFix":    "",
             "sSearch":         "Buscar:",
             "sUrl":            "",

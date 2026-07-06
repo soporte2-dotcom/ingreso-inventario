@@ -7,14 +7,14 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 <!DOCTYPE html>
 <html>
     <?php require_once("../MainHead/head.php");?>
-	<title>Cervalle::Consultar Entradas</title>
+	<title>Cervalle::Consultar Inventario</title>
 </head>
 <body class="with-side-menu">
 
     <?php require_once("../MainHeader/header.php");?>
 
     <div class="mobile-menu-left-overlay"></div>
-    
+
     <?php require_once("../MainNav/nav.php");?>
 
 	<!-- Contenido -->
@@ -25,21 +25,21 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 				<div class="tbl">
 					<div class="tbl-row">
 						<div class="tbl-cell">
-							<h3>Consultar Entradas</h3>
+							<h3>Consultar Inventario</h3>
 							<ol class="breadcrumb breadcrumb-simple">
 								<li><a href="#">Home</a></li>
-								<li class="active">Consultar Entradas</li>
+								<li class="active">Consultar Inventario</li>
 							</ol>
 						</div>
 
 					</div>
 				</div>
 			</header>
-			<form  method="post" id="doc_form">	
-          
+			<form  method="post" id="doc_form">
+
             <div class="tbl-cell tbl-cell-action">
-                <a href="../Entradas/index.php" class="btn btn-primary btn-md">
-                    <i class="fa fa-plus-circle"></i> Nueva Entrada
+                <a href="../NuevoDoc/index.php" class="btn btn-primary btn-md">
+                    <i class="fa fa-plus-circle"></i> Nuevo Documento
                 </a>
             </div>
 
@@ -124,10 +124,10 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 		</div>
 	</div>
 	<!-- Contenido -->
-	
+
 	<?php require_once("../MainJs/js.php");?>
-	
-	<script type="text/javascript" src="consultar.js?v=9"></script>
+
+	<script type="text/javascript" src="consultar.js?v=2"></script>
 
   <style>
     /* Estilo para la columna exportado */
@@ -157,12 +157,12 @@ $DateAndTime = date('d-m-Y h:i:s', time());
         border-radius: 50px;
         padding: 0.25rem 0.75rem;
     }
-    
+
     /* Hacer que la tabla se vea mejor */
     .table-responsive {
         min-height: 400px;
     }
-    
+
     /* Estilos para los botones DataTables */
     .dt-buttons {
         margin-bottom: 15px;

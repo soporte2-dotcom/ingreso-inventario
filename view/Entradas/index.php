@@ -139,6 +139,10 @@ $permiteEntradaFrigopork = $_permisos_entradas->tiene_permiso_especial($_SESSION
 
 			<div class="box-typical box-typical-padding">
 
+				<div id="avisoAnulado" class="alert alert-danger" style="display:none">
+					<i class="fa fa-ban"></i> Este documento está <b>ANULADO</b>. Solo puede consultarse, no se puede modificar.
+				</div>
+
 				<form method="post" id="doc_form">
 
 				<div class="row">
@@ -196,7 +200,7 @@ $permiteEntradaFrigopork = $_permisos_entradas->tiene_permiso_especial($_SESSION
 
 					<div class="col-lg-2">
 						<fieldset class="form-group">
-							<label class="form-label semibold" id="txt_numero">Ingresar el Numero</label>
+							<label class="form-label semibold" id="txt_numero">Ingresar el numero de la orden de compra</label>
 							<input type="text" name="numero" id="numero" class="form-control" required/>
 						</fieldset>
 					</div>
@@ -424,6 +428,7 @@ $permiteEntradaFrigopork = $_permisos_entradas->tiene_permiso_especial($_SESSION
 											<th class="text-center">Unidades</th>
 											<th class="text-center">Acciones</th>
 											<th><a href="#" id="marcarTodo">Marcar</a> | <a href="#" id="desmarcarTodo">Desmarcar</a></th>
+											<th style="display:none">Grupo</th>
 									</tr>
 								</thead>				
 							</table>

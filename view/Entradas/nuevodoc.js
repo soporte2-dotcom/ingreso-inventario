@@ -108,6 +108,11 @@ function inicializarCombos() {
 }
 
 function inicializarEventos() {
+    // Traslado/Factura: solo letras y números, sin espacios ni símbolos
+    $("#traslfact1").on("input", function() {
+        this.value = this.value.replace(/[^a-zA-Z0-9]/g, '');
+    });
+
     // Evento para cambio de tipo de documento
     $("#idTipo").change(function() {
         const idTipo = $(this).val();
@@ -641,7 +646,16 @@ function listardetalle(tipo, consecutivo){
            function (data) {
         data = JSON.parse(data);
         console.log(data);
-        
+
+        // Un documento anulado se bloquea exactamente igual que uno ya exportado:
+        // se reutiliza toda la lógica existente basada en data.exportado en vez de duplicarla.
+        if (data.anulado === 'S') {
+            data.exportado = 'S';
+            $('#avisoAnulado').show();
+        } else {
+            $('#avisoAnulado').hide();
+        }
+
         // Llenar campos del formulario
         $('#tipo').val(data.tipo);
         $('#tipodoc').val(data.TipoDoctos);
@@ -744,6 +758,9 @@ function listardetalle(tipo, consecutivo){
                 console.log(consecutivo.responseText);
             }
         },
+        "columnDefs": [
+            { "targets": [14], "visible": false, "searchable": false } // Grupo de producto (oculta, usada por Salidas)
+        ],
         "bDestroy": true,
         "responsive": true,
         "bInfo": true,

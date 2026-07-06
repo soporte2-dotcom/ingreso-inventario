@@ -1,42 +1,57 @@
 <?php
     class Salidas extends Conectarserver{
 
-      public function listar_salidas_x_usuario($usuario){
+      // Lista documentos de Salida/Consumo visibles para el usuario según los tipos de documento
+      // que tiene permiso de ver (no según quién los creó), acotado opcionalmente por
+      // rango de fecha, rango de número de documento y estado de exportado.
+      public function listar_salidas_filtro($tipos_permitidos, $tipo, $fechaDesde, $fechaHasta, $numDesde, $numHasta, $exportado = ''){
         $cn = new Conectarserver;
         $resultado = array();
 
-        if($usuario == 'LAUREN' || $usuario == 'SA'){
-
-            $sql="SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
-                d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, d.exportado, d.usuario
-
-                FROM Documentos d, Terceros_Dir td, TblTipoDoctos tt, TblTerceros t
-
-                WHERE CONVERT(date, Fecha_Hora_Factura) > '2026/03/01' AND tt.tipo IN ('11', '2')
-                AND tt.idTipoDoctos = d.tipo AND td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion
-                AND t.nit_cedula = d.nit_Cedula
-                ORDER BY d.Fecha_Hora_Factura DESC";
-
-            $registros = sqlsrv_query($cn->getConecta(), $sql);
-
-        } else {
-
-            $sql="SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
-                d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, d.exportado, d.usuario
-
-                FROM Documentos d, Terceros_Dir td, TblTipoDoctos tt, TblTerceros t
-
-                WHERE d.usuario = ? AND CONVERT(date, Fecha_Hora_Factura) > '2026/03/01' AND tt.tipo IN ('11', '2')
-                AND tt.idTipoDoctos = d.tipo AND td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion
-                AND t.nit_cedula = d.nit_Cedula
-                ORDER BY d.Fecha_Hora_Factura DESC";
-
-            $params = array($usuario);
-            $registros = sqlsrv_query($cn->getConecta(), $sql, $params);
+        if (empty($tipos_permitidos)) {
+            return $resultado;
         }
 
+        $tiposFiltro = ($tipo !== '' && in_array($tipo, $tipos_permitidos)) ? array($tipo) : $tipos_permitidos;
+
+        $placeholders = implode(',', array_fill(0, count($tiposFiltro), '?'));
+        $params = $tiposFiltro;
+
+        $where = "tt.idTipoDoctos IN ($placeholders) AND tt.tipo IN ('11', '2')
+                  AND tt.idTipoDoctos = d.tipo AND td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion
+                  AND t.nit_cedula = d.nit_Cedula";
+
+        if ($fechaDesde !== '') {
+            $where .= " AND CONVERT(date, d.Fecha_Hora_Factura) >= ?";
+            $params[] = $fechaDesde;
+        }
+        if ($fechaHasta !== '') {
+            $where .= " AND CONVERT(date, d.Fecha_Hora_Factura) <= ?";
+            $params[] = $fechaHasta;
+        }
+        if ($numDesde !== '') {
+            $where .= " AND d.Numero_documento >= ?";
+            $params[] = (int)$numDesde;
+        }
+        if ($numHasta !== '') {
+            $where .= " AND d.Numero_documento <= ?";
+            $params[] = (int)$numHasta;
+        }
+        if ($exportado === 'S' || $exportado === 'N') {
+            $where .= " AND d.exportado = ?";
+            $params[] = $exportado;
+        }
+
+        $sql = "SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
+                d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, d.exportado, d.anulado, d.usuario
+                FROM Documentos d, Terceros_Dir td, TblTipoDoctos tt, TblTerceros t
+                WHERE $where
+                ORDER BY d.Fecha_Hora_Factura DESC";
+
+        $registros = sqlsrv_query($cn->getConecta(), $sql, $params);
+
         if($registros === false) {
-            $this->registrar_error("Error en listar_entradas_x_usuario: " . print_r(sqlsrv_errors(), true));
+            $this->registrar_error("Error en listar_salidas_filtro: " . print_r(sqlsrv_errors(), true));
             return $resultado;
         }
 
@@ -1394,23 +1409,11 @@
             return $rows;
         }
 
-        public function cargar_masiva_excel($tipo, $numdoc, $nit, $direccion, $filePath) {
-            $rows = $this->leer_xlsx($filePath);
-            if (isset($rows['error'])) {
-                return json_encode(['status' => 'error', 'message' => $rows['error']]);
-            }
-            if (count($rows) < 2) {
-                return json_encode(['status' => 'error', 'message' => 'El archivo no contiene datos (solo encabezado o vacío)']);
-            }
-
-            $cn         = new Conectarserver;
-            $resultados = [];
-            $procesados = []; // duplicados dentro del mismo archivo
-
+        // Resuelve el idLista de precios a usar (por cliente/dirección, o por el documento ya creado).
+        private function resolver_id_lista($cn, $tipo, $numdoc, $nit, $direccion) {
             $ID_LISTA_DEFAULT = 50;
-
-            // Obtener idLista del cliente una sola vez
             $idListaReal = null;
+
             if ($nit !== '' && $direccion !== '') {
                 $sqlL = "SELECT TOP 1 idLista FROM Terceros_Dir WHERE nit = ? AND codigo_direccion = ?";
                 $stL  = sqlsrv_query($cn->getConecta(), $sqlL, [$nit, (int)$direccion]);
@@ -1429,15 +1432,112 @@
                     if ($rL2) $idListaReal = $rL2['idLista'];
                 }
             }
-            $idLista = ($idListaReal !== null && (int)$idListaReal > 0) ? (int)$idListaReal : $ID_LISTA_DEFAULT;
+            return ($idListaReal !== null && (int)$idListaReal > 0) ? (int)$idListaReal : $ID_LISTA_DEFAULT;
+        }
 
-            // Conexión DEV para lotes (se abre una vez)
-            $cnDev = null;
+        // Valida (y resuelve precio/impuesto) de una fila del Excel de Salidas, sin escribir nada.
+        // Usada tanto por validar_excel_salidas (vista previa) como por confirmar_masiva_excel_salidas
+        // (revalida por si el catálogo cambió entre la vista previa y la confirmación).
+        private function validar_fila_salida($cn, $cnDev, $idProducto, $cantidad, $lote, $idLista, &$procesados) {
+            $ID_LISTA_DEFAULT = 50;
+
+            if ($idProducto === '') {
+                return ['ok' => false, 'mensaje' => 'IdProducto vacío'];
+            }
+            if (!is_numeric($cantidad) || (float)$cantidad <= 0) {
+                return ['ok' => false, 'mensaje' => 'Cantidad debe ser un número mayor a 0'];
+            }
+
+            // Ya no se bloquea por producto+lote repetido dentro del archivo: se procesa igual
+            // y solo se marca como advertencia en el resultado.
+            $clave = $idProducto . '|' . $lote;
+            $esDuplicado = in_array($clave, $procesados);
+
+            $sqlProd = "SELECT p.Producto, ISNULL(i.PorcentajeImpuesto, 0) AS PorcentajeImpuesto
+                        FROM TblProducto p
+                        LEFT JOIN TblImpuesto i ON p.Impuesto_venta = i.IdImpuesto
+                        WHERE p.IdProducto = ?";
+            $stProd  = sqlsrv_query($cn->getConecta(), $sqlProd, [(int)$idProducto]);
+            if ($stProd === false) {
+                return ['ok' => false, 'mensaje' => 'Error al consultar producto'];
+            }
+            $rProd = sqlsrv_fetch_array($stProd, SQLSRV_FETCH_ASSOC);
+            if (!$rProd) {
+                return ['ok' => false, 'mensaje' => 'Producto no existe en el sistema'];
+            }
+            $porcentajeImpuesto = (float)$rProd['PorcentajeImpuesto'];
+            $nombreProducto     = $rProd['Producto'];
+
+            if ($lote !== '' && $cnDev !== null) {
+                $sqlLote = "SELECT COUNT(*) AS cnt FROM cvapptblfarmbatch WHERE numberBatch = ? AND statusBatch = 'S'";
+                $stLote  = sqlsrv_query($cnDev, $sqlLote, [$lote]);
+                if ($stLote !== false) {
+                    $rLote = sqlsrv_fetch_array($stLote, SQLSRV_FETCH_ASSOC);
+                    if (!$rLote || (int)$rLote['cnt'] === 0) {
+                        return ['ok' => false, 'mensaje' => 'Lote "' . $lote . '" no válido o inactivo'];
+                    }
+                }
+            }
+
+            $precio  = 0;
+            $sqlPrec = "SELECT TOP 1 precio FROM Producto_Pre WHERE IdProducto = ? AND IdPrecio = ? ORDER BY Fecha DESC";
+            $stPrec  = sqlsrv_query($cn->getConecta(), $sqlPrec, [(int)$idProducto, $idLista]);
+            if ($stPrec !== false) {
+                $rPrec = sqlsrv_fetch_array($stPrec, SQLSRV_FETCH_ASSOC);
+                if ($rPrec) $precio = (float)$rPrec['precio'];
+            }
+            if ($precio == 0 && $idLista !== $ID_LISTA_DEFAULT) {
+                $stFb = sqlsrv_query($cn->getConecta(), $sqlPrec, [(int)$idProducto, $ID_LISTA_DEFAULT]);
+                if ($stFb !== false) {
+                    $rFb = sqlsrv_fetch_array($stFb, SQLSRV_FETCH_ASSOC);
+                    if ($rFb) $precio = (float)$rFb['precio'];
+                }
+            }
+            if ($precio == 0) {
+                $sqlGlob = "SELECT TOP 1 precio FROM Producto_Pre WHERE IdProducto = ? ORDER BY Fecha DESC";
+                $stGlob  = sqlsrv_query($cn->getConecta(), $sqlGlob, [(int)$idProducto]);
+                if ($stGlob !== false) {
+                    $rGlob = sqlsrv_fetch_array($stGlob, SQLSRV_FETCH_ASSOC);
+                    if ($rGlob) $precio = (float)$rGlob['precio'];
+                }
+            }
+
+            $procesados[] = $clave;
+            return [
+                'ok'                 => true,
+                'esDuplicado'        => $esDuplicado,
+                'nombreProducto'     => $nombreProducto,
+                'porcentajeImpuesto' => $porcentajeImpuesto,
+                'precio'             => $precio
+            ];
+        }
+
+        private function abrir_conexion_dev_lotes_salidas() {
             require_once(dirname(__FILE__) . '/../config/conexiondev.php');
             $devConn = new ConectarDev();
-            if ($devConn->getConecta()) $cnDev = $devConn->getConecta();
+            return $devConn->getConecta() ?: null;
+        }
 
-            // Procesar desde fila 2 (índice 1), fila 1 es encabezado
+        // Paso 1: lee y valida el archivo completo, sin insertar nada. Devuelve, además del detalle
+        // por fila, la lista de filas válidas ("validos") para que el frontend las reenvíe tal cual
+        // al paso de confirmación sin tener que resubir el archivo.
+        public function validar_excel_salidas($tipo, $numdoc, $nit, $direccion, $filePath) {
+            $rows = $this->leer_xlsx($filePath);
+            if (isset($rows['error'])) {
+                return json_encode(['status' => 'error', 'message' => $rows['error']]);
+            }
+            if (count($rows) < 2) {
+                return json_encode(['status' => 'error', 'message' => 'El archivo no contiene datos (solo encabezado o vacío)']);
+            }
+
+            $cn     = new Conectarserver;
+            $cnDev  = $this->abrir_conexion_dev_lotes_salidas();
+            $idLista = $this->resolver_id_lista($cn, $tipo, $numdoc, $nit, $direccion);
+
+            $resultados = [];
+            $validos    = [];
+            $procesados = [];
+
             for ($i = 1; $i < count($rows); $i++) {
                 $row        = $rows[$i];
                 $idProducto = trim($row[0] ?? '');
@@ -1447,108 +1547,95 @@
 
                 if ($idProducto === '' && $cantidad === '') continue; // fila vacía
 
+                $check = $this->validar_fila_salida($cn, $cnDev, $idProducto, $cantidad, $lote, $idLista, $procesados);
+
+                if ($check['ok']) {
+                    $mensaje = htmlspecialchars($check['nombreProducto']) .
+                        ' | Precio: $' . number_format($check['precio'], 2, ',', '.') .
+                        ($check['esDuplicado'] ? ' (Producto+Lote repetido en el archivo)' : '');
+                    $resultados[] = [
+                        'fila' => $i + 1, 'idProducto' => $idProducto, 'cantidad' => $cantidad, 'lote' => $lote,
+                        'status' => $check['esDuplicado'] ? 'warning' : 'ok', 'mensaje' => $mensaje
+                    ];
+                    $validos[] = ['fila' => $i + 1, 'idProducto' => $idProducto, 'cantidad' => $cantidad, 'nota' => $nota, 'lote' => $lote];
+                } else {
+                    $resultados[] = [
+                        'fila' => $i + 1, 'idProducto' => $idProducto, 'cantidad' => $cantidad, 'lote' => $lote,
+                        'status' => 'error', 'mensaje' => $check['mensaje']
+                    ];
+                }
+            }
+
+            $ok      = count(array_filter($resultados, function($r) { return $r['status'] === 'ok'; }));
+            $warning = count(array_filter($resultados, function($r) { return $r['status'] === 'warning'; }));
+            $error   = count($resultados) - $ok - $warning;
+
+            return json_encode([
+                'status'     => 'ok',
+                'ok'         => $ok,
+                'warning'    => $warning,
+                'error'      => $error,
+                'resultados' => $resultados,
+                'validos'    => $validos
+            ]);
+        }
+
+        // Paso 2: inserta únicamente las filas ya validadas y confirmadas por el usuario.
+        // Revalida cada una por si el catálogo cambió entre la vista previa y la confirmación.
+        public function confirmar_masiva_excel_salidas($tipo, $numdoc, $nit, $direccion, $validos) {
+            if (!is_array($validos) || count($validos) === 0) {
+                return json_encode(['status' => 'error', 'message' => 'No hay filas válidas para procesar']);
+            }
+
+            $cn      = new Conectarserver;
+            $cnDev   = $this->abrir_conexion_dev_lotes_salidas();
+            $idLista = $this->resolver_id_lista($cn, $tipo, $numdoc, $nit, $direccion);
+
+            $resultados = [];
+            $procesados = [];
+
+            foreach ($validos as $fila) {
+                $idProducto = trim($fila['idProducto'] ?? '');
+                $cantidad   = trim($fila['cantidad'] ?? '');
+                $nota       = trim($fila['nota'] ?? '');
+                $lote       = trim($fila['lote'] ?? '');
+
                 $resultado = [
-                    'fila'       => $i + 1,
-                    'idProducto' => $idProducto,
-                    'cantidad'   => $cantidad,
-                    'lote'       => $lote,
-                    'status'     => 'error',
-                    'mensaje'    => ''
+                    'fila' => $fila['fila'] ?? '', 'idProducto' => $idProducto, 'cantidad' => $cantidad,
+                    'lote' => $lote, 'status' => 'error', 'mensaje' => ''
                 ];
 
-                if ($idProducto === '') {
-                    $resultado['mensaje'] = 'IdProducto vacío';
+                $check = $this->validar_fila_salida($cn, $cnDev, $idProducto, $cantidad, $lote, $idLista, $procesados);
+                if (!$check['ok']) {
+                    $resultado['mensaje'] = $check['mensaje'];
                     $resultados[] = $resultado; continue;
-                }
-                if (!is_numeric($cantidad) || (float)$cantidad <= 0) {
-                    $resultado['mensaje'] = 'Cantidad debe ser un número mayor a 0';
-                    $resultados[] = $resultado; continue;
-                }
-
-                $clave = $idProducto . '|' . $lote;
-                if (in_array($clave, $procesados)) {
-                    $resultado['mensaje'] = 'Producto+Lote duplicado dentro del archivo';
-                    $resultados[] = $resultado; continue;
-                }
-
-                // Validar producto
-                $sqlProd = "SELECT p.Producto, ISNULL(i.PorcentajeImpuesto, 0) AS PorcentajeImpuesto
-                            FROM TblProducto p
-                            LEFT JOIN TblImpuesto i ON p.Impuesto_venta = i.IdImpuesto
-                            WHERE p.IdProducto = ?";
-                $stProd  = sqlsrv_query($cn->getConecta(), $sqlProd, [(int)$idProducto]);
-                if ($stProd === false) {
-                    $resultado['mensaje'] = 'Error al consultar producto';
-                    $resultados[] = $resultado; continue;
-                }
-                $rProd = sqlsrv_fetch_array($stProd, SQLSRV_FETCH_ASSOC);
-                if (!$rProd) {
-                    $resultado['mensaje'] = 'Producto no existe en el sistema';
-                    $resultados[] = $resultado; continue;
-                }
-                $porcentajeImpuesto = (float)$rProd['PorcentajeImpuesto'];
-                $nombreProducto     = $rProd['Producto'];
-
-                // Validar lote (si fue ingresado)
-                if ($lote !== '' && $cnDev !== null) {
-                    $sqlLote = "SELECT COUNT(*) AS cnt FROM cvapptblfarmbatch WHERE numberBatch = ? AND statusBatch = 'S'";
-                    $stLote  = sqlsrv_query($cnDev, $sqlLote, [$lote]);
-                    if ($stLote !== false) {
-                        $rLote = sqlsrv_fetch_array($stLote, SQLSRV_FETCH_ASSOC);
-                        if (!$rLote || (int)$rLote['cnt'] === 0) {
-                            $resultado['mensaje'] = 'Lote "' . $lote . '" no válido o inactivo';
-                            $resultados[] = $resultado; continue;
-                        }
-                    }
-                }
-
-                // Precio
-                $precio    = 0;
-                $sqlPrec   = "SELECT TOP 1 precio FROM Producto_Pre WHERE IdProducto = ? AND IdPrecio = ? ORDER BY Fecha DESC";
-                $stPrec    = sqlsrv_query($cn->getConecta(), $sqlPrec, [(int)$idProducto, $idLista]);
-                if ($stPrec !== false) {
-                    $rPrec = sqlsrv_fetch_array($stPrec, SQLSRV_FETCH_ASSOC);
-                    if ($rPrec) $precio = (float)$rPrec['precio'];
-                }
-                if ($precio == 0 && $idLista !== $ID_LISTA_DEFAULT) {
-                    $stFb = sqlsrv_query($cn->getConecta(), $sqlPrec, [(int)$idProducto, $ID_LISTA_DEFAULT]);
-                    if ($stFb !== false) {
-                        $rFb = sqlsrv_fetch_array($stFb, SQLSRV_FETCH_ASSOC);
-                        if ($rFb) $precio = (float)$rFb['precio'];
-                    }
-                }
-                if ($precio == 0) {
-                    $sqlGlob = "SELECT TOP 1 precio FROM Producto_Pre WHERE IdProducto = ? ORDER BY Fecha DESC";
-                    $stGlob  = sqlsrv_query($cn->getConecta(), $sqlGlob, [(int)$idProducto]);
-                    if ($stGlob !== false) {
-                        $rGlob = sqlsrv_fetch_array($stGlob, SQLSRV_FETCH_ASSOC);
-                        if ($rGlob) $precio = (float)$rGlob['precio'];
-                    }
                 }
 
                 $loteVal  = $lote !== '' ? $lote : '0';
                 $insertar = $this->agregar_linea_manual(
                     $tipo, $numdoc, $idProducto, (float)$cantidad,
-                    $precio, $loteVal, date('Y-m-d'), $porcentajeImpuesto, $nota
+                    $check['precio'], $loteVal, date('Y-m-d'), $check['porcentajeImpuesto'], $nota
                 );
                 $ins = json_decode($insertar, true);
                 if ($ins && $ins['status'] === 'success') {
-                    $procesados[] = $clave;
-                    $resultado['status']  = 'ok';
-                    $resultado['mensaje'] = htmlspecialchars($nombreProducto) .
-                        ' | Precio: $' . number_format($precio, 2, ',', '.');
+                    $resultado['status']  = $check['esDuplicado'] ? 'warning' : 'ok';
+                    $resultado['mensaje'] = htmlspecialchars($check['nombreProducto']) .
+                        ' | Precio: $' . number_format($check['precio'], 2, ',', '.') .
+                        ($check['esDuplicado'] ? ' (Producto+Lote repetido en el archivo, agregado igual)' : '');
                 } else {
                     $resultado['mensaje'] = 'Error al insertar línea: ' . ($ins['message'] ?? 'desconocido');
                 }
                 $resultados[] = $resultado;
             }
 
-            $ok    = count(array_filter($resultados, function($r) { return $r['status'] === 'ok'; }));
-            $error = count(array_filter($resultados, function($r) { return $r['status'] === 'error'; }));
+            $ok      = count(array_filter($resultados, function($r) { return $r['status'] === 'ok'; }));
+            $warning = count(array_filter($resultados, function($r) { return $r['status'] === 'warning'; }));
+            $error   = count(array_filter($resultados, function($r) { return $r['status'] === 'error'; }));
 
             return json_encode([
-                'status'     => 'success',
+                'status'     => 'ok',
                 'ok'         => $ok,
+                'warning'    => $warning,
                 'error'      => $error,
                 'resultados' => $resultados
             ]);

@@ -1,9 +1,9 @@
 var tabla;
 
 function init(){
-    // Si quieres añadir algún botón para crear nueva salida
+    // Si quieres añadir algún botón para crear nuevo documento
     $("#btnNueva").click(function(){
-        window.location.href = "../Salidas/index.php";
+        window.location.href = "../NuevoDoc/index.php";
     });
 }
 
@@ -31,13 +31,13 @@ function fijarFiltrosPorDefecto() {
 
 $(document).ready(function(){
 
-    // Combo de tipos de documento de salida/consumo permitidos para el usuario (mismo endpoint
-    // que ya usa el formulario de creación de Salidas).
-    $.post("../../controller/permisos.php?op=combo_salidas_permisos", function(data){
-        console.log("combo_salidas_permisos respuesta:", data);
+    // Combo de tipos de documento de inventario permitidos para el usuario (mismo endpoint
+    // que ya usa el formulario de creación de NuevoDoc).
+    $.post("../../controller/permisos.php?op=combo_inventario_permisos", function(data){
+        console.log("combo_inventario_permisos respuesta:", data);
         $('#filtroTipo').html('<option value="">Todos mis tipos permitidos</option>' + data);
     }).fail(function(xhr, status, error){
-        console.error("Error cargando combo_salidas_permisos:", status, error, xhr.responseText);
+        console.error("Error cargando combo_inventario_permisos:", status, error, xhr.responseText);
         swal("Error!", "No se pudo cargar el combo de tipos de documento.", "error");
     });
 
@@ -56,7 +56,7 @@ $(document).ready(function(){
             'csvHtml5',
             {
                 extend: 'pdfHtml5',
-                title: 'Consulta de Salida',
+                title: 'Consulta de Inventario',
                 orientation: 'landscape', // Orientación apaisada para más columnas
                 pageSize: 'LETTER',
                 exportOptions: {
@@ -65,7 +65,7 @@ $(document).ready(function(){
             }
         ],
         "ajax":{
-            url: '../../controller/salidas.php?op=listar_salidas',
+            url: '../../controller/documento.php?op=listar_inventario',
             type : "post",
             dataType : "json",
             data: function(d) {

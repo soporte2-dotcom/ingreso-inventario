@@ -21,6 +21,18 @@ $(document).ready(function() {
         recargarPermisosSiHayUsuario();
     });
 
+    $("#btn_permisos_inventario").click(function() {
+        tipoPermisosActual = 'inventario';
+        actualizarBotonesActivos(this);
+        recargarPermisosSiHayUsuario();
+    });
+
+    $("#btn_permisos_pedidos").click(function() {
+        tipoPermisosActual = 'pedidos';
+        actualizarBotonesActivos(this);
+        recargarPermisosSiHayUsuario();
+    });
+
     $("#btn_permisos_especiales").click(function() {
         tipoPermisosActual = 'especiales';
         actualizarBotonesActivos(this);
@@ -108,6 +120,10 @@ $(document).ready(function() {
             operacion = 'cargar_permisos';
         } else if (tipoPermisosActual === 'entradas') {
             operacion = 'cargar_permisos_entradas';
+        } else if (tipoPermisosActual === 'inventario') {
+            operacion = 'cargar_permisos_inventario';
+        } else if (tipoPermisosActual === 'pedidos') {
+            operacion = 'cargar_permisos_pedidos';
         } else if (tipoPermisosActual === 'especiales') {
             operacion = 'cargar_permisos_especiales';
         } else {
@@ -138,6 +154,10 @@ $(document).ready(function() {
                 textoBoton = 'Guardar Permisos de Módulos';
             } else if (tipoPermisosActual === 'entradas') {
                 textoBoton = 'Guardar Permisos de Entradas';
+            } else if (tipoPermisosActual === 'inventario') {
+                textoBoton = 'Guardar Permisos de Inventario';
+            } else if (tipoPermisosActual === 'pedidos') {
+                textoBoton = 'Guardar Permisos de Pedidos';
             } else if (tipoPermisosActual === 'especiales') {
                 textoBoton = 'Guardar Permisos Especiales';
             } else {
@@ -179,6 +199,18 @@ $(document).ready(function() {
             $('.documentos-salida input[type="checkbox"]').prop('checked', isChecked);
         });
 
+        // Para documentos de inventario
+        $(document).off('change', '#select_all_documentos_inventario').on('change', '#select_all_documentos_inventario', function() {
+            var isChecked = $(this).prop('checked');
+            $('.documentos-inventario input[type="checkbox"]').prop('checked', isChecked);
+        });
+
+        // Para documentos de pedidos
+        $(document).off('change', '#select_all_documentos_pedidos').on('change', '#select_all_documentos_pedidos', function() {
+            var isChecked = $(this).prop('checked');
+            $('.documentos-pedidos input[type="checkbox"]').prop('checked', isChecked);
+        });
+
         // Actualizar estado del "Seleccionar Todos" cuando se marca/desmarca individual
         $('.modulos-list').off('change', 'input[type="checkbox"]').on('change', 'input[type="checkbox"]', function() {
             actualizarEstadoSelectAll('.modulos-list', '#select_all_modulos');
@@ -190,6 +222,14 @@ $(document).ready(function() {
 
         $('.documentos-salida').off('change', 'input[type="checkbox"]').on('change', 'input[type="checkbox"]', function() {
             actualizarEstadoSelectAll('.documentos-salida', '#select_all_documentos_salida');
+        });
+
+        $('.documentos-inventario').off('change', 'input[type="checkbox"]').on('change', 'input[type="checkbox"]', function() {
+            actualizarEstadoSelectAll('.documentos-inventario', '#select_all_documentos_inventario');
+        });
+
+        $('.documentos-pedidos').off('change', 'input[type="checkbox"]').on('change', 'input[type="checkbox"]', function() {
+            actualizarEstadoSelectAll('.documentos-pedidos', '#select_all_documentos_pedidos');
         });
     }
 
@@ -224,6 +264,14 @@ $(document).ready(function() {
             operacion = 'guardar_permisos_documentos';
             texto = 'permisos de entradas';
             formData.append('tipo_documentos', 'entradas');
+        } else if (tipoPermisosActual === 'inventario') {
+            operacion = 'guardar_permisos_documentos';
+            texto = 'permisos de inventario';
+            formData.append('tipo_documentos', 'inventario');
+        } else if (tipoPermisosActual === 'pedidos') {
+            operacion = 'guardar_permisos_documentos';
+            texto = 'permisos de pedidos';
+            formData.append('tipo_documentos', 'pedidos');
         } else if (tipoPermisosActual === 'especiales') {
             operacion = 'guardar_permisos_especiales';
             texto = 'permisos especiales';

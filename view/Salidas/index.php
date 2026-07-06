@@ -79,6 +79,10 @@ $permiteDevolucionManual  = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 
 			<div class="box-typical box-typical-padding">
 
+				<div id="avisoAnulado" class="alert alert-danger" style="display:none">
+					<i class="fa fa-ban"></i> Este documento está <b>ANULADO</b>. Solo puede consultarse, no se puede modificar.
+				</div>
+
 				<form method="post" id="doc_form">
 
 				<div class="row">
@@ -425,6 +429,7 @@ $permiteDevolucionManual  = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 											<th class="text-center">Unidades</th>
 											<th class="text-center">Acciones</th>
 											<th><a href="#" id="marcarTodo">Marcar</a> | <a href="#" id="desmarcarTodo">Desmarcar</a></th>
+											<th style="display:none">Grupo</th>
 									</tr>
 								</thead>				
 							</table>
@@ -840,6 +845,9 @@ $permiteDevolucionManual  = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 											</div>
 											<div id="excelResultados" style="display:none;">
 												<hr>
+												<div class="alert alert-warning py-1 mb-2" id="excelAvisoNoGuardado">
+													<i class="fa fa-info-circle"></i> Esto es solo una vista previa: <b>todavía no se ha guardado nada</b>. Revisa los resultados y presiona "Procesar" para confirmar, o elige otro archivo si necesitas corregir algo.
+												</div>
 												<div id="excelResumen" class="mb-2"></div>
 												<div style="max-height: 350px; overflow-y: auto;">
 													<table class="table table-sm table-bordered table-striped" id="tbExcelResultados">
@@ -861,10 +869,10 @@ $permiteDevolucionManual  = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 										<div class="modal-footer">
 											<button type="button" id="btnCerrarExcel" class="btn btn-secondary" data-dismiss="modal" onclick="resetModalExcel()">Cerrar</button>
 											<button type="button" id="btnNuevoArchivo" class="btn btn-info" style="display:none" onclick="resetModalExcel()">
-												<i class="fa fa-refresh"></i> Cargar otro archivo
+												<i class="fa fa-refresh"></i> Elegir otro archivo
 											</button>
 											<button type="button" id="btnCargarExcel" class="btn btn-success" onclick="cargarExcelMasivo()">
-												<i class="fa fa-upload"></i> Procesar
+												<i class="fa fa-upload"></i> Validar Archivo
 											</button>
 										</div>
 									</div>
