@@ -63,7 +63,10 @@
       "Bash(\"/c/xampp/php/php.exe\" -l \"/c/xampp/htdocs/ingresoinventario/view/Pedidos/index.php\")",
       "Bash(node --check \"/c/xampp/htdocs/ingresoinventario/view/Pedidos/pedidos.js\")",
       "Bash(\"/c/xampp/mysql/bin/mysql.exe\" -uroot -h localhost permisos_tecno -e \"SHOW CREATE TABLE modulos_sistema;\" -t)",
-      "Bash(/c/xampp/mysql/bin/mysql.exe -uroot -h localhost permisos_tecno -e ' *)"
+      "Bash(/c/xampp/mysql/bin/mysql.exe -uroot -h localhost permisos_tecno -e ' *)",
+      "Read(//c/xampp/tmp/**)",
+      "PowerShell(icacls \"C:\\\\xampp\\\\tmp\")",
+      "Bash(php.exe -l \"c:\\\\xampp\\\\htdocs\\\\ingresoinventario\\\\models\\\\mdlSalidas.php\")"
     ],
     "additionalDirectories": [
       "\\tmp"

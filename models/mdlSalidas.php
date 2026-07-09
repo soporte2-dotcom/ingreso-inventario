@@ -450,6 +450,7 @@
                                     JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                                     WHERE d.Numero_Docto_Base_2 = '$numero_os' AND d.Tipo_Docto_Base_2 = '10'
                                     AND d.exportado = 'S'
+                                    AND d.bodega = (SELECT bodega FROM Documentos_Ped WHERE numero_pedido = '$numero_os' AND sw = '10')
                                     GROUP BY dl.IdProducto, dl.seq
                                 ) f ON f.IdProducto = dlp.IdProducto AND f.seq = dlp.Linea
                                 WHERE dlp.numero_pedido = '$numero_os' AND dlp.sw = '10'
@@ -898,6 +899,7 @@
                                      FROM Documentos d
                                      JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                                      WHERE d.Numero_Docto_Base_2 = '$numero' AND d.Tipo_Docto_Base_2 = '10'
+                                     AND d.bodega = (SELECT bodega FROM Documentos_Ped WHERE numero_pedido = '$numero' AND sw = '10')
                                      GROUP BY dl.IdProducto, dl.seq
                                  ) f ON f.IdProducto = dlp.IdProducto AND f.seq = dlp.Linea
                                  WHERE dlp.numero_pedido = '$numero' AND dlp.sw = '10'
@@ -989,6 +991,7 @@
                     FROM Documentos d
                     JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                     WHERE d.Numero_Docto_Base_2 = '$numero' AND d.Tipo_Docto_Base_2 = '10'
+                    AND d.bodega = (SELECT bodega FROM Documentos_Ped WHERE numero_pedido = '$numero' AND sw = '10')
                     GROUP BY dl.IdProducto, dl.seq
                 ) f ON f.IdProducto = dp.IdProducto AND f.seq = dp.Linea
                 WHERE dp.numero_pedido = '$numero' AND dp.sw = '10'
@@ -1029,6 +1032,7 @@
                                      JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                                      WHERE d.Numero_Docto_Base_2 = '$numero' AND d.Tipo_Docto_Base_2 = '10'
                                      AND d.exportado = 'S'
+                                     AND d.bodega = (SELECT bodega FROM Documentos_Ped WHERE numero_pedido = '$numero' AND sw = '10')
                                      GROUP BY dl.IdProducto, dl.seq
                                  ) f ON f.IdProducto = dlp.IdProducto AND f.seq = dlp.Linea
                                  WHERE dlp.numero_pedido = '$numero' AND dlp.sw = '10'
@@ -1120,6 +1124,7 @@
                     FROM Documentos d
                     JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                     WHERE d.Numero_Docto_Base_2 = '$numero_os' AND d.Tipo_Docto_Base_2 = '10'
+                    AND d.bodega = (SELECT bodega FROM Documentos_Ped WHERE numero_pedido = '$numero_os' AND sw = '10')
                     GROUP BY dl.IdProducto, dl.seq
                 ) f ON f.IdProducto = dp.IdProducto AND f.seq = dp.Linea
                 WHERE dp.numero_pedido = '$numero_os' AND dp.sw = '10'
@@ -1686,6 +1691,7 @@
                              FROM Documentos d
                              JOIN Documentos_Lin dl ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                              WHERE d.Numero_Docto_Base_2 = '$numero' AND d.Tipo_Docto_Base_2 = '10'
+                             AND d.bodega = (SELECT bodega FROM Documentos_Ped WHERE numero_pedido = '$numero' AND sw = '10')
                              GROUP BY dl.IdProducto, dl.seq
                          ) f ON f.IdProducto = dlp.IdProducto AND f.seq = dlp.Linea
                          WHERE dlp.numero_pedido = '$numero' AND dlp.sw = '10'";

@@ -332,7 +332,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
     </div>
 
     <?php require_once("../MainJs/js.php"); ?>
-    <script type="text/javascript" src="permisos.js?v=2"></script>
+    <script type="text/javascript" src="permisos.js?v=4"></script>
 
 </body>
 </html>
