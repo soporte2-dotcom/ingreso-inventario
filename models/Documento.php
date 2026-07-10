@@ -764,6 +764,14 @@
         public function update_doc($tipo, $consecutivo, $notas, $remision){
             $cn = new Conectarserver;
 
+            $sqlChkLin = "SELECT COUNT(*) AS total FROM Documentos_Lin WHERE tipo = ? AND Numero_documento = ?";
+            $stmtChkLin = sqlsrv_query($cn->getConecta(), $sqlChkLin, array($tipo, $consecutivo));
+            $rowChkLin = $stmtChkLin ? sqlsrv_fetch_array($stmtChkLin, SQLSRV_FETCH_ASSOC) : null;
+            if (!$rowChkLin || (int)$rowChkLin['total'] === 0) {
+                echo "No se puede guardar: el documento debe tener al menos un producto \n";
+                return;
+            }
+
             if(empty($remision)){
                 $sql="UPDATE Documentos SET notas = '$notas', exportado = 'S',
                 Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = $tipo AND Numero_documento = $consecutivo),
@@ -815,7 +823,7 @@
         // Lista documentos de Entrada visibles para el usuario según los tipos de documento
         // que tiene permiso de ver (no según quién los creó), acotado opcionalmente por
         // rango de fecha y rango de número de documento.
-        public function listar_entradas_filtro($tipos_permitidos, $tipo, $fechaDesde, $fechaHasta, $numDesde, $numHasta, $exportado = ''){
+        public function listar_entradas_filtro($tipos_permitidos, $tipo, $fechaDesde, $fechaHasta, $numDesde, $numHasta, $exportado = '', $anulado = ''){
             $cn = new Conectarserver;
             $resultado = array();
 
@@ -854,6 +862,10 @@
                 $where .= " AND d.exportado = ?";
                 $params[] = $exportado;
             }
+            if ($anulado === 'S' || $anulado === 'N') {
+                $where .= " AND d.anulado = ?";
+                $params[] = $anulado;
+            }
 
             $sql = "SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
                     d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, d.exportado, d.anulado, d.usuario
@@ -879,7 +891,7 @@
         // Lista documentos de Inventario visibles para el usuario según los tipos de documento
         // que tiene permiso de ver (no según quién los creó), acotado opcionalmente por
         // rango de fecha, rango de número de documento y estado de exportado.
-        public function listar_inventario_filtro($tipos_permitidos, $tipo, $fechaDesde, $fechaHasta, $numDesde, $numHasta, $exportado = ''){
+        public function listar_inventario_filtro($tipos_permitidos, $tipo, $fechaDesde, $fechaHasta, $numDesde, $numHasta, $exportado = '', $anulado = ''){
             $cn = new Conectarserver;
             $resultado = array();
 
@@ -916,6 +928,10 @@
                 $where .= " AND d.exportado = ?";
                 $params[] = $exportado;
             }
+            if ($anulado === 'S' || $anulado === 'N') {
+                $where .= " AND d.anulado = ?";
+                $params[] = $anulado;
+            }
 
             $sql = "SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
                     d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, d.exportado, d.anulado, d.usuario
@@ -942,7 +958,7 @@
         // rango de fecha, rango de número de documento y estado de exportado.
         // A diferencia de Inventario/Entradas/Salidas, Pedidos está acotado a un único
         // idTipoDoctos (948, "Pedidos Granja"), no a una categoría "tipo".
-        public function listar_pedidos_filtro($tipos_permitidos, $tipo, $fechaDesde, $fechaHasta, $numDesde, $numHasta, $exportado = ''){
+        public function listar_pedidos_filtro($tipos_permitidos, $tipo, $fechaDesde, $fechaHasta, $numDesde, $numHasta, $exportado = '', $anulado = ''){
             $cn = new Conectarserver;
             $resultado = array();
 
@@ -978,6 +994,10 @@
             if ($exportado === 'S' || $exportado === 'N') {
                 $where .= " AND d.exportado = ?";
                 $params[] = $exportado;
+            }
+            if ($anulado === 'S' || $anulado === 'N') {
+                $where .= " AND d.anulado = ?";
+                $params[] = $anulado;
             }
 
             $sql = "SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
@@ -1084,6 +1104,18 @@
         public function delete_masivo($tipo, $consecutivo, $seqs, $productos) {
             $cn = new Conectarserver;
 
+            // Un documento ya guardado (exportado) o anulado no se puede modificar,
+            // sin importar lo que muestre/permita la interfaz (mismo criterio que delete_id).
+            $sqlChk = "SELECT exportado, anulado FROM Documentos WHERE tipo = ? AND Numero_documento = ?";
+            $stmtChk = sqlsrv_query($cn->getConecta(), $sqlChk, array($tipo, $consecutivo));
+            $rowChk = $stmtChk ? sqlsrv_fetch_array($stmtChk, SQLSRV_FETCH_ASSOC) : null;
+            if (!$rowChk) {
+                return "error: documento no encontrado";
+            }
+            if (trim($rowChk['exportado']) === 'S' || trim($rowChk['anulado'] ?? 'N') === 'S') {
+                return "error: el documento ya está guardado o anulado";
+            }
+
             $seqArr     = array_filter(array_map('trim', explode(',', $seqs)));
             $prodArr    = array_filter(array_map('trim', explode(',', $productos)));
 
@@ -1130,9 +1162,23 @@
 
         public function delete_id($tipo, $consecutivo, $producto, $seq) {
             $cn = new Conectarserver;
-            
+
+            // Un documento ya guardado (exportado) o anulado no se puede modificar,
+            // sin importar lo que muestre/permita la interfaz.
+            $sqlChk = "SELECT exportado, anulado FROM Documentos WHERE tipo = ? AND Numero_documento = ?";
+            $stmtChk = sqlsrv_query($cn->getConecta(), $sqlChk, array($tipo, $consecutivo));
+            $rowChk = $stmtChk ? sqlsrv_fetch_array($stmtChk, SQLSRV_FETCH_ASSOC) : null;
+            if (!$rowChk) {
+                echo "error";
+                return;
+            }
+            if (trim($rowChk['exportado']) === 'S' || trim($rowChk['anulado'] ?? 'N') === 'S') {
+                echo "error";
+                return;
+            }
+
             // Eliminar el registro
-            $sql = "DELETE FROM Documentos_Lin 
+            $sql = "DELETE FROM Documentos_Lin
                     WHERE tipo = ? AND Numero_documento = ? AND IdProducto = ? AND seq = ?";
             
             $params = array($tipo, $consecutivo, $producto, $seq);
@@ -1167,6 +1213,72 @@
                 }
                 echo "error";
             }
+        }
+
+        // Refresca %IVA y Valor de una línea ya agregada tomando los datos actuales del
+        // producto en el catálogo (TblProducto/TblImpuesto), en vez de dejar que el usuario
+        // los digite a mano. Pensado para cuando un producto se corrige en el catálogo
+        // (p. ej. le agregan IVA) después de que ya se había agregado a un documento.
+        public function actualizar_producto_linea($tipo, $consecutivo, $producto, $seq) {
+            $cn = new Conectarserver;
+
+            $sqlChk = "SELECT exportado, anulado FROM Documentos WHERE tipo = ? AND Numero_documento = ?";
+            $stmtChk = sqlsrv_query($cn->getConecta(), $sqlChk, array($tipo, $consecutivo));
+            $rowChk = $stmtChk ? sqlsrv_fetch_array($stmtChk, SQLSRV_FETCH_ASSOC) : null;
+            if (!$rowChk) {
+                return json_encode(['status' => 'error', 'message' => 'Documento no encontrado']);
+            }
+            if (trim($rowChk['exportado']) === 'S' || trim($rowChk['anulado'] ?? 'N') === 'S') {
+                return json_encode(['status' => 'error', 'message' => 'El documento ya está guardado o anulado, no se puede modificar']);
+            }
+
+            $sqlProd = "SELECT p.costo_unitario, ISNULL(i.PorcentajeImpuesto, 0) AS PorcentajeImpuesto
+                        FROM TblProducto p
+                        LEFT JOIN TblImpuesto i ON p.Impuesto_venta = i.IdImpuesto
+                        WHERE p.IdProducto = ?";
+            $stmtProd = sqlsrv_query($cn->getConecta(), $sqlProd, array((int)$producto));
+            $rowProd = $stmtProd ? sqlsrv_fetch_array($stmtProd, SQLSRV_FETCH_ASSOC) : null;
+            if (!$rowProd) {
+                return json_encode(['status' => 'error', 'message' => 'Producto no encontrado en el catálogo']);
+            }
+
+            $valorUnitario = (float)$rowProd['costo_unitario'];
+            $porcentajeImpuesto = (float)$rowProd['PorcentajeImpuesto'];
+
+            $sql = "UPDATE Documentos_Lin SET Valor_Unitario = ?, Costo_Unitario = ?, Porcentaje_Impuesto = ?
+                    WHERE tipo = ? AND Numero_documento = ? AND IdProducto = ? AND seq = ?";
+            $params = array($valorUnitario, $valorUnitario, $porcentajeImpuesto, $tipo, $consecutivo, $producto, $seq);
+            $stmt = sqlsrv_prepare($cn->getConecta(), $sql, $params);
+            if (!sqlsrv_execute($stmt)) {
+                return json_encode(['status' => 'error', 'message' => 'Error al actualizar la línea: ' . print_r(sqlsrv_errors(), true)]);
+            }
+
+            $sqlUpdate = "UPDATE Documentos SET
+                Total_Items    = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = ? AND Numero_documento = ?),
+                valor_total    = (SELECT ISNULL(SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
+                costo          = (SELECT ISNULL(SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
+                valor_aplicado = (SELECT ISNULL(SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
+                descuento_1    = (SELECT ISNULL(SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (d.Porcentaje_Descuento_1 / 100), 2)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
+                Valor_impuesto = (SELECT ISNULL(SUM(((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?)
+                WHERE tipo = ? AND Numero_Documento = ?";
+
+            $paramsUpdate = [];
+            for ($i = 0; $i < 6; $i++) {
+                $paramsUpdate[] = $tipo;
+                $paramsUpdate[] = $consecutivo;
+            }
+            $paramsUpdate[] = $tipo;
+            $paramsUpdate[] = $consecutivo;
+
+            $stmtU = sqlsrv_prepare($cn->getConecta(), $sqlUpdate, $paramsUpdate);
+            sqlsrv_execute($stmtU);
+
+            return json_encode([
+                'status' => 'success',
+                'message' => 'Línea actualizada desde el producto',
+                'valorUnitario' => number_format($valorUnitario, 2, '.', ''),
+                'porcentajeImpuesto' => number_format($porcentajeImpuesto, 2, '.', '')
+            ]);
         }
 
         // public function update_prod_doc($tipo, $consecutivo, $producto, $cantidad, $Valor_Unitario, $lote, $fecha_vence){
@@ -2517,6 +2629,82 @@
                 if (isset($cn) && $cn->getConecta()) sqlsrv_rollback($cn->getConecta());
                 return json_encode(array("status" => "error", "message" => $e->getMessage()));
             }
+        }
+
+        // ─── Módulo Gestión de Documentos: buscar/desmarcar/anular sobre cualquier tipo de documento ───
+
+        public function buscar_documento_gestion($tipo, $numero) {
+            $cn = new Conectarserver;
+            $sql = "SELECT d.tipo, t.TipoDoctos, d.Numero_documento, d.exportado, d.anulado, d.usuario,
+                           d.Fecha_Hora_Factura, d.nit_Cedula, d.Nombre_Cliente, d.notas
+                    FROM Documentos d
+                    INNER JOIN TblTipoDoctos t ON d.tipo = t.idTipoDoctos
+                    WHERE d.tipo = ? AND d.Numero_documento = ?";
+            $stmt = sqlsrv_query($cn->getConecta(), $sql, array($tipo, $numero));
+            if ($stmt === false) {
+                return json_encode(['status' => 'error', 'message' => 'Error al consultar el documento: ' . print_r(sqlsrv_errors(), true)]);
+            }
+            $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+            if (!$row) {
+                return json_encode(['status' => 'error', 'message' => 'Documento no encontrado']);
+            }
+            $fecha = ($row['Fecha_Hora_Factura'] instanceof DateTime) ? date_format($row['Fecha_Hora_Factura'], 'd/m/Y H:i') : '';
+            return json_encode([
+                'status' => 'ok',
+                'documento' => [
+                    'tipo'       => $row['tipo'],
+                    'tipoNombre' => trim($row['TipoDoctos']),
+                    'numero'     => $row['Numero_documento'],
+                    'exportado'  => trim($row['exportado']),
+                    'anulado'    => trim($row['anulado']),
+                    'usuario'    => trim($row['usuario'] ?? ''),
+                    'fecha'      => $fecha,
+                    'nit'        => trim($row['nit_Cedula'] ?? ''),
+                    'nombre'     => trim($row['Nombre_Cliente'] ?? ''),
+                    'notas'      => trim($row['notas'] ?? '')
+                ]
+            ]);
+        }
+
+        public function desmarcar_documento($tipo, $numero) {
+            $cn = new Conectarserver;
+            $sqlChk = "SELECT exportado, anulado FROM Documentos WHERE tipo = ? AND Numero_documento = ?";
+            $stmtChk = sqlsrv_query($cn->getConecta(), $sqlChk, array($tipo, $numero));
+            $row = $stmtChk ? sqlsrv_fetch_array($stmtChk, SQLSRV_FETCH_ASSOC) : null;
+            if (!$row) {
+                return json_encode(['status' => 'error', 'message' => 'Documento no encontrado']);
+            }
+            if (trim($row['anulado']) === 'S') {
+                return json_encode(['status' => 'error', 'message' => 'El documento está anulado, no se puede desmarcar']);
+            }
+            if (trim($row['exportado']) !== 'S') {
+                return json_encode(['status' => 'error', 'message' => 'El documento ya está desmarcado (Exportado = N)']);
+            }
+            $sql = "UPDATE Documentos SET exportado = 'N' WHERE tipo = ? AND Numero_documento = ?";
+            $stmt = sqlsrv_query($cn->getConecta(), $sql, array($tipo, $numero));
+            if ($stmt === false) {
+                return json_encode(['status' => 'error', 'message' => 'Error al desmarcar el documento: ' . print_r(sqlsrv_errors(), true)]);
+            }
+            return json_encode(['status' => 'success', 'message' => 'Documento desmarcado correctamente (Exportado = N)']);
+        }
+
+        public function anular_documento($tipo, $numero) {
+            $cn = new Conectarserver;
+            $sqlChk = "SELECT anulado FROM Documentos WHERE tipo = ? AND Numero_documento = ?";
+            $stmtChk = sqlsrv_query($cn->getConecta(), $sqlChk, array($tipo, $numero));
+            $row = $stmtChk ? sqlsrv_fetch_array($stmtChk, SQLSRV_FETCH_ASSOC) : null;
+            if (!$row) {
+                return json_encode(['status' => 'error', 'message' => 'Documento no encontrado']);
+            }
+            if (trim($row['anulado']) === 'S') {
+                return json_encode(['status' => 'error', 'message' => 'El documento ya está anulado']);
+            }
+            $sql = "UPDATE Documentos SET anulado = 'S' WHERE tipo = ? AND Numero_documento = ?";
+            $stmt = sqlsrv_query($cn->getConecta(), $sql, array($tipo, $numero));
+            if ($stmt === false) {
+                return json_encode(['status' => 'error', 'message' => 'Error al anular el documento: ' . print_r(sqlsrv_errors(), true)]);
+            }
+            return json_encode(['status' => 'success', 'message' => 'Documento anulado correctamente']);
         }
 
     }

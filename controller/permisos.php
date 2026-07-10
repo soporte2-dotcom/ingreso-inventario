@@ -1,12 +1,8 @@
 <?php
 // Solo necesitamos la conexión a SQL Server para la sesión
 require_once("../config/conexionserver.php");
-
-// Verificar que el usuario tenga sesión activa
-if (!isset($_SESSION["Id_Usuario"])) {
-    echo "Error: No hay sesión activa";
-    exit();
-}
+require_once("../config/session_guard.php");
+verificar_sesion_activa();
 
 require_once("../models/mdlPermisos.php");
 
@@ -544,8 +540,10 @@ try {
 
             $tiene_dev_parcial = $permisos->tiene_permiso_especial($usuario_id, 'devolucion_parcial');
             $tiene_dev_manual  = $permisos->tiene_permiso_especial($usuario_id, 'devolucion_manual');
+            $tiene_lote_manual = $permisos->tiene_permiso_especial($usuario_id, 'lote_manual_salidas');
             $chk_parcial = $tiene_dev_parcial ? 'checked' : '';
             $chk_manual  = $tiene_dev_manual  ? 'checked' : '';
+            $chk_lote_manual = $tiene_lote_manual ? 'checked' : '';
 
             echo "<h5 style='margin-bottom:15px'><span class='glyphicon glyphicon-star'></span> Permisos Especiales de Salidas</h5>";
             echo "<div class='documentos-list'>
@@ -563,10 +561,21 @@ try {
                             <small class='text-muted'> &mdash; Permite crear devoluciones sin documento de referencia</small>
                         </label>
                     </div>
+                    <div class='checkbox'>
+                        <input type='checkbox' id='perm_lote_manual_salidas' name='especiales[]' value='lote_manual_salidas' $chk_lote_manual>
+                        <label for='perm_lote_manual_salidas'>
+                            <strong>Lote Manual en Salidas</strong>
+                            <small class='text-muted'> &mdash; Permite escribir el número de lote a mano en vez de seleccionarlo de la lista</small>
+                        </label>
+                    </div>
                   </div>";
 
             $tiene_entrada_frigopork = $permisos->tiene_permiso_especial($usuario_id, 'entrada_frigopork_manual');
+            $tiene_lote_manual_ent   = $permisos->tiene_permiso_especial($usuario_id, 'lote_manual_entradas');
+            $tiene_actualizar_prod   = $permisos->tiene_permiso_especial($usuario_id, 'actualizar_producto_entrada');
             $chk_frigopork = $tiene_entrada_frigopork ? 'checked' : '';
+            $chk_lote_manual_ent = $tiene_lote_manual_ent ? 'checked' : '';
+            $chk_actualizar_prod = $tiene_actualizar_prod ? 'checked' : '';
 
             echo "<h5 style='margin-top:20px; margin-bottom:15px'><span class='glyphicon glyphicon-star'></span> Permisos Especiales de Entradas</h5>";
             echo "<div class='documentos-list'>
@@ -575,6 +584,20 @@ try {
                         <label for='perm_entrada_frigopork_manual'>
                             <strong>Entrada Frigopork Manual (294)</strong>
                             <small class='text-muted'> &mdash; Permite crear el documento 294-Entrada Frigopork sin documento de referencia</small>
+                        </label>
+                    </div>
+                    <div class='checkbox'>
+                        <input type='checkbox' id='perm_lote_manual_entradas' name='especiales[]' value='lote_manual_entradas' $chk_lote_manual_ent>
+                        <label for='perm_lote_manual_entradas'>
+                            <strong>Lote Manual en Entradas</strong>
+                            <small class='text-muted'> &mdash; Permite escribir el número de lote a mano en vez de seleccionarlo de la lista</small>
+                        </label>
+                    </div>
+                    <div class='checkbox'>
+                        <input type='checkbox' id='perm_actualizar_producto_entrada' name='especiales[]' value='actualizar_producto_entrada' $chk_actualizar_prod>
+                        <label for='perm_actualizar_producto_entrada'>
+                            <strong>Actualizar Producto en Línea de Entrada</strong>
+                            <small class='text-muted'> &mdash; Permite refrescar el %IVA y Valor de una línea ya agregada, tomando los datos actuales del producto en el catálogo</small>
                         </label>
                     </div>
                   </div>";
@@ -586,7 +609,7 @@ try {
                 echo json_encode(["status" => "error", "message" => "No se recibió ID de usuario"]);
                 break;
             }
-            $todos_especiales = ['devolucion_parcial', 'devolucion_manual', 'entrada_frigopork_manual'];
+            $todos_especiales = ['devolucion_parcial', 'devolucion_manual', 'entrada_frigopork_manual', 'lote_manual_salidas', 'lote_manual_entradas', 'actualizar_producto_entrada'];
             $seleccionados = isset($_POST["especiales"]) ? $_POST["especiales"] : [];
             foreach ($todos_especiales as $modulo) {
                 $valor = in_array($modulo, $seleccionados) ? 'S' : 'N';

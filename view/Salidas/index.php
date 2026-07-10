@@ -8,6 +8,7 @@ $_permisos = new Permisos();
 $permiteTraslado = $_permisos->tiene_permiso_especial($_SESSION["Id_Usuario"], 'traslado_sin_os');
 $permiteDevolucionParcial = $_permisos->tiene_permiso_especial($_SESSION["Id_Usuario"], 'devolucion_parcial');
 $permiteDevolucionManual  = $_permisos->tiene_permiso_especial($_SESSION["Id_Usuario"], 'devolucion_manual');
+$permiteLoteManual        = $_permisos->tiene_permiso_especial($_SESSION["Id_Usuario"], 'lote_manual_salidas');
 ?>
 <!DOCTYPE html>
 <html>
@@ -49,6 +50,7 @@ $permiteDevolucionManual  = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 <script>window.permiteTraslado = <?= $permiteTraslado ? 'true' : 'false' ?>;</script>
 <script>window.permiteDevolucionParcial = <?= $permiteDevolucionParcial ? 'true' : 'false' ?>;</script>
 <script>window.permiteDevolucionManual = <?= $permiteDevolucionManual ? 'true' : 'false' ?>;</script>
+<script>window.permiteLoteManual = <?= $permiteLoteManual ? 'true' : 'false' ?>;</script>
 </head>
 
 <body class="with-side-menu sidebar-hidden">
@@ -108,9 +110,9 @@ $permiteDevolucionManual  = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 						</fieldset>
 					</div>
 
-					<div class="col-lg-2" style="display: none" id="div_fecha_factura">
+					<div class="col-lg-3" style="display: none" id="div_fecha_factura">
 						<fieldset class="form-group">
-							<label class="form-label semibold" id="txt_fecha_factura">Facturado el:</label>
+							<label class="form-label semibold" id="txt_fecha_factura">Facturado el / Dia de consumo:</label>
 							<input type="text" name="fecha_factura" id="fecha_factura" class="form-control" autocomplete="off"/>
 					<input type="hidden" name="fecha_factura_iso" id="fecha_factura_iso" value="<?php echo date('Y-m-d') ?>"/>
 						</fieldset>
@@ -222,9 +224,9 @@ $permiteDevolucionManual  = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 						</fieldset>
 					</div>
 
-					<div class="col-lg-2">
+					<div class="col-lg-3">
 						<fieldset class="form-group">
-							<label class="form-label semibold" style="display: none" id="txt_fecha_factura2">Facturado el:</label>
+							<label class="form-label semibold" style="display: none" id="txt_fecha_factura2">Facturado el / Dia de consumo:</label>
 							<input type="text" style="display: none" name="fecha_factura2" id="fecha_factura2" class="form-control" autocomplete="off"/>
 						<input type="hidden" name="fecha_factura2_iso" id="fecha_factura2_iso"/>
 						</fieldset>
@@ -631,12 +633,20 @@ $permiteDevolucionManual  = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 										
 										<div class="modal-body">
 											<div class="row">
-												
+
+												<div class="col-lg-12" id="chkLoteManualWrap" style="display:none; margin-bottom:10px">
+													<div class="checkbox">
+														<input type="checkbox" id="chkLoteManual">
+														<label for="chkLoteManual">Escribir lote manualmente</label>
+													</div>
+												</div>
+
 												<div class="col-lg-12">
 													<label>Lote</label>
 													<select class="form-control" name="lote1" id="lote1" required></select>
+													<input type="text" class="form-control" id="lote1_manual" placeholder="Ingrese el número de lote" style="display:none">
 												</div>
-												
+
 											</div>
 										</div>
 										<div class="modal-footer">

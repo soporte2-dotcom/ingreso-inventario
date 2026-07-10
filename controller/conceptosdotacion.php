@@ -1,10 +1,7 @@
 <?php
 require_once("../config/conexionserver.php");
-
-if (!isset($_SESSION["Id_Usuario"])) {
-    echo json_encode(['status' => 'error', 'message' => 'Sesión no activa']);
-    exit();
-}
+require_once("../config/session_guard.php");
+verificar_sesion_activa();
 
 require_once("../models/mdlConceptosDotacion.php");
 

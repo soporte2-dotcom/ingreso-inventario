@@ -225,6 +225,11 @@ $DateAndTime = date('d-m-Y h:i:s a', time());
 							<i class="fa fa-file-excel-o"></i> Cargar Excel
 						</button>
 					</div>
+					<div class="col-sm-6 col-md-3 col-lg-2 d-flex mx-auto">
+						<button type="button" id="btneliminarsel" class="d-flex w-15 btn btn-rounded btn-inline btn-danger" style="display: none" onclick="eliminarSeleccionados()">
+							<i class="fa fa-trash"></i> Eliminar sel.
+						</button>
+					</div>
 				</div>
 
 				<div class="container-fluid">
@@ -236,10 +241,11 @@ $DateAndTime = date('d-m-Y h:i:s a', time());
 										<th class="text-center">Producto</th>
 										<th class="text-center">Nombre</th>
 										<th class="text-center">U medida</th>
-										<th class="text-center">Cantidad</th>										
-										<th class="text-center">Eliminar</th>
+										<th class="text-center">Cantidad</th>
+										<th class="text-center">Acciones</th>
+										<th><a href="#" id="marcarTodo">Marcar</a> | <a href="#" id="desmarcarTodo">Desmarcar</a></th>
 									</tr>
-								</thead>								
+								</thead>
 							</table>
 						</div>
 					</div>
@@ -369,7 +375,7 @@ $DateAndTime = date('d-m-Y h:i:s a', time());
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="nuevodoc.js?v=7"></script>
+	<script type="text/javascript" src="nuevodoc.js?v=<?php echo time(); ?>"></script>
 
 </body>
 

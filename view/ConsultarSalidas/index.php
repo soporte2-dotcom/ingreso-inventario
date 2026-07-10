@@ -46,7 +46,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
         <div class="box-typical box-typical-padding">
 
           <div class="row">
-            <div class="col-lg-3">
+            <div class="col-lg-2">
               <div class="form-group">
                 <label for="filtroTipo">Tipo de Documento:</label>
                 <select id="filtroTipo" class="form-control"></select>
@@ -59,6 +59,16 @@ $DateAndTime = date('d-m-Y h:i:s', time());
                   <option value="">Todos</option>
                   <option value="N">No (borrador)</option>
                   <option value="S">Sí (guardado)</option>
+                </select>
+              </div>
+            </div>
+            <div class="col-lg-1">
+              <div class="form-group">
+                <label for="filtroAnulado">Anulado:</label>
+                <select id="filtroAnulado" class="form-control">
+                  <option value="">Todos</option>
+                  <option value="N">No</option>
+                  <option value="S">Sí</option>
                 </select>
               </div>
             </div>
@@ -112,6 +122,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
                 <th>Direccion</th>
                 <th>Usuario</th>
                 <th>Exportado</th>
+                <th>Anulado</th>
                 <th>Ver</th>
               </tr>
             </thead>
@@ -127,7 +138,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 	
 	<?php require_once("../MainJs/js.php");?>
 	
-	<script type="text/javascript" src="consultar.js?v=7"></script>
+	<script type="text/javascript" src="consultar.js?v=8"></script>
 
   <style>
     /* Estilo para la columna exportado */

@@ -39,6 +39,7 @@ const CONFIG = {
             duplicar_linea: "documento.php?op=duplicar_linea",
             eliminar: "documento.php?op=eliminar",
             eliminar_masivo: "documento.php?op=eliminar_masivo",
+            actualizar_producto_linea: "documento.php?op=actualizar_producto_linea",
             reiniciar_doc_desde_pedido: "../../controller/documento.php?op=reiniciar_doc_desde_pedido"
         }
     }
@@ -277,6 +278,32 @@ function guardarLote() {
         }
     });
 }
+
+$('#lot').on('show.bs.modal', function() {
+    if (window.permiteLoteManualEntradas) {
+        $('#chkLoteManualWrap').show();
+    }
+    $.post(CONFIG.baseUrl + CONFIG.endpoints.documento.combo_lotes, function(data) {
+        $('#lote1').html(data);
+    });
+});
+
+$(document).on("change", "#chkLoteManual", function() {
+    const manual = $(this).is(':checked');
+    $('#lote1').toggle(!manual).prop('disabled', manual);
+    $('#lote1_manual').toggle(manual).prop('disabled', !manual);
+    if (manual) {
+        $('#lote1_manual').val('').focus();
+    } else {
+        $('#lote1').val('');
+    }
+});
+
+$('#lot').on('hidden.bs.modal', function() {
+    $('#chkLoteManual').prop('checked', false);
+    $('#lote1').show().prop('disabled', false).val('');
+    $('#lote1_manual').hide().prop('disabled', true).val('');
+});
 
 function editarProducto() {
     const idproducto = document.getElementById("idproducto").value;
@@ -832,6 +859,10 @@ function agregarEventosEdicionInline() {
     // Evento para imprimir etiqueta con delegation
     document.removeEventListener('click', manejarImprimirEtiquetaGlobal);
     document.addEventListener('click', manejarImprimirEtiquetaGlobal);
+
+    // Evento para actualizar %IVA/Valor desde el producto, con delegation
+    document.removeEventListener('click', manejarActualizarProductoGlobal);
+    document.addEventListener('click', manejarActualizarProductoGlobal);
 }
 
 // Función separada para manejar doble clic
@@ -866,6 +897,56 @@ function manejarImprimirEtiquetaGlobal(e) {
         const row = e.target.closest('tr');
         abrirModalEtiqueta(row);
     }
+}
+
+// Refresca %IVA y Valor de una línea tomando los datos actuales del producto en el
+// catálogo (en vez de dejar que el usuario los digite a mano). Útil cuando el producto
+// se corrige después (p. ej. le agregan IVA) y las líneas ya agregadas quedaron desactualizadas.
+function manejarActualizarProductoGlobal(e) {
+    if (documentoExportado) return;
+    const btn = e.target.closest('.btn-actualizar-producto');
+    if (!btn || btn.disabled) return;
+
+    e.preventDefault();
+    const row = btn.closest('tr');
+    const tipo = getUrlParameter('tipo');
+    const consecutivo = getUrlParameter('consecutivo');
+    const seq = row.cells[0].textContent.trim();
+    const producto = row.cells[1].textContent.trim();
+    const nombreProducto = row.cells[2].textContent.trim();
+
+    swal({
+        title: "¿Actualizar producto?",
+        text: "Se sobreescribirán el %IVA y el Valor de \"" + nombreProducto + "\" con los datos actuales del producto en el catálogo.",
+        type: "warning",
+        showCancelButton: true,
+        confirmButtonClass: "btn-primary",
+        confirmButtonText: "Sí, actualizar",
+        cancelButtonText: "Cancelar",
+        closeOnConfirm: false
+    }, function(isConfirm) {
+        if (!isConfirm) return;
+
+        $.post(CONFIG.baseUrl + CONFIG.endpoints.documento.actualizar_producto_linea, {
+            tipo: tipo, consecutivo: consecutivo, producto: producto, seq: seq
+        }, function(response) {
+            if (response.status !== 'success') {
+                swal("No se pudo actualizar", response.message || "Error desconocido", "error");
+                return;
+            }
+            row.cells[6].textContent = response.porcentajeImpuesto;
+            row.cells[7].textContent = response.valorUnitario;
+            swal({
+                title: "¡Actualizado!",
+                text: "El %IVA y el Valor se actualizaron desde el producto.",
+                type: "success",
+                confirmButtonClass: "btn-success"
+            });
+            actualizarTodosLosTotales(tipo, consecutivo);
+        }, 'json').fail(function() {
+            swal("Error", "Error de conexión. No se pudo actualizar el producto.", "error");
+        });
+    });
 }
 
 function iniciarEdicionNativa(cell) {

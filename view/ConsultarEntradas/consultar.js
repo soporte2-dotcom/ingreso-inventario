@@ -27,6 +27,8 @@ function fijarFiltrosPorDefecto() {
     // Por defecto se muestran los documentos NO exportados (borradores sin guardar),
     // que es lo que se quiere detectar al entrar al módulo.
     $('#filtroExportado').val('N');
+    // Por defecto se ocultan los documentos anulados.
+    $('#filtroAnulado').val('N');
 }
 
 $(document).ready(function(){
@@ -60,7 +62,7 @@ $(document).ready(function(){
                 orientation: 'landscape', // Orientación apaisada para más columnas
                 pageSize: 'LETTER',
                 exportOptions: {
-                    columns: [0, 1, 2, 3, 4, 5, 6, 7] // Exportar todas las columnas excepto la de acciones
+                    columns: [0, 1, 2, 3, 4, 5, 6, 7, 8] // Exportar todas las columnas excepto la de acciones
                 }
             }
         ],
@@ -75,6 +77,7 @@ $(document).ready(function(){
                 d.numDesde    = $('#filtroNumDesde').val();
                 d.numHasta    = $('#filtroNumHasta').val();
                 d.exportado   = $('#filtroExportado').val();
+                d.anulado     = $('#filtroAnulado').val();
             },
             error: function(e){
                 console.log(e.responseText);
@@ -87,7 +90,11 @@ $(document).ready(function(){
                 "className": "text-center"
             },
             {
-                "targets": [8], // Columna de acciones
+                "targets": [8], // Columna de anulado
+                "className": "text-center"
+            },
+            {
+                "targets": [9], // Columna de acciones
                 "className": "text-center"
             }
         ],

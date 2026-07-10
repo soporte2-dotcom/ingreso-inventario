@@ -2,6 +2,11 @@ var tabla;
 var usu_id =  $('#user_idx').val();
 var rol_id =  $('#rol_idx').val();
 
+// Selección de líneas para borrado masivo, independiente de la página del paginador
+// (DataTables solo mantiene en el DOM las filas de la página visible, así que el
+// estado de los checkboxes se guarda aparte por seq y se reaplica en cada draw).
+var seleccionLineas = {}; // { seq: producto }
+
 
 function init(){   
    
@@ -181,29 +186,39 @@ $(document).on("click","#btnagregar", function(){
 });
 
 
-$(document).on("click","#btnguardar", function(){ 
-    
-    var formData = new FormData($("#doc_form")[0]);      
+$(document).on("click","#btnguardar", function(){
+
+    var totalProductos = $('#tb-doc').DataTable().rows().count();
+    if (totalProductos === 0) {
+        swal("Advertencia!", "Debe agregar al menos un producto antes de guardar el documento.", "warning");
+        return;
+    }
+
+    var formData = new FormData($("#doc_form")[0]);
         $.ajax({
             url: "../../controller/documento.php?op=guardar_doc",
             type: "POST",
             data: formData,
             contentType: false,
             processData: false,
-            success: function(datos){                  
+            success: function(datos){
+                if (String(datos).indexOf('Actualizado Correctamente') === -1) {
+                    swal("No se pudo guardar", String(datos).trim(), "error");
+                    return;
+                }
                 swal({
-                    title: "Correcto!", 
-                    text: "Documento Registrado Correctamente", 
+                    title: "Correcto!",
+                    text: "Documento Registrado Correctamente",
                     type: "success"
                 }, function(){
-                    window.location.href = 'index.php'; 
+                    window.location.href = 'index.php';
                 });
                 console.log(datos);
-                
-            }        
 
-        });   
-    
+            }
+
+        });
+
 });
 
 
@@ -276,6 +291,7 @@ function listardetalle(tipo, consecutivo){
 
       document.getElementById("agregar").style.display = "inline-block";
       document.getElementById("btnexcel").style.display = "inline-block";
+      document.getElementById("btneliminarsel").style.display = "inline-block";
 
       $('#notas').val(data.notas || '');
 
@@ -285,6 +301,7 @@ function listardetalle(tipo, consecutivo){
         document.getElementById("agregar").style.display = "none";
         document.getElementById("btnexcel").style.display = "none";
         document.getElementById("btnguardar").style.display = "none";
+        document.getElementById("btneliminarsel").style.display = "none";
         $('#notas').prop('readonly', true);
       } else {
         document.getElementById("avisoConsulta").style.display = "none";
@@ -298,30 +315,31 @@ function listardetalle(tipo, consecutivo){
         
     tabla=$('#tb-doc').dataTable({
         "aProcessing": true,
-        "aServerSide": true,
-        "paging": false,
+        "aServerSide": false,
+        "paging": true,
         "ordering": false,
         dom: 'Bfrtip',
         "searching": false,
-        lengthChange: false,
+        lengthChange: true,
         colReorder: false,
-        buttons: [		          
-                
+        buttons: [
+
                 ],
         "ajax":{
             url: '../../controller/documento.php?op=listar_detalle',
             type : "post",
-            dataType : "json",	
+            dataType : "json",
             data:{ tipo : tipo, consecutivo : consecutivo },
+            dataSrc: "aaData",
             error: function(consecutivo){
-                console.log(consecutivo.responseText);	
+                console.log(consecutivo.responseText);
             }
-            
+
         },
         "bDestroy": true,
         "responsive": true,
         "bInfo":true,
-        "iDisplayLength": 70,
+        "iDisplayLength": 10,
         "autoWidth": false,
         "language": {
             "sProcessing":     "Procesando...",
@@ -354,7 +372,14 @@ function listardetalle(tipo, consecutivo){
 
 
 
-function eliminar(tipo, consecutivo, producto){
+$(document).on('click', '#tb-doc .btn-eliminar', function() {
+    if ($(this).is(':disabled')) return;
+
+    const seq = $(this).data('seq');
+    const producto = $(this).data('producto');
+    const tipo = getUrlParameter('tipo');
+    const consecutivo = getUrlParameter('consecutivo');
+
     swal({
         title: "Documento",
         text: "Esta seguro de Eliminar el registro?",
@@ -366,22 +391,129 @@ function eliminar(tipo, consecutivo, producto){
         closeOnConfirm: false
     },
     function(isConfirm) {
-        if (isConfirm) {
-            $.post("../../controller/documento.php?op=eliminar", {tipo : tipo, consecutivo : consecutivo, producto : producto}, function (data) {
-                console.log(data);
-            }); 
+        if (!isConfirm) return;
 
+        $.post("../../controller/documento.php?op=eliminar", { tipo: tipo, consecutivo: consecutivo, producto: producto, seq: seq }, function(data) {
+            if (String(data).indexOf('success') === -1) {
+                swal({
+                    title: "No se pudo eliminar",
+                    text: "El documento ya está guardado o anulado y no se puede modificar.",
+                    type: "error",
+                    confirmButtonClass: "btn-danger"
+                }, function() {
+                    $('#tb-doc').DataTable().ajax.reload();
+                });
+                return;
+            }
+            delete seleccionLineas[String(seq)];
             swal({
                 title: "Documento!",
                 text: "Registro Eliminado.",
                 type: "success",
                 confirmButtonClass: "btn-success"
+            }, function() {
+                $('#tb-doc').DataTable().ajax.reload();
             });
-            
-            listardetalle(tipo, consecutivo);
-            $('#tb-doc').DataTable().ajax.reload();
-            
+        });
+    });
+});
+
+// Reaplica el estado guardado en seleccionLineas a los checkboxes de la página
+// actualmente visible (se llama en cada draw del DataTable: carga inicial, cambio
+// de página, búsqueda, o recarga por ajax).
+function sincronizarCheckboxesPagina() {
+    $('#tb-doc tbody input.chk-seleccionar').each(function() {
+        var seq = String($(this).data('seq'));
+        $(this).prop('checked', Object.prototype.hasOwnProperty.call(seleccionLineas, seq));
+    });
+}
+
+$('#tb-doc').on('draw.dt', function() {
+    sincronizarCheckboxesPagina();
+});
+
+$(document).on('change', '#tb-doc tbody input.chk-seleccionar', function() {
+    var seq = String($(this).data('seq'));
+    var producto = $(this).data('producto');
+    if ($(this).is(':checked')) {
+        seleccionLineas[seq] = producto;
+    } else {
+        delete seleccionLineas[seq];
+    }
+});
+
+$(document).on('click', '#marcarTodo', function(e) {
+    e.preventDefault();
+    // Recorre TODAS las filas del documento (todas las páginas), no solo la visible.
+    // Las filas bloqueadas (documento ya guardado/anulado) traen '-' en vez del checkbox
+    // en esta columna, así que se filtran antes de intentar leer data-seq.
+    $('#tb-doc').DataTable().rows().data().each(function(row) {
+        if (typeof row[5] !== 'string' || row[5].indexOf('<input') !== 0) return;
+        var $chk = $(row[5]);
+        var seq = $chk.data('seq');
+        if (seq !== undefined) {
+            seleccionLineas[String(seq)] = $chk.data('producto');
         }
+    });
+    sincronizarCheckboxesPagina();
+});
+
+$(document).on('click', '#desmarcarTodo', function(e) {
+    e.preventDefault();
+    seleccionLineas = {};
+    sincronizarCheckboxesPagina();
+});
+
+function eliminarSeleccionados() {
+    const tipo = getUrlParameter('tipo');
+    const consecutivo = getUrlParameter('consecutivo');
+
+    const seleccionados = Object.keys(seleccionLineas).map(function(seq) {
+        return { seq: seq, producto: seleccionLineas[seq] };
+    });
+
+    if (seleccionados.length === 0) {
+        swal("Advertencia!", "Debe seleccionar al menos un producto para eliminar", "warning");
+        return;
+    }
+
+    swal({
+        title: "¿Eliminar productos seleccionados?",
+        text: "Se eliminarán " + seleccionados.length + " producto(s). Esta acción no se puede deshacer.",
+        type: "warning",
+        showCancelButton: true,
+        confirmButtonClass: "btn-danger",
+        confirmButtonText: "Sí, eliminar",
+        cancelButtonText: "Cancelar",
+        closeOnConfirm: false
+    }, function(isConfirm) {
+        if (!isConfirm) return;
+
+        const seqs = seleccionados.map(function(p) { return p.seq; }).join(',');
+        const productos = seleccionados.map(function(p) { return p.producto; }).join(',');
+
+        $.post("../../controller/documento.php?op=eliminar_masivo", {
+            tipo: tipo,
+            consecutivo: consecutivo,
+            seqs: seqs,
+            productos: productos
+        }, function(data) {
+            if (String(data).trim() !== 'success') {
+                swal("No se pudo eliminar", "El documento ya está guardado o anulado, o hubo un error al eliminar. Respuesta: " + data, "error");
+                return;
+            }
+            seleccionLineas = {};
+            swal({
+                title: "¡Eliminados!",
+                text: seleccionados.length + " producto(s) eliminado(s) correctamente",
+                type: "success",
+                confirmButtonClass: "btn-success"
+            }, function() {
+                $('#tb-doc').DataTable().ajax.reload();
+            });
+        }).fail(function() {
+            swal("Error", "Error de conexión. No se pudieron eliminar los productos.", "error");
+        });
     });
 }
 
@@ -417,6 +549,11 @@ $('#modalexcel').on('hidden.bs.modal', function() {
     resetModalExcel();
 });
 
+function formatearCantidadExcel(cantidad) {
+    const n = parseFloat(cantidad);
+    return isNaN(n) ? cantidad : n.toFixed(3);
+}
+
 function pintarResultadosExcel(resultados) {
     const tbody = document.getElementById('tbExcelBody');
     tbody.innerHTML = '';
@@ -426,7 +563,7 @@ function pintarResultadosExcel(resultados) {
             : '<span class="badge badge-danger">Error</span>';
         const tr = document.createElement('tr');
         tr.className = r.status === 'ok' ? 'table-success' : 'table-danger';
-        tr.innerHTML = `<td>${r.fila}</td><td>${r.idProducto}</td><td>${r.cantidad}</td><td>${r.lote || '-'}</td><td>${statusBadge}</td><td>${r.mensaje}</td>`;
+        tr.innerHTML = `<td>${r.fila}</td><td>${r.idProducto}</td><td>${formatearCantidadExcel(r.cantidad)}</td><td>${r.lote || '-'}</td><td>${statusBadge}</td><td>${r.mensaje}</td>`;
         tbody.appendChild(tr);
     });
     document.getElementById('excelResultados').style.display = 'block';

@@ -1,5 +1,7 @@
 <?php
     require_once("../config/conexionserver.php");
+    require_once("../config/session_guard.php");
+    verificar_sesion_activa();
     require_once("../models/Documento.php");
     $documento = new Documento();
 
@@ -42,12 +44,12 @@
                 $sub_array[] = $row["Producto"];
                 $sub_array[] = $row["Unidad"];
                 $sub_array[] = round($row["Cantidad_Facturada"],3);
-                /*$sub_array[] = number_format($row["Valor_Unitario"]);
-                $sub_array[] = $row["Numero_Lote"];*/
                 if ($row["exportado"] === 'S' || ($row["anulado"] ?? 'N') === 'S') {
-                    $sub_array[] = '<span class="text-muted">-</span>';
+                    $sub_array[] = '<button type="button" class="btn btn-inline btn-danger btn-sm btn-eliminar" title="El documento ya está guardado, no se puede eliminar" disabled><i class="fa fa-trash"></i></button>';
+                    $sub_array[] = '-';
                 } else {
-                    $sub_array[] = '<button type="button" onClick="eliminar('.$_POST["tipo"].','.$_POST["consecutivo"].','.$row["IdProducto"].');"  id="'.$_POST["tipo"].','.$_POST["consecutivo"].','.$row["IdProducto"].'" class="btn btn-inline btn-danger btn-sm ladda-button"><i class="fa fa-trash"></i></button>';
+                    $sub_array[] = '<button type="button" class="btn btn-inline btn-danger btn-sm btn-eliminar" data-seq="'.$row["seq"].'" data-producto="'.$row["IdProducto"].'" title="Eliminar registro"><i class="fa fa-trash"></i></button>';
+                    $sub_array[] = '<input type="checkbox" class="chk-seleccionar" data-seq="'.$row["seq"].'" data-producto="'.$row["IdProducto"].'">';
                 }
                 $data[] = $sub_array;
             }
@@ -232,7 +234,8 @@
                 $_POST['fechaHasta'] ?? '',
                 $_POST['numDesde']   ?? '',
                 $_POST['numHasta']   ?? '',
-                $_POST['exportado']  ?? ''
+                $_POST['exportado']  ?? '',
+                $_POST['anulado']    ?? ''
             );
             $data= Array();
             foreach($datos as $row){
@@ -245,12 +248,16 @@
                 $sub_array[] = $row["direccion"];
                 $sub_array[] = $row["usuario"];
 
-                if(($row["anulado"] ?? 'N') == "S"){
-                    $sub_array[] = '<span class="label label-default">Anulado</span>';
-                } elseif($row["exportado"] == "S"){
+                if($row["exportado"] == "S"){
                     $sub_array[] = '<span class="label label-success">Sí</span>';
                 } else {
                     $sub_array[] = '<span class="label label-danger">No</span>';
+                }
+
+                if(($row["anulado"] ?? 'N') == "S"){
+                    $sub_array[] = '<span class="label label-danger">Sí</span>';
+                } else {
+                    $sub_array[] = '<span class="label label-default">No</span>';
                 }
 
                 $sub_array[] = '<a href="../Entradas/?tipo='.$row["tipo"].'&consecutivo='.$row["Numero_documento"].'"
@@ -286,7 +293,8 @@
                 $_POST['fechaHasta'] ?? '',
                 $_POST['numDesde']   ?? '',
                 $_POST['numHasta']   ?? '',
-                $_POST['exportado']  ?? ''
+                $_POST['exportado']  ?? '',
+                $_POST['anulado']    ?? ''
             );
             $data= Array();
             foreach($datos as $row){
@@ -299,12 +307,16 @@
                 $sub_array[] = $row["direccion"];
                 $sub_array[] = $row["usuario"];
 
-                if(($row["anulado"] ?? 'N') == "S"){
-                    $sub_array[] = '<span class="label label-default">Anulado</span>';
-                } elseif($row["exportado"] == "S"){
+                if($row["exportado"] == "S"){
                     $sub_array[] = '<span class="label label-success">Sí</span>';
                 } else {
                     $sub_array[] = '<span class="label label-danger">No</span>';
+                }
+
+                if(($row["anulado"] ?? 'N') == "S"){
+                    $sub_array[] = '<span class="label label-danger">Sí</span>';
+                } else {
+                    $sub_array[] = '<span class="label label-default">No</span>';
                 }
 
                 $sub_array[] = '<a href="../NuevoDoc/index.php?tipo='.$row["tipo"].'&consecutivo='.$row["Numero_documento"].'"
@@ -340,7 +352,8 @@
                 $_POST['fechaHasta'] ?? '',
                 $_POST['numDesde']   ?? '',
                 $_POST['numHasta']   ?? '',
-                $_POST['exportado']  ?? ''
+                $_POST['exportado']  ?? '',
+                $_POST['anulado']    ?? ''
             );
             $data= Array();
             foreach($datos as $row){
@@ -353,12 +366,16 @@
                 $sub_array[] = $row["direccion"];
                 $sub_array[] = $row["usuario"];
 
-                if(($row["anulado"] ?? 'N') == "S"){
-                    $sub_array[] = '<span class="label label-default">Anulado</span>';
-                } elseif($row["exportado"] == "S"){
+                if($row["exportado"] == "S"){
                     $sub_array[] = '<span class="label label-success">Sí</span>';
                 } else {
                     $sub_array[] = '<span class="label label-danger">No</span>';
+                }
+
+                if(($row["anulado"] ?? 'N') == "S"){
+                    $sub_array[] = '<span class="label label-danger">Sí</span>';
+                } else {
+                    $sub_array[] = '<span class="label label-default">No</span>';
                 }
 
                 $sub_array[] = '<a href="../Pedidos/index.php?tipo='.$row["tipo"].'&consecutivo='.$row["Numero_documento"].'"
@@ -458,7 +475,17 @@
         case "listar_detalle_entrada":
             $datos = $documento->listar_docdetalle_x_id($_POST["tipo"], $_POST["consecutivo"]);
             $data = Array();
-            
+
+            require_once("../models/mdlPermisos.php");
+            $permisosListaEntrada = new Permisos();
+            $permiteActualizarProdEntrada = $permisosListaEntrada->tiene_permiso_especial($_SESSION["Id_Usuario"], 'actualizar_producto_entrada');
+            $btnActualizarProd = $permiteActualizarProdEntrada
+                ? '<button type="button" class="btn btn-secondary btn-sm btn-action btn-actualizar-producto" title="Actualizar %IVA y Valor desde el producto"><i class="fa fa-refresh"></i></button>'
+                : '';
+            $btnActualizarProdDisabled = $permiteActualizarProdEntrada
+                ? '<button type="button" class="btn btn-secondary btn-sm btn-action btn-actualizar-producto" title="Actualizar %IVA y Valor desde el producto" disabled><i class="fa fa-refresh"></i></button>'
+                : '';
+
             foreach($datos as $row) {
                 $sub_array = array();
                 $sub_array[] = $row["seq"];
@@ -486,6 +513,7 @@
                             <button type="button" class="btn btn-warning btn-sm btn-action btn-eliminar" title="Eliminar registro">
                                 <i class="fa fa-trash"></i>
                             </button>
+                            ' . $btnActualizarProd . '
                         </div>
                     ';
                     $sub_array[] = '<input type="checkbox" id="' . $row["IdProducto"] . '" name="id[]" value="' . $row["IdProducto"] . '">';
@@ -501,6 +529,7 @@
                             <button type="button" class="btn btn-warning btn-sm btn-action btn-eliminar" title="Eliminar registro" disabled>
                                 <i class="fa fa-trash"></i>
                             </button>
+                            ' . $btnActualizarProdDisabled . '
                         </div>
                     ';
                     $sub_array[] = '-';
@@ -701,6 +730,21 @@
         
         break;
 
+        case "actualizar_producto_linea":
+            require_once("../models/mdlPermisos.php");
+            $permisosActualizarProd = new Permisos();
+            if (!$permisosActualizarProd->tiene_permiso_especial($_SESSION["Id_Usuario"], 'actualizar_producto_entrada')) {
+                echo json_encode(["status" => "error", "message" => "No tiene permiso para actualizar el producto de esta línea."]);
+                break;
+            }
+            if (!isset($_POST["tipo"]) || !isset($_POST["consecutivo"]) ||
+                !isset($_POST["producto"]) || !isset($_POST["seq"])) {
+                echo json_encode(["status" => "error", "message" => "Faltan parámetros requeridos"]);
+                break;
+            }
+            echo $documento->actualizar_producto_linea($_POST["tipo"], $_POST["consecutivo"], $_POST["producto"], $_POST["seq"]);
+        break;
+
         case "combo_transportador":
             echo $documento->combo_transportador();
         break;
@@ -712,6 +756,34 @@
         case "reiniciar_doc_desde_pedido":
         case "reiniciar_doc_entrada":
             echo $documento->reiniciar_doc_entrada($_POST["tipo"], $_POST["numdoc"]);
+        break;
+
+        // Módulo Gestión de Documentos: requiere el permiso de módulo 'gestion_documentos'
+        // ademas de la sesión activa (ya validada arriba).
+        case "buscar_documento_gestion":
+        case "desmarcar_documento":
+        case "anular_documento":
+            require_once("../models/mdlPermisos.php");
+            $permisosGestion = new Permisos();
+            if (!$permisosGestion->tiene_permiso_especial($_SESSION["Id_Usuario"], 'gestion_documentos')) {
+                echo json_encode(["status" => "error", "message" => "No tiene permiso para acceder a este módulo."]);
+                break;
+            }
+
+            $tipoGestion   = trim($_POST["tipo"] ?? '');
+            $numeroGestion = trim($_POST["numero"] ?? '');
+            if ($tipoGestion === '' || $numeroGestion === '') {
+                echo json_encode(["status" => "error", "message" => "Debe indicar tipo y número de documento."]);
+                break;
+            }
+
+            if ($_GET["op"] === "buscar_documento_gestion") {
+                echo $documento->buscar_documento_gestion($tipoGestion, $numeroGestion);
+            } elseif ($_GET["op"] === "desmarcar_documento") {
+                echo $documento->desmarcar_documento($tipoGestion, $numeroGestion);
+            } else {
+                echo $documento->anular_documento($tipoGestion, $numeroGestion);
+            }
         break;
 
     }

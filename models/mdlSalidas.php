@@ -4,7 +4,7 @@
       // Lista documentos de Salida/Consumo visibles para el usuario según los tipos de documento
       // que tiene permiso de ver (no según quién los creó), acotado opcionalmente por
       // rango de fecha, rango de número de documento y estado de exportado.
-      public function listar_salidas_filtro($tipos_permitidos, $tipo, $fechaDesde, $fechaHasta, $numDesde, $numHasta, $exportado = ''){
+      public function listar_salidas_filtro($tipos_permitidos, $tipo, $fechaDesde, $fechaHasta, $numDesde, $numHasta, $exportado = '', $anulado = ''){
         $cn = new Conectarserver;
         $resultado = array();
 
@@ -40,6 +40,10 @@
         if ($exportado === 'S' || $exportado === 'N') {
             $where .= " AND d.exportado = ?";
             $params[] = $exportado;
+        }
+        if ($anulado === 'S' || $anulado === 'N') {
+            $where .= " AND d.anulado = ?";
+            $params[] = $anulado;
         }
 
         $sql = "SELECT d.Fecha_Hora_Factura, d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,

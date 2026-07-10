@@ -62,7 +62,8 @@ const CONFIG = {
             mostrarXproducto: "documento.php?op=mostrarXproducto",
             duplicar_linea: "documento.php?op=duplicar_linea",
             eliminar: "documento.php?op=eliminar",
-            eliminar_masivo: "documento.php?op=eliminar_masivo"
+            eliminar_masivo: "documento.php?op=eliminar_masivo",
+            actualizar_producto_linea: "documento.php?op=actualizar_producto_linea"
         }
     }
 };
@@ -90,7 +91,11 @@ $(document).ready(function() {
         });
     }
     window.tiposRestringidos = tiposRestringidos;
-    
+
+    if (window.permiteLoteManual) {
+        $("#chkLoteManualWrap").show();
+    }
+
     const tipo = getUrlParameter('tipo');
     const consecutivo = getUrlParameter('consecutivo');
     if(tipo && consecutivo){
@@ -966,10 +971,28 @@ function ejecutarCreacionOSDoc(formData) {
     });
 }
 
+$(document).on("change", "#chkLoteManual", function() {
+    const manual = $(this).is(':checked');
+    $('#lote1').toggle(!manual).prop('disabled', manual);
+    $('#lote1_manual').toggle(manual).prop('disabled', !manual);
+    if (manual) {
+        $('#lote1_manual').val('').focus();
+    } else {
+        $('#lote1').val('');
+    }
+});
+
+$('#lot').on('hidden.bs.modal', function() {
+    $('#chkLoteManual').prop('checked', false);
+    $('#lote1').show().prop('disabled', false).val('');
+    $('#lote1_manual').hide().prop('disabled', true).val('');
+});
+
 function guardarLote() {
     const tipo        = getUrlParameter('tipo');
     const consecutivo = getUrlParameter('consecutivo');
-    const lote        = $('#lote1').val();
+    const loteManual  = window.permiteLoteManual && $('#chkLoteManual').is(':checked');
+    const lote        = loteManual ? $('#lote1_manual').val().trim() : $('#lote1').val();
 
     if (!lote) {
         swal("Advertencia!", "Debe ingresar un número de lote", "warning");
@@ -1647,7 +1670,8 @@ function manejarDobleClic(e) {
 function manejarAccionesTabla(e) {
     const btnEliminar = e.target.closest('.btn-eliminar');
     const btnDuplicar = e.target.closest('.btn-duplicar');
-    
+    const btnActualizarProducto = e.target.closest('.btn-actualizar-producto');
+
     if (btnEliminar) {
         e.preventDefault();
         const row = btnEliminar.closest('tr');
@@ -1655,7 +1679,7 @@ function manejarAccionesTabla(e) {
         const consecutivo = getUrlParameter('consecutivo');
         const seq = row.cells[0].textContent.trim();
         const producto = row.cells[1].textContent.trim();
-        
+
         console.log('🗑️ Eliminando producto:', producto);
         eliminar(tipo, consecutivo, producto, seq);
     } else if (btnDuplicar) {
@@ -1665,10 +1689,57 @@ function manejarAccionesTabla(e) {
         const consecutivo = getUrlParameter('consecutivo');
         const seq = row.cells[0].textContent.trim();
         const producto = row.cells[1].textContent.trim();
-        
+
         console.log('📋 Duplicando producto:', producto);
         duplicarLinea(tipo, consecutivo, producto, seq);
+    } else if (btnActualizarProducto && !btnActualizarProducto.disabled) {
+        e.preventDefault();
+        actualizarProductoLinea(btnActualizarProducto.closest('tr'));
     }
+}
+
+// Refresca %IVA y Valor de una línea tomando los datos actuales del producto en el
+// catálogo (en vez de dejar que el usuario los digite a mano). Útil cuando el producto
+// se corrige después (p. ej. le agregan IVA) y las líneas ya agregadas quedaron desactualizadas.
+function actualizarProductoLinea(row) {
+    const tipo = getUrlParameter('tipo');
+    const consecutivo = getUrlParameter('consecutivo');
+    const seq = row.cells[0].textContent.trim();
+    const producto = row.cells[1].textContent.trim();
+    const nombreProducto = row.cells[2].textContent.trim();
+
+    swal({
+        title: "¿Actualizar producto?",
+        text: "Se sobreescribirán el %IVA y el Valor de \"" + nombreProducto + "\" con los datos actuales del producto en el catálogo.",
+        type: "warning",
+        showCancelButton: true,
+        confirmButtonClass: "btn-primary",
+        confirmButtonText: "Sí, actualizar",
+        cancelButtonText: "Cancelar",
+        closeOnConfirm: false
+    }, function(isConfirm) {
+        if (!isConfirm) return;
+
+        $.post(CONFIG.baseUrl + CONFIG.endpoints.documento.actualizar_producto_linea, {
+            tipo: tipo, consecutivo: consecutivo, producto: producto, seq: seq
+        }, function(response) {
+            if (response.status !== 'success') {
+                swal("No se pudo actualizar", response.message || "Error desconocido", "error");
+                return;
+            }
+            row.cells[6].textContent = response.porcentajeImpuesto;
+            row.cells[7].textContent = response.valorUnitario;
+            swal({
+                title: "¡Actualizado!",
+                text: "El %IVA y el Valor se actualizaron desde el producto.",
+                type: "success",
+                confirmButtonClass: "btn-success"
+            });
+            actualizarTodosLosTotales(tipo, consecutivo);
+        }, 'json').fail(function() {
+            swal("Error", "Error de conexión. No se pudo actualizar el producto.", "error");
+        });
+    });
 }
 
 function iniciarEdicionNativa(cell) {
@@ -2800,6 +2871,11 @@ function pintarResumenExcelSalidas(ok, warning, error) {
         </div>`;
 }
 
+function formatearCantidadExcel(cantidad) {
+    const n = parseFloat(cantidad);
+    return isNaN(n) ? cantidad : n.toFixed(3);
+}
+
 function pintarResultadosExcelSalidas(resultados) {
     const tbody = document.getElementById('tbExcelBody');
     tbody.innerHTML = '';
@@ -2817,7 +2893,7 @@ function pintarResultadosExcelSalidas(resultados) {
         }
         const tr = document.createElement('tr');
         tr.className = rowClass;
-        tr.innerHTML = `<td>${r.fila}</td><td>${r.idProducto}</td><td>${r.cantidad}</td><td>${r.lote || '-'}</td><td>${statusBadge}</td><td>${r.mensaje}</td>`;
+        tr.innerHTML = `<td>${r.fila}</td><td>${r.idProducto}</td><td>${formatearCantidadExcel(r.cantidad)}</td><td>${r.lote || '-'}</td><td>${statusBadge}</td><td>${r.mensaje}</td>`;
         tbody.appendChild(tr);
     });
     document.getElementById('excelResultados').style.display = 'block';

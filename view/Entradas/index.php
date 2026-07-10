@@ -6,6 +6,8 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 require_once("../../models/mdlPermisos.php");
 $_permisos_entradas = new Permisos();
 $permiteEntradaFrigopork = $_permisos_entradas->tiene_permiso_especial($_SESSION["Id_Usuario"], 'entrada_frigopork_manual');
+$permiteLoteManualEntradas = $_permisos_entradas->tiene_permiso_especial($_SESSION["Id_Usuario"], 'lote_manual_entradas');
+$permiteActualizarProductoEntrada = $_permisos_entradas->tiene_permiso_especial($_SESSION["Id_Usuario"], 'actualizar_producto_entrada');
 ?>
 <!DOCTYPE html>
 <html>
@@ -14,8 +16,10 @@ $permiteEntradaFrigopork = $_permisos_entradas->tiene_permiso_especial($_SESSION
 
 <script type="text/javascript">
 	window.currentUser = '<?= strtoupper(trim($_SESSION["Id_Usuario"])) ?>';
-	window.puedeEditarValor = ['LAUREN', 'SA'].indexOf(window.currentUser) !== -1;
+	window.puedeEditarValor = ['JGOMEZ', 'LAUREN', 'SA'].indexOf(window.currentUser) !== -1;
 	window.permiteEntradaFrigopork = <?= $permiteEntradaFrigopork ? 'true' : 'false' ?>;
+	window.permiteLoteManualEntradas = <?= $permiteLoteManualEntradas ? 'true' : 'false' ?>;
+	window.permiteActualizarProductoEntrada = <?= $permiteActualizarProductoEntrada ? 'true' : 'false' ?>;
 </script>
 
 <script type="text/javascript">
@@ -172,7 +176,9 @@ $permiteEntradaFrigopork = $_permisos_entradas->tiene_permiso_especial($_SESSION
 
 				<div class="row">
 
-					<div class="col-lg-3">
+					<!-- Temporalmente oculto: la entrada ahora solo funciona ingresando el numero de la orden de compra.
+					     Se deja el select en el DOM (oculto) para no romper la logica JS que depende de #docref (showInp, crearDocumento, flujo Frigopork). -->
+					<div class="col-lg-3" style="display:none">
 						<fieldset class="form-group">
 							<label class="form-label semibold" id="txt_docref">¿Tiene documento referencia?</label>
 							<select id="docref" name="docref" class="form-control" onchange="showInp()" required>
@@ -582,12 +588,20 @@ $permiteEntradaFrigopork = $_permisos_entradas->tiene_permiso_especial($_SESSION
 										
 										<div class="modal-body">
 											<div class="row">
-												
+
+												<div class="col-lg-12" id="chkLoteManualWrap" style="display:none; margin-bottom:10px">
+													<div class="checkbox">
+														<input type="checkbox" id="chkLoteManual">
+														<label for="chkLoteManual">Escribir lote manualmente</label>
+													</div>
+												</div>
+
 												<div class="col-lg-12">
 													<label>Lote</label>
-													<input type="text" class="form-control" name="lote1" id="lote1">							
+													<select class="form-control" name="lote1" id="lote1"></select>
+													<input type="text" class="form-control" name="lote1" id="lote1_manual" placeholder="Ingrese el número de lote" style="display:none" disabled>
 												</div>
-												
+
 											</div>
 										</div>
 										<div class="modal-footer">

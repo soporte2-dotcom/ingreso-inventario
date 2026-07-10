@@ -66,7 +66,21 @@
       "Bash(/c/xampp/mysql/bin/mysql.exe -uroot -h localhost permisos_tecno -e ' *)",
       "Read(//c/xampp/tmp/**)",
       "PowerShell(icacls \"C:\\\\xampp\\\\tmp\")",
-      "Bash(php.exe -l \"c:\\\\xampp\\\\htdocs\\\\ingresoinventario\\\\models\\\\mdlSalidas.php\")"
+      "Bash(php.exe -l \"c:\\\\xampp\\\\htdocs\\\\ingresoinventario\\\\models\\\\mdlSalidas.php\")",
+      "Bash(php -l \"view/Entradas/index.php\")",
+      "Bash(php -l \"view/Salidas/index.php\")",
+      "Bash(php -l \"controller/permisos.php\")",
+      "Bash(node --check \"view/Entradas/nuevodoc.js\")",
+      "Bash(node --check \"view/Salidas/salidas.js\")",
+      "Bash(php -r ' *)",
+      "Bash(php -l \"models/Documento.php\")",
+      "Bash(php -l \"controller/documento.php\")",
+      "Bash(php -l \"view/GestionDocumentos/index.php\")",
+      "Bash(node --check \"view/GestionDocumentos/gestion.js\")",
+      "Bash(php -l \"view/NuevoDoc/index.php\")",
+      "Bash(node --check \"view/NuevoDoc/nuevodoc.js\")",
+      "Bash(php -l \"view/Pedidos/index.php\")",
+      "Bash(node --check \"view/Pedidos/pedidos.js\")"
     ],
     "additionalDirectories": [
       "\\tmp"

@@ -1,5 +1,7 @@
 <?php
     require_once("../config/conexionserver.php");
+    require_once("../config/session_guard.php");
+    verificar_sesion_activa();
     require_once("../models/mdlSalidas.php");
     $salidas = new Salidas();
 
@@ -172,7 +174,8 @@
                 $_POST['fechaHasta'] ?? '',
                 $_POST['numDesde']   ?? '',
                 $_POST['numHasta']   ?? '',
-                $_POST['exportado']  ?? ''
+                $_POST['exportado']  ?? '',
+                $_POST['anulado']    ?? ''
             );
             $data= Array();
             foreach($datos as $row){
@@ -185,12 +188,16 @@
                 $sub_array[] = $row["direccion"];
                 $sub_array[] = $row["usuario"];
 
-                if(($row["anulado"] ?? 'N') == "S"){
-                    $sub_array[] = '<span class="label label-default">Anulado</span>';
-                } elseif($row["exportado"] == "S"){
+                if($row["exportado"] == "S"){
                     $sub_array[] = '<span class="label label-success">Sí</span>';
                 } else {
                     $sub_array[] = '<span class="label label-danger">No</span>';
+                }
+
+                if(($row["anulado"] ?? 'N') == "S"){
+                    $sub_array[] = '<span class="label label-danger">Sí</span>';
+                } else {
+                    $sub_array[] = '<span class="label label-default">No</span>';
                 }
 
                 $sub_array[] = '<a href="../Salidas/?tipo='.$row["tipo"].'&consecutivo='.$row["Numero_documento"].'" 
