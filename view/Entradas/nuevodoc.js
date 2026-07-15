@@ -1534,7 +1534,7 @@ function imprimirEtiqueta() {
         '.etq-cantidad { font-size: 8px; color: #333; text-align: center; width: 100%; }' +
         '.etq-barcode-wrap { width: 100%; display: flex; flex-direction: column; align-items: center; padding: 0 2mm; box-sizing: border-box; }' +
         '#etq-barcode { display: block; max-width: 100%; height: auto; }' +
-        '.etq-barcode-val { font-size: 9.5px; font-weight: bold; text-align: center; letter-spacing: 0.5px; color: #000; width: 100%; margin-top: 0; line-height: 1; }' +
+        '.etq-barcode-val { font-size: 8.5px; font-weight: bold; text-align: center; letter-spacing: 0.5px; color: #000; width: 100%; margin-top: 0; line-height: 1; }' +
         '@media print { html, body { margin: 0; } }' +
         '</style></head><body>' +
         '<div class="etiqueta">' +
@@ -1547,9 +1547,9 @@ function imprimirEtiqueta() {
         '<script>' +
         'window.onload = function() {' +
         '    JsBarcode("#etq-barcode", "' + valorBarcode + '", {' +
-        '        format: "CODE39",' +
-        '        width: 1.1,' +
-        '        height: 48,' +
+        '        format: "CODE128",' +
+        '        width: 1.2,' +
+        '        height: 28,' +
         '        displayValue: false,' +
         '        margin: 0' +
         '    });' +

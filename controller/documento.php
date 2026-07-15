@@ -400,6 +400,7 @@
                 {
                     $output["tipo"] = $row["tipo"];
                     $output["TipoDoctos"] = $row["TipoDoctos"];
+                    $output["Prefijo"] = trim($row["Prefijo"] ?? '');
                     $output["Numero_documento"] = $row["Numero_documento"];
                     $output["Numero_Docto_Base"] = $row["Numero_Docto_Base"];
                     $output["Tipo_Docto_Base_2"] = $row["Tipo_Docto_Base_2"];

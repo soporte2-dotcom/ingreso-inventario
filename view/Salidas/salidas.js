@@ -1486,6 +1486,7 @@ function listardetalle(tipo, consecutivo){
         // Llenar campos del formulario
         $('#tipo').val(data.tipo);
         $('#tipodoc').val(data.TipoDoctos);
+        $('#prefijo_doc').val(data.Prefijo || '');
         $('#numdoc').val(data.Numero_documento);
         $('#pedido1').val(data.Numero_Docto_Base_2);
         $('#traslfact1').val(data.Numero_Docto_Base);        
@@ -2597,6 +2598,8 @@ function imprimirDocumento() {
 
     var tipodoc    = $('#tipodoc').val() || '';
     var numdoc     = $('#numdoc').val() || '';
+    var prefijoDoc = ($('#prefijo_doc').val() || '').trim();
+    var numdocConPrefijo = prefijoDoc ? (prefijoDoc + '-' + numdoc) : numdoc;
     var fecha1     = $('#fecha1').val() || '';
     var pedido1    = $('#pedido1').val() || '';
     var traslfact1 = $('#traslfact1').val() || '';
@@ -2670,7 +2673,7 @@ function imprimirDocumento() {
 
     var htmlContent = '<!DOCTYPE html><html><head>' +
         '<meta charset="UTF-8">' +
-        '<title>Movimiento de Inventario # ' + numdoc + '</title>' +
+        '<title>Movimiento de Inventario # ' + numdocConPrefijo + '</title>' +
         '<link rel="preconnect" href="https://fonts.googleapis.com">' +
         '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
         '<link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+39&display=swap" rel="stylesheet">' +
@@ -2681,8 +2684,8 @@ function imprimirDocumento() {
         '.info-doc h2{margin:0 0 4px;font-size:13px;text-transform:uppercase;font-weight:bold;letter-spacing:1px}' +
         '.info-doc p{margin:1px 0;font-size:10px}' +
         '.barcode{text-align:center}' +
-        '.barcode-font{font-family:"Libre Barcode 39",cursive;font-size:42px;line-height:1;display:block}' +
-        '.barcode-num{font-size:11px;font-weight:bold;letter-spacing:2px;display:block;margin-top:1px}' +
+        '.barcode-font{font-family:"Libre Barcode 39",cursive;font-size:58px;line-height:1;display:block}' +
+        '.barcode-num{font-size:13px;font-weight:bold;letter-spacing:2px;display:block;margin-top:1px}' +
         '.seccion{border:1px solid #bbb;border-radius:3px;padding:8px;margin-bottom:8px}' +
         '.grid2col{display:grid;grid-template-columns:1fr 1fr;gap:12px}' +
         '.campo{margin-bottom:4px}' +
@@ -2705,7 +2708,7 @@ function imprimirDocumento() {
         '.firma-bloque-titulo{font-size:11px;font-weight:bold;text-transform:uppercase;margin:0 0 40px}' +
         '.firma-linea{border-top:1px solid #333;width:80%;margin:0 auto 6px}' +
         '.firma-etiqueta{font-size:9px;color:#555;margin:3px 0 0}' +
-        '@media print{body{margin:6px}.barcode-font{font-size:36px}}' +
+        '@media print{body{margin:6px}.barcode-font{font-size:50px}}' +
         '</style></head><body>' +
 
         (($('#dotacion_epp').prop('checked')) ?
@@ -2719,11 +2722,11 @@ function imprimirDocumento() {
         ($('#dotacion_epp').prop('checked')
             ? '<h2>Entrega Dotación y EPP</h2>'
             : '<h2>Movimiento de Inventario</h2>') +
-        '<p><b>NRO:</b> ' + numdoc + '</p>' +
+        '<p><b>NRO:</b> ' + numdocConPrefijo + '</p>' +
         '<p><b>Fecha Documento:</b> ' + fecha1 + '</p>' +
         '<p><b>Tipo Movimiento:</b> ' + tipodoc + '</p>' +
         '</div>' +
-        '<div class="barcode"><span class="barcode-font">' + numdoc + '</span><span class="barcode-num"># ' + numdoc + '</span></div>' +
+        '<div class="barcode"><span class="barcode-font">' + numdocConPrefijo + '</span><span class="barcode-num"># ' + numdocConPrefijo + '</span></div>' +
         '</div>' +
 
         '<div class="seccion">' +

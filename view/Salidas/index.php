@@ -201,6 +201,7 @@ $permiteLoteManual        = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 					<input type="hidden" id="nombre_bodega" />
 					<input type="hidden" id="nombre_vendedor" />
 					<input type="hidden" id="ciudad_doc" />
+					<input type="hidden" id="prefijo_doc" />
 					<input type="hidden" name="tipoDocRef" id="tipoDocRef" value="" />
 
 					<div class="col-lg-4">

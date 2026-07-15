@@ -1024,7 +1024,7 @@
         public function listar_doc_x_id($tipo, $consecutivo){
             $cn = new Conectarserver;
 
-            $sql="SELECT d.tipo, tt.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
+            $sql="SELECT d.tipo, tt.TipoDoctos, tt.Prefijo, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
                 d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, LTRIM(RTRIM(td.ciudad)) AS ciudad,
                 d.nit_Cedula_2, t.nombre AS nombre2, d.codigo_direccion_2, td2.direccion AS direccion2, d.notas, d.exportado, d.anulado, d.IdVendedor, d.Fecha_Hora_Factura,
                 d.IdTransportador, d.IdVehiculo, d.RespuestaCorrectaDian,
