@@ -2674,9 +2674,7 @@ function imprimirDocumento() {
     var htmlContent = '<!DOCTYPE html><html><head>' +
         '<meta charset="UTF-8">' +
         '<title>Movimiento de Inventario # ' + numdocConPrefijo + '</title>' +
-        '<link rel="preconnect" href="https://fonts.googleapis.com">' +
-        '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
-        '<link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+39&display=swap" rel="stylesheet">' +
+        '<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>' +
         '<style>' +
         'body{font-family:Arial,sans-serif;font-size:10px;margin:14px;color:#222}' +
         '.cabecera{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;border-bottom:2px solid #333;padding-bottom:8px;margin-bottom:10px}' +
@@ -2684,7 +2682,7 @@ function imprimirDocumento() {
         '.info-doc h2{margin:0 0 4px;font-size:13px;text-transform:uppercase;font-weight:bold;letter-spacing:1px}' +
         '.info-doc p{margin:1px 0;font-size:10px}' +
         '.barcode{text-align:center}' +
-        '.barcode-font{font-family:"Libre Barcode 39",cursive;font-size:58px;line-height:1;display:block}' +
+        '#doc-barcode{display:block;max-width:260px;height:auto}' +
         '.barcode-num{font-size:13px;font-weight:bold;letter-spacing:2px;display:block;margin-top:1px}' +
         '.seccion{border:1px solid #bbb;border-radius:3px;padding:8px;margin-bottom:8px}' +
         '.grid2col{display:grid;grid-template-columns:1fr 1fr;gap:12px}' +
@@ -2708,7 +2706,7 @@ function imprimirDocumento() {
         '.firma-bloque-titulo{font-size:11px;font-weight:bold;text-transform:uppercase;margin:0 0 40px}' +
         '.firma-linea{border-top:1px solid #333;width:80%;margin:0 auto 6px}' +
         '.firma-etiqueta{font-size:9px;color:#555;margin:3px 0 0}' +
-        '@media print{body{margin:6px}.barcode-font{font-size:50px}}' +
+        '@media print{body{margin:6px}}' +
         '</style></head><body>' +
 
         (($('#dotacion_epp').prop('checked')) ?
@@ -2726,7 +2724,7 @@ function imprimirDocumento() {
         '<p><b>Fecha Documento:</b> ' + fecha1 + '</p>' +
         '<p><b>Tipo Movimiento:</b> ' + tipodoc + '</p>' +
         '</div>' +
-        '<div class="barcode"><span class="barcode-font">' + numdocConPrefijo + '</span><span class="barcode-num"># ' + numdocConPrefijo + '</span></div>' +
+        '<div class="barcode"><svg id="doc-barcode"></svg><span class="barcode-num"># ' + numdocConPrefijo + '</span></div>' +
         '</div>' +
 
         '<div class="seccion">' +
@@ -2819,14 +2817,23 @@ function imprimirDocumento() {
         '</div>'
         : '') +
 
+        '<script>' +
+        'window.onload = function() {' +
+        '    JsBarcode("#doc-barcode", "' + numdocConPrefijo + '", {' +
+        '        format: "CODE39",' +
+        '        width: 2.2,' +
+        '        height: 55,' +
+        '        displayValue: false,' +
+        '        margin: 10' +
+        '    });' +
+        '    setTimeout(function() { window.print(); }, 500);' +
+        '};' +
+        '<\/script>' +
         '</body></html>';
 
     var newWindow = window.open('', '_blank');
     newWindow.document.write(htmlContent);
     newWindow.document.close();
-    setTimeout(function() {
-        newWindow.print();
-    }, 500);
 }
 
 init();
