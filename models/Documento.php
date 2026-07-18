@@ -1027,7 +1027,7 @@
             $sql="SELECT d.tipo, tt.TipoDoctos, tt.Prefijo, d.Numero_documento, d.Numero_Docto_Base, d.Tipo_Docto_Base_2, d.Numero_Docto_Base_2,
                 d.nit_Cedula, d.Nombre_Cliente, d.codigo_direccion, td.direccion, td.telefono_1, LTRIM(RTRIM(td.ciudad)) AS ciudad,
                 d.nit_Cedula_2, t.nombre AS nombre2, d.codigo_direccion_2, td2.direccion AS direccion2, d.notas, d.exportado, d.anulado, d.IdVendedor, d.Fecha_Hora_Factura,
-                d.IdTransportador, d.IdVehiculo, d.RespuestaCorrectaDian,
+                d.IdTransportador, d.IdVehiculo, d.RespuestaCorrectaDian, d.DescuentoOrdenVenta,
                 LTRIM(RTRIM(tb.Bodega)) AS NombreBodega, LTRIM(RTRIM(tv.Vendedor)) AS NombreVendedor
                 FROM Documentos d
                 INNER JOIN Terceros_Dir td  ON td.nit = d.nit_Cedula AND d.codigo_direccion = td.codigo_direccion
@@ -2688,9 +2688,9 @@
             return json_encode(['status' => 'success', 'message' => 'Documento desmarcado correctamente (Exportado = N)']);
         }
 
-        public function anular_documento($tipo, $numero) {
+        public function anular_documento($tipo, $numero, $motivo, $usuario) {
             $cn = new Conectarserver;
-            $sqlChk = "SELECT anulado FROM Documentos WHERE tipo = ? AND Numero_documento = ?";
+            $sqlChk = "SELECT anulado, notas FROM Documentos WHERE tipo = ? AND Numero_documento = ?";
             $stmtChk = sqlsrv_query($cn->getConecta(), $sqlChk, array($tipo, $numero));
             $row = $stmtChk ? sqlsrv_fetch_array($stmtChk, SQLSRV_FETCH_ASSOC) : null;
             if (!$row) {
@@ -2699,12 +2699,28 @@
             if (trim($row['anulado']) === 'S') {
                 return json_encode(['status' => 'error', 'message' => 'El documento ya está anulado']);
             }
-            $sql = "UPDATE Documentos SET anulado = 'S' WHERE tipo = ? AND Numero_documento = ?";
-            $stmt = sqlsrv_query($cn->getConecta(), $sql, array($tipo, $numero));
+
+            // Deja rastro de auditoría en las notas: lo que ya tenía el documento, el motivo
+            // digitado por el usuario, y quién/cuándo lo anuló.
+            // Sin esto, date() usa la zona horaria por defecto del servidor (no Bogotá),
+            // ya que este endpoint AJAX no pasa por una vista que la fije como las demás páginas.
+            date_default_timezone_set("America/Bogota");
+            $notaExistente = trim($row['notas'] ?? '');
+            $fechaAnulacion = date('Y-m-d H:i:s');
+            $partesNota = array();
+            if ($notaExistente !== '') $partesNota[] = $notaExistente;
+            $partesNota[] = trim($motivo);
+            $partesNota[] = 'ANULADO';
+            $partesNota[] = $fechaAnulacion;
+            $partesNota[] = $usuario;
+            $notaFinal = implode(' - ', $partesNota);
+
+            $sql = "UPDATE Documentos SET anulado = 'S', notas = ? WHERE tipo = ? AND Numero_documento = ?";
+            $stmt = sqlsrv_query($cn->getConecta(), $sql, array($notaFinal, $tipo, $numero));
             if ($stmt === false) {
                 return json_encode(['status' => 'error', 'message' => 'Error al anular el documento: ' . print_r(sqlsrv_errors(), true)]);
             }
-            return json_encode(['status' => 'success', 'message' => 'Documento anulado correctamente']);
+            return json_encode(['status' => 'success', 'message' => 'Documento anulado correctamente', 'notas' => $notaFinal]);
         }
 
     }

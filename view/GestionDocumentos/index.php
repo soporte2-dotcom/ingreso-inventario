@@ -107,7 +107,33 @@ if (!$permiteGestionDocumentos) {
 	</div>
 	<!-- Contenido -->
 
-	<script type="text/javascript" src="gestion.js?v=1"></script>
+	<!-- Modal Motivo de Anulación -->
+	<div class="modal fade" id="modalMotivoAnulacion" tabindex="-1" role="dialog" aria-labelledby="modalMotivoAnulacionTitle" aria-hidden="true" data-backdrop="static" data-keyboard="false">
+		<div class="modal-dialog" role="document">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title" id="modalMotivoAnulacionTitle"><i class="fa fa-ban"></i> Motivo de Anulación</h5>
+					<button type="button" class="close" data-dismiss="modal" aria-label="Close">
+						<span aria-hidden="true">&times;</span>
+					</button>
+				</div>
+				<div class="modal-body">
+					<p id="motivoAnulacionDocInfo" class="text-muted"></p>
+					<div class="form-group">
+						<label class="font-weight-bold">Motivo <span class="text-danger">*</span></label>
+						<textarea id="motivoAnulacion" class="form-control" rows="3" placeholder="Explique el motivo de la anulación..."></textarea>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+					<button type="button" id="btnConfirmarAnulacion" class="btn btn-danger">Anular Documento</button>
+				</div>
+			</div>
+		</div>
+	</div>
+	<!-- Fin modal Motivo de Anulación -->
+
+	<script type="text/javascript" src="gestion.js?v=<?php echo time(); ?>"></script>
 
 </body>
 

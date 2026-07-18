@@ -81,7 +81,9 @@
       "Bash(node --check \"view/NuevoDoc/nuevodoc.js\")",
       "Bash(php -l \"view/Pedidos/index.php\")",
       "Bash(node --check \"view/Pedidos/pedidos.js\")",
-      "Bash(awk 'NR==2590,NR==2830' \"view/Salidas/salidas.js\")"
+      "Bash(awk 'NR==2590,NR==2830' \"view/Salidas/salidas.js\")",
+      "Bash(php -l \"models/mdlSalidas.php\")",
+      "Bash(php -i)"
     ],
     "additionalDirectories": [
       "\\tmp"

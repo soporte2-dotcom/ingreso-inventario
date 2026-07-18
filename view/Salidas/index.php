@@ -352,6 +352,13 @@ $permiteLoteManual        = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 						</fieldset>
 					</div>
 
+					<div class="col-lg-2">
+						<fieldset class="form-group">
+							<label class="form-label semibold" style="display: none" id="txt_nroOcTercero">Orden N°</label>
+							<input type="text" style="display: none" id="nroOcTercero" name="nroOcTercero" class="form-control" readonly />
+						</fieldset>
+					</div>
+
 					<div class="col-lg-2" style="display: none" id="div_dotacion">
 						<fieldset class="form-group">
 							<label class="form-label semibold">&nbsp;</label>

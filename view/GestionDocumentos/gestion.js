@@ -100,29 +100,44 @@ $(document).on('click', '#btnDesmarcar', function() {
 $(document).on('click', '#btnAnular', function() {
     if (!documentoActual) return;
 
-    swal({
-        title: "¿Anular documento?",
-        text: `El documento ${documentoActual.tipoNombre} N° ${documentoActual.numero} quedará ANULADO. Esta acción es difícil de revertir desde este módulo.`,
-        type: "warning",
-        showCancelButton: true,
-        confirmButtonColor: "#d9534f",
-        confirmButtonText: "Sí, anular",
-        cancelButtonText: "Cancelar",
-        closeOnConfirm: false
-    }, function(confirmado) {
-        if (!confirmado) return;
+    $('#motivoAnulacion').val('');
+    $('#motivoAnulacionDocInfo').text(
+        `Documento: ${documentoActual.tipoNombre} N° ${documentoActual.numero}. Esta acción es difícil de revertir desde este módulo.`
+    );
+    $('#modalMotivoAnulacion').modal('show');
+});
 
-        $.post(CONFIG.baseUrl + CONFIG.endpoints.anular,
-            { tipo: documentoActual.tipo, numero: documentoActual.numero },
-            function(response) {
-                if (response.status === 'success') {
+$('#modalMotivoAnulacion').on('shown.bs.modal', function() {
+    $('#motivoAnulacion').focus();
+});
+
+$(document).on('click', '#btnConfirmarAnulacion', function() {
+    if (!documentoActual) return;
+
+    const motivo = $('#motivoAnulacion').val().trim();
+    if (!motivo) {
+        swal("Advertencia!", "Debe indicar el motivo de la anulación.", "warning");
+        return;
+    }
+
+    $.post(CONFIG.baseUrl + CONFIG.endpoints.anular,
+        { tipo: documentoActual.tipo, numero: documentoActual.numero, motivo: motivo },
+        function(response) {
+            if (response.status === 'success') {
+                // Espera a que la modal termine de cerrarse (transición CSS) antes de mostrar
+                // el swal de éxito, para evitar que los overlays de Bootstrap y SweetAlert
+                // choquen y dejen la pantalla bloqueada (mismo problema que ya vimos con swal
+                // encadenado sin closeOnConfirm:false).
+                $('#modalMotivoAnulacion').one('hidden.bs.modal', function() {
                     swal({ title: "Correcto!", text: response.message, type: "success" }, function() {
                         documentoActual.anulado = 'S';
+                        if (response.notas !== undefined) documentoActual.notas = response.notas;
                         pintarDocumento(documentoActual);
                     });
-                } else {
-                    swal({ title: "Error!", text: response.message, type: "error" });
-                }
-            }, 'json');
-    });
+                });
+                $('#modalMotivoAnulacion').modal('hide');
+            } else {
+                swal({ title: "Error!", text: response.message, type: "error" });
+            }
+        }, 'json');
 });

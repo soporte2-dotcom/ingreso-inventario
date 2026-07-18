@@ -1297,9 +1297,9 @@ function configurarInterfazParaDocumentoExistente(data) {
     document.getElementById("btncrear").style.display = "none";
 
     const elementosMostrar = [
-        "txt_tipodoc", "txt_numdoc", "txt_fecha1", "txt_pedido1",
+        "txt_tipodoc", "txt_numdoc", "txt_fecha1", "txt_pedido1", "txt_nroOcTercero",
         "txt_traslfact1", "txt_fecha_factura2",
-        "tipodoc", "numdoc", "fecha1", "pedido1", "traslfact1", "fecha_factura2",
+        "tipodoc", "numdoc", "fecha1", "pedido1", "nroOcTercero", "traslfact1", "fecha_factura2",
         "div_dotacion", "div_transportador", "div_vehiculo",
         "btnlot", "btnetapas", "btneliminarsel", "btnguardar", "btnprint"
     ];
@@ -1489,7 +1489,8 @@ function listardetalle(tipo, consecutivo){
         $('#prefijo_doc').val(data.Prefijo || '');
         $('#numdoc').val(data.Numero_documento);
         $('#pedido1').val(data.Numero_Docto_Base_2);
-        $('#traslfact1').val(data.Numero_Docto_Base);        
+        $('#nroOcTercero').val(data.NroOcTercero || '');
+        $('#traslfact1').val(data.Numero_Docto_Base);
         $('#nit1').val(data.nit_Cedula);
         $('#nombre1').val(data.Nombre_Cliente);
         $('#telefono1').val(data.telefono_1);
@@ -2602,6 +2603,7 @@ function imprimirDocumento() {
     var numdocConPrefijo = prefijoDoc ? (prefijoDoc + '-' + numdoc) : numdoc;
     var fecha1     = $('#fecha1').val() || '';
     var pedido1    = $('#pedido1').val() || '';
+    var nroOcTercero = $('#nroOcTercero').val() || '';
     var traslfact1 = $('#traslfact1').val() || '';
     var nit1       = $('#nit1').val() || '';
     var nombre1    = $('#nombre1').val() || '';
@@ -2615,6 +2617,10 @@ function imprimirDocumento() {
     var nombreBodega   = $('#nombre_bodega').val()  || '';
     var nombreVendedor = $('#nombre_vendedor').val() || '';
     var ciudadDoc      = $('#ciudad_doc').val()      || '';
+    var transportadorText = $('#idTransportador option:selected').text() || '';
+    var placaText          = $('#idVehiculo option:selected').text() || '';
+    if (transportadorText.indexOf('Seleccione') !== -1) transportadorText = '';
+    if (placaText.indexOf('Seleccione') !== -1) placaText = '';
 
     var totalCantidad = $('#totalCantidad').text().trim() || '0';
 
@@ -2741,10 +2747,13 @@ function imprimirDocumento() {
 
         '<div>' +
         '<div class="campo"><label>Orden / Consumo</label><span>' + pedido1 + '</span></div>' +
+        '<div class="campo"><label>Orden N°</label><span>' + nroOcTercero + '</span></div>' +
         '<div class="campo"><label>Factura</label><span>' + traslfact1 + '</span></div>' +
         '<div class="campo"><label>Bodega</label><span>' + nombreBodega + '</span></div>' +
         '<div class="campo"><label>Lote</label><span></span></div>' +
         '<div class="campo"><label>Grupo</label><span>' + nombreVendedor + '</span></div>' +
+        '<div class="campo"><label>Transportador</label><span>' + transportadorText + '</span></div>' +
+        '<div class="campo"><label>Placa</label><span>' + placaText + '</span></div>' +
         '</div>' +
 
         '</div></div>' +

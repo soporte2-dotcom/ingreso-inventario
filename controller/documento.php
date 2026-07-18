@@ -421,6 +421,7 @@
                     $output["Fecha_Hora_Factura"] = $row["Fecha_Hora_Factura"] ? date_format($row["Fecha_Hora_Factura"], "Y-m-d") : date("Y-m-d");
                     $output["IdTransportador"] = $row["IdTransportador"];
                     $output["IdVehiculo"] = $row["IdVehiculo"];
+                    $output["NroOcTercero"] = trim($row["DescuentoOrdenVenta"] ?? '');
                     $output["RespuestaCorrectaDian"] = $row["RespuestaCorrectaDian"];
                     $output["NombreBodega"]   = $row["NombreBodega"]   ?? '';
                     $output["NombreVendedor"] = $row["NombreVendedor"] ?? '';
@@ -783,7 +784,12 @@
             } elseif ($_GET["op"] === "desmarcar_documento") {
                 echo $documento->desmarcar_documento($tipoGestion, $numeroGestion);
             } else {
-                echo $documento->anular_documento($tipoGestion, $numeroGestion);
+                $motivoAnulacion = trim($_POST["motivo"] ?? '');
+                if ($motivoAnulacion === '') {
+                    echo json_encode(["status" => "error", "message" => "Debe indicar el motivo de la anulación."]);
+                    break;
+                }
+                echo $documento->anular_documento($tipoGestion, $numeroGestion, $motivoAnulacion, $_SESSION["Id_Usuario"]);
             }
         break;
 
