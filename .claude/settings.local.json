@@ -83,7 +83,11 @@
       "Bash(node --check \"view/Pedidos/pedidos.js\")",
       "Bash(awk 'NR==2590,NR==2830' \"view/Salidas/salidas.js\")",
       "Bash(php -l \"models/mdlSalidas.php\")",
-      "Bash(php -i)"
+      "Bash(php -i)",
+      "Bash(sed -i \"363s/'0' AS prefijo/ISNULL\\(td.Prefijo, '0'\\) AS prefijo/\" \"models/mdlSalidas.php\")",
+      "Bash(sed -i \"622s/'0' AS prefijo/ISNULL\\(td.Prefijo, '0'\\) AS prefijo/\" \"models/mdlSalidas.php\")",
+      "Bash(sed -i \"797s/'0' AS prefijo/ISNULL\\(td.Prefijo, '0'\\) AS prefijo/\" \"models/mdlSalidas.php\")",
+      "Bash(sed -i \"949s/'0' AS prefijo/ISNULL\\(td.Prefijo, '0'\\) AS prefijo/\" \"models/mdlSalidas.php\")"
     ],
     "additionalDirectories": [
       "\\tmp"
