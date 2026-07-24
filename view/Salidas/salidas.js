@@ -1183,11 +1183,13 @@ function continuarGuardarDocumento() {
       const direccion1 = document.getElementById("direccion1").value;
       const nit2 = document.getElementById("nit2").value;
       const direccion2 = document.getElementById("direccion2").value;
+      const traslfact1Val = document.getElementById("traslfact1").value;
 
       if (!validarCampoRequerido(nit1, "NIT Facturar A") ||
           !validarCampoRequerido(direccion1, "Dirección Facturar A") ||
           !validarCampoRequerido(nit2, "NIT Enviar A") ||
-          !validarCampoRequerido(direccion2, "Dirección Enviar A")) {
+          !validarCampoRequerido(direccion2, "Dirección Enviar A") ||
+          !validarCampoRequerido(traslfact1Val, "Despacho/Dia de Consumo")) {
           return false;
       }
 
@@ -1200,12 +1202,16 @@ function continuarGuardarDocumento() {
 
         if (!validarCampoRequerido(nit, "NIT/Cédula") ||
             !validarCampoRequerido(direccion, "Dirección") ||
-            !validarCampoRequerido(traslfact1, "Despacho")) {
+            !validarCampoRequerido(traslfact1, "Despacho/Dia de Consumo")) {
             return false;
         }
 
         procesarGuardado(CONFIG.endpoints.documento.guardar_entrada);
     } else {
+        const traslfact1Otros = document.getElementById("traslfact1").value;
+        if (!validarCampoRequerido(traslfact1Otros, "Despacho/Dia de Consumo")) {
+            return false;
+        }
         procesarGuardado(CONFIG.endpoints.documento.guardar_doc);
     }
 }

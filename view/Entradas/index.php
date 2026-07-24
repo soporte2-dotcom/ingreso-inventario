@@ -134,8 +134,14 @@ $permiteActualizarProductoEntrada = $_permisos_entradas->tiene_permiso_especial(
 							<h3>Entradas</h3>
 							<ol class="breadcrumb breadcrumb-simple">
 								<li><a href="#">Home</a></li>
-								<li class="active">Entradas</li>
+								<li><a href="../ConsultarEntradas/">Entradas</a></li>
+								<li class="active">Nuevo Documento</li>
 							</ol>
+						</div>
+						<div class="tbl-cell tbl-cell-action">
+							<a href="../ConsultarEntradas/" class="btn btn-secondary btn-md">
+								<i class="fa fa-arrow-left"></i> Volver
+							</a>
 						</div>
 					</div>
 				</div>
@@ -176,14 +182,15 @@ $permiteActualizarProductoEntrada = $_permisos_entradas->tiene_permiso_especial(
 
 				<div class="row">
 
-					<!-- Temporalmente oculto: la entrada ahora solo funciona ingresando el numero de la orden de compra.
-					     Se deja el select en el DOM (oculto) para no romper la logica JS que depende de #docref (showInp, crearDocumento, flujo Frigopork). -->
-					<div class="col-lg-3" style="display:none">
+					<!-- Oculto para casi todos los tipos: la entrada funciona ingresando el numero de la orden de compra.
+					     Solo se muestra para el tipo 294-Entrada Frigopork cuando el usuario tiene el permiso especial
+					     "Entrada Frigopork Manual", para elegir entre crear por Número de Orden o Manual. -->
+					<div class="col-lg-3" id="col_docref" style="display:none">
 						<fieldset class="form-group">
-							<label class="form-label semibold" id="txt_docref">¿Tiene documento referencia?</label>
+							<label class="form-label semibold" id="txt_docref">¿Cómo desea crear el documento?</label>
 							<select id="docref" name="docref" class="form-control" onchange="showInp()" required>
-								<option value="0">No</option>
-								<option value="1">Si</option>
+								<option value="0">Por Número de Orden</option>
+								<option value="1" id="opt_si" style="display:none">Si</option>
 								<option value="2" id="opt_manual" style="display:none">Manual</option>
 							</select>
 						</fieldset>
@@ -612,6 +619,40 @@ $permiteActualizarProductoEntrada = $_permisos_entradas->tiene_permiso_especial(
 								</div>
 							</div>
 							<!-- Fin modal lote -->
+
+							<!-- Modal Confirmar Creación de Documento -->
+							<div class="modal fade" id="modalConfirmarCrear" tabindex="-1" role="dialog" aria-labelledby="modalConfirmarCrearTitle" aria-hidden="true" data-backdrop="static" data-keyboard="false">
+								<div class="modal-dialog" role="document">
+									<div class="modal-content">
+										<div class="modal-header">
+											<h5 class="modal-title" id="modalConfirmarCrearTitle"><i class="fa fa-info-circle"></i> Confirmar Creación de Documento</h5>
+											<button type="button" class="close" data-dismiss="modal" aria-label="Close">
+												<span aria-hidden="true">&times;</span>
+											</button>
+										</div>
+										<div class="modal-body">
+											<table class="table table-sm table-borderless mb-0">
+												<tbody>
+													<tr><th style="width:160px">Tipo de Documento</th><td id="previewTipoDoc"></td></tr>
+													<tr><th>Consecutivo</th><td id="previewConsecutivo"></td></tr>
+													<tr><th>N° Orden de Compra</th><td id="previewNumeroOC"></td></tr>
+													<tr><th>Proveedor</th><td id="previewProveedor"></td></tr>
+													<tr><th>Cantidad de Ítems</th><td id="previewItems"></td></tr>
+													<tr><th>Valor Total</th><td id="previewValorTotal"></td></tr>
+													<tr><th>Notas</th><td id="previewNotas"></td></tr>
+												</tbody>
+											</table>
+										</div>
+										<div class="modal-footer">
+											<button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+											<button type="button" id="btnConfirmarCrearDoc" class="btn btn-success">
+												<i class="fa fa-check"></i> Confirmar y Crear
+											</button>
+										</div>
+									</div>
+								</div>
+							</div>
+							<!-- Fin Modal Confirmar Creación de Documento -->
 
 						<!-- Modal Imprimir Etiqueta -->
 						<div class="modal fade" id="modalImprimirEtiqueta" tabindex="-1" role="dialog" aria-labelledby="modalImprimirEtiquetaLabel" aria-hidden="true" data-backdrop="static" data-keyboard="false">

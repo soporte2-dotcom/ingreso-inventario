@@ -19,6 +19,7 @@ const CONFIG = {
             telefono_dir: "terceros.php?op=telefono_dir"
         },
         documento: {
+            preview_doc_entrada: "documento.php?op=preview_doc_entrada",
             insert_doc_entrada: "documento.php?op=insert_doc_entrada",
             insert_doc_entrada_manual: "documento.php?op=insert_doc_entrada_manual",
             insert_linea_entrada_manual: "documento.php?op=insert_linea_entrada_manual",
@@ -124,21 +125,27 @@ function inicializarEventos() {
 
         const tiposRestringidosEntrada = ['294'];
         if (tiposRestringidosEntrada.includes(idTipo)) {
-            if (!window.permiteEntradaFrigopork) {
-                // Sin permiso: ocultar Manual, forzar Sí (traslado)
-                $("#opt_manual").hide();
-                $("#docref").val("1").prop('disabled', true);
-                showInp();
-                swal("Aviso!", "El documento 294-Entrada Frigopork requiere un documento de referencia. Solo usuarios con permiso especial pueden crearlo manualmente.", "info");
-            } else {
-                // Con permiso: mostrar opción Manual y seleccionarla por defecto
+            if (window.permiteEntradaFrigopork) {
+                // Con permiso: se flexibiliza (no se obliga). El usuario elige entre
+                // crear por Número de Orden o de forma Manual.
+                $("#col_docref").show();
                 $("#opt_manual").show();
-                $("#docref").val("2").prop('disabled', false);
+                $("#opt_si").hide();
+                $("#docref").prop('disabled', false).val("0");
+                showInp();
+            } else {
+                // Sin permiso: se obliga a crear por Número de Orden, igual que cualquier otro tipo.
+                $("#col_docref").hide();
+                $("#opt_manual").hide();
+                $("#opt_si").hide();
+                $("#docref").val("0").prop('disabled', true);
                 showInp();
             }
         } else {
-            // Otro tipo: ocultar Manual, restaurar docref a No
+            // Otro tipo: selector oculto, siempre por Número de Orden
+            $("#col_docref").hide();
             $("#opt_manual").hide();
+            $("#opt_si").hide();
             if ($("#docref").val() === "2") {
                 $("#docref").val("0");
             }
@@ -195,6 +202,7 @@ function crearDocumento() {
             return false;
         }
 
+        $("#btncrear").prop('disabled', true);
         $.blockUI({ message: '<h2>Cargando favor Espere...</h2>' });
 
         $.ajax({
@@ -220,46 +228,104 @@ function crearDocumento() {
                 $("#btncrear").prop('disabled', false);
             }
         });
-    } else {
-        $.blockUI({ message: '<h2>Cargando favor Espere...</h2>' });
-        const formData = new FormData($("#doc_form")[0]);
-        $.ajax({
-            url: CONFIG.baseUrl + CONFIG.endpoints.documento.insert_doc_entrada,
-            type: "POST",
-            data: formData,
-            contentType: false,
-            processData: false,
-            dataType: "json",
-            success: function(response) {
-                $.unblockUI();
-                if (response.status === "success") {
-                    swal({
-                        title: "Correcto!",
-                        text: response.message,
-                        type: "success"
-                    }, function() {
-                        window.location.href = 'index.php?tipo=' + response.tipo + '&consecutivo=' + response.consecutivo;
-                    });
-                } else {
-                    swal("Error!", response.message, "error");
-                    $("#btncrear").prop('disabled', false);
-                }
-            },
-            error: function(xhr, status, error) {
-                $.unblockUI();
-                swal("Error!", "Ha ocurrido un error al procesar la solicitud. Por favor intente nuevamente.", "error");
-                console.error("Error en la petición:", error);
-                $("#btncrear").prop('disabled', false);
-            }
-        });
+        return false;
     }
 
-    $("#btncrear").prop('disabled', true);
+    // Flujo normal (Orden de Compra): antes de crear, mostrar una vista previa con la
+    // información que se va a usar para que el usuario la confirme.
+    mostrarPreviewCrearDocumento(tipo, numero);
     return false;
+}
+
+function mostrarPreviewCrearDocumento(tipo, numero) {
+    $("#btncrear").prop('disabled', true);
+    $.blockUI({ message: '<h2>Consultando información...</h2>' });
+
+    $.post(CONFIG.baseUrl + CONFIG.endpoints.documento.preview_doc_entrada, { idTipo: tipo, numero: numero }, function(response) {
+        $.unblockUI();
+        if (response.status !== 'success') {
+            swal("Error!", response.message || "No se pudo consultar la orden de compra.", "error");
+            $("#btncrear").prop('disabled', false);
+            return;
+        }
+
+        const info = response.data;
+        $('#previewTipoDoc').text(info.tipoDoctos || $('#idTipo option:selected').text());
+        $('#previewConsecutivo').text(info.consecutivo);
+        $('#previewNumeroOC').text(numero);
+        $('#previewProveedor').text(info.proveedor || '-');
+        $('#previewItems').text(info.totalItems);
+        $('#previewValorTotal').text('$ ' + Number(info.valorTotal || 0).toLocaleString('es-CO', { minimumFractionDigits: 2 }));
+        $('#previewNotas').text(info.notas || '-');
+
+        $('#modalConfirmarCrear').modal('show');
+    }, 'json').fail(function() {
+        $.unblockUI();
+        swal("Error!", "Error de conexión al consultar la orden de compra.", "error");
+        $("#btncrear").prop('disabled', false);
+    });
+}
+
+// Evita reactivar el botón "Crear" cuando la modal se cierra porque el usuario confirmó
+// (en vez de cancelarla), ya que en ese caso la creación real sigue en curso.
+let confirmandoCreacionDoc = false;
+
+$(document).on('click', '#btnConfirmarCrearDoc', function() {
+    confirmandoCreacionDoc = true;
+    $('#modalConfirmarCrear').modal('hide');
+    ejecutarCreacionDocumentoEntrada();
+});
+
+$('#modalConfirmarCrear').on('hidden.bs.modal', function() {
+    if (!confirmandoCreacionDoc) {
+        $("#btncrear").prop('disabled', false);
+    }
+    confirmandoCreacionDoc = false;
+});
+
+function ejecutarCreacionDocumentoEntrada() {
+    $("#btncrear").prop('disabled', true);
+    $.blockUI({ message: '<h2>Cargando favor Espere...</h2>' });
+    const formData = new FormData($("#doc_form")[0]);
+    $.ajax({
+        url: CONFIG.baseUrl + CONFIG.endpoints.documento.insert_doc_entrada,
+        type: "POST",
+        data: formData,
+        contentType: false,
+        processData: false,
+        dataType: "json",
+        success: function(response) {
+            $.unblockUI();
+            if (response.status === "success") {
+                swal({
+                    title: "Correcto!",
+                    text: response.message,
+                    type: "success"
+                }, function() {
+                    window.location.href = 'index.php?tipo=' + response.tipo + '&consecutivo=' + response.consecutivo;
+                });
+            } else {
+                swal("Error!", response.message, "error");
+                $("#btncrear").prop('disabled', false);
+            }
+        },
+        error: function(xhr, status, error) {
+            $.unblockUI();
+            swal("Error!", "Ha ocurrido un error al procesar la solicitud. Por favor intente nuevamente.", "error");
+            console.error("Error en la petición:", error);
+            $("#btncrear").prop('disabled', false);
+        }
+    });
 }
 
 function guardarLote() {
     console.log('Presion guardar lote');
+
+    const seleccionados = $('#tb-doc input[name="id[]"]:checked').length;
+    if (seleccionados === 0) {
+        swal("Advertencia!", "Debe marcar al menos un producto en la tabla antes de asignar el lote.", "warning");
+        return;
+    }
 
     let formData = new FormData($("#doc_form")[0]);
 
@@ -271,10 +337,18 @@ function guardarLote() {
         processData: false,
         success: function(datos){
             console.log(datos);
+            if (String(datos).indexOf('No se seleccionó') !== -1) {
+                swal("Advertencia!", "Debe marcar al menos un producto en la tabla antes de asignar el lote.", "warning");
+                return;
+            }
             swal("Correcto!", "Lote Ingresado Correctamente", "success");
             $("#lot").modal('hide');
             $('#tb-doc').DataTable().ajax.reload();
             $('#lote1').val('');
+        },
+        error: function(xhr, status, error) {
+            swal("Error!", "Ha ocurrido un error al asignar el lote. Por favor intente nuevamente.", "error");
+            console.error("Error en la petición:", error);
         }
     });
 }
@@ -359,6 +433,12 @@ function guardarDocumento() {
         return false;
     }
 
+    const totalProductos = $('#tb-doc').DataTable().rows().count();
+    if (totalProductos === 0) {
+        swal("Advertencia!", "Debe agregar al menos un producto antes de guardar el documento.", "warning");
+        return false;
+    }
+
     const sw = document.getElementById("sw").value;
     
     if (sw == 9) {
@@ -392,13 +472,18 @@ function procesarGuardado(endpoint) {
         data: formData,
         contentType: false,
         processData: false,
-        success: function(datos) {                  
+        success: function(datos) {
+            const texto = String(datos);
+            if (texto.indexOf('No se puede guardar') !== -1 || texto.toLowerCase().indexOf('no se actualizo') !== -1) {
+                swal("No se pudo guardar", texto.trim(), "error");
+                return;
+            }
             swal({
-                title: "Correcto!", 
-                text: "Documento Registrado Correctamente", 
+                title: "Correcto!",
+                text: "Documento Registrado Correctamente",
                 type: "success"
             }, function() {
-                window.location.href = 'index.php'; 
+                window.location.href = 'index.php';
             });
             console.log(datos);
         },
@@ -899,9 +984,9 @@ function manejarImprimirEtiquetaGlobal(e) {
     }
 }
 
-// Refresca %IVA y Valor de una línea tomando los datos actuales del producto en el
-// catálogo (en vez de dejar que el usuario los digite a mano). Útil cuando el producto
-// se corrige después (p. ej. le agregan IVA) y las líneas ya agregadas quedaron desactualizadas.
+// Refresca %IVA y Costo de una línea tomando los datos actuales del producto en el
+// catálogo. El Valor (precio de compra) no se toca: es el precio real negociado en la
+// OC o digitado manualmente, no necesariamente igual al costo del catálogo.
 function manejarActualizarProductoGlobal(e) {
     if (documentoExportado) return;
     const btn = e.target.closest('.btn-actualizar-producto');
@@ -917,7 +1002,7 @@ function manejarActualizarProductoGlobal(e) {
 
     swal({
         title: "¿Actualizar producto?",
-        text: "Se sobreescribirán el %IVA y el Valor de \"" + nombreProducto + "\" con los datos actuales del producto en el catálogo.",
+        text: "Se sobreescribirá el %IVA de \"" + nombreProducto + "\" con los datos actuales del producto en el catálogo. El Valor no se modifica.",
         type: "warning",
         showCancelButton: true,
         confirmButtonClass: "btn-primary",
@@ -935,10 +1020,9 @@ function manejarActualizarProductoGlobal(e) {
                 return;
             }
             row.cells[6].textContent = response.porcentajeImpuesto;
-            row.cells[7].textContent = response.valorUnitario;
             swal({
                 title: "¡Actualizado!",
-                text: "El %IVA y el Valor se actualizaron desde el producto.",
+                text: "El %IVA se actualizó desde el producto.",
                 type: "success",
                 confirmButtonClass: "btn-success"
             });

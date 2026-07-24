@@ -72,8 +72,14 @@ $permiteLoteManual        = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 							<h3>Salidas y Consumos</h3>
 							<ol class="breadcrumb breadcrumb-simple">
 								<li><a href="#">Home</a></li>
-								<li class="active">Salidas y Consumos</li>
+								<li><a href="../ConsultarSalidas/">Salidas y Consumos</a></li>
+								<li class="active">Nuevo Documento</li>
 							</ol>
+						</div>
+						<div class="tbl-cell tbl-cell-action">
+							<a href="../ConsultarSalidas/" class="btn btn-secondary btn-md">
+								<i class="fa fa-arrow-left"></i> Volver
+							</a>
 						</div>
 					</div>
 				</div>
@@ -91,7 +97,7 @@ $permiteLoteManual        = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 
 					<div class="col-lg-4">
 						<fieldset class="form-group">
-							<label class="form-label semibold" id="txt_idTipo">Tipo de Documento</label>
+							<label class="form-label semibold" id="txt_idTipo">Tipo de Documento <span class="text-danger">*</span></label>
 							<select id="idTipo" name="idTipo" class="form-control" required></select>
 						</fieldset>
 					</div>
@@ -124,7 +130,7 @@ $permiteLoteManual        = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 
 					<div class="col-lg-3">
 						<fieldset class="form-group">
-							<label class="form-label semibold" id="txt_docref">¿Tiene documento referencia?</label>
+							<label class="form-label semibold" id="txt_docref">¿Tiene documento referencia? <span class="text-danger">*</span></label>
 							<select id="docref" name="docref" class="form-control" onchange="showInp()" required>
 								<option value="0">Orden de Salida (OS)</option>
 								<option value="2">Manual</option>
@@ -180,7 +186,7 @@ $permiteLoteManual        = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 
 					<div class="col-lg-2">
 						<fieldset class="form-group">
-							<label class="form-label semibold" id="txt_numero">Ingresar el Numero</label>
+							<label class="form-label semibold" id="txt_numero">Ingresar el Numero <span class="text-danger">*</span></label>
 							<input type="text" name="numero" id="numero" class="form-control" required autocomplete="off"/>
 						</fieldset>
 					</div>
@@ -304,28 +310,28 @@ $permiteLoteManual        = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 
 					<div class="col-lg-2">
 						<fieldset class="form-group">
-							<label class="form-label semibold" style="display: none" id="txt_nit3">Nit/Cedula</label>
+							<label class="form-label semibold" style="display: none" id="txt_nit3">Nit/Cedula <span class="text-danger">*</span></label>
 							<input type="tel" name="nit3" id="nit3" style="display: none" class="form-control input-medium ui-autocomplete-input"  autocomplete="off" required/>
 						</fieldset>
 					</div>
 
 					<div class="col-lg-3">
 						<fieldset class="form-group">
-							<label class="form-label semibold" style="display: none" id="txt_nombre3">Nombre</label>
+							<label class="form-label semibold" style="display: none" id="txt_nombre3">Nombre <span class="text-danger">*</span></label>
 							<input type="text" style="display: none" name="nombre3" id="nombre3" class="form-control" required readonly/>
 						</fieldset>
 					</div>
 
 					<div class="col-lg-3">
 						<fieldset class="form-group">
-							<label class="form-label semibold" style="display: none" id="txt_direccion3">Direccion</label>
+							<label class="form-label semibold" style="display: none" id="txt_direccion3">Direccion <span class="text-danger">*</span></label>
 							<select id="direccion3" name="direccion3" style="display: none" class="form-control" required></select>
 						</fieldset>
 					</div>
 
 					<div class="col-lg-2">
 						<fieldset class="form-group">
-							<label class="form-label semibold" style="display: none" id="txt_telefono3">Telefono</label>
+							<label class="form-label semibold" style="display: none" id="txt_telefono3">Telefono <span class="text-danger">*</span></label>
 							<input type="text" name="telefono3" id="telefono3" style="display: none" class="form-control" required readonly/>
 						</fieldset>
 					</div>
@@ -347,8 +353,8 @@ $permiteLoteManual        = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 
 					<div class="col-lg-2">
 						<fieldset class="form-group">
-							<label class="form-label semibold" style="display: none" id="txt_traslfact1">Despacho</label>
-							<input type="text" style="display: none" name="traslfact1" id="traslfact1" class="form-control" disabled/>
+							<label class="form-label semibold" style="display: none" id="txt_traslfact1">Despacho/Dia de Consumo <span class="text-danger">*</span></label>
+							<input type="text" style="display: none" name="traslfact1" id="traslfact1" class="form-control" required disabled/>
 						</fieldset>
 					</div>
 
@@ -578,7 +584,7 @@ $permiteLoteManual        = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 													<input class="form-control" type="text" id="porcentaje_iva" readonly>
 												</div>
 												<div class="col-lg-12 col-md-12 col-sm-12">
-													<label>Lote</label>
+													<label>Lote <span class="text-danger">*</span></label>
 													<select class="form-control" name="lote" id="lote" required></select>
 												</div>
 												<input type="hidden" id="porcentaje_impuesto" name="porcentaje_impuesto" value="0">
@@ -650,7 +656,7 @@ $permiteLoteManual        = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 												</div>
 
 												<div class="col-lg-12">
-													<label>Lote</label>
+													<label>Lote <span class="text-danger">*</span></label>
 													<select class="form-control" name="lote1" id="lote1" required></select>
 													<input type="text" class="form-control" id="lote1_manual" placeholder="Ingrese el número de lote" style="display:none">
 												</div>

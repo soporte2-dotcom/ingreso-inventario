@@ -16,10 +16,9 @@ function formatoFecha(date) {
 
 function fijarFiltrosPorDefecto() {
     var hoy = new Date();
-    var hace30 = new Date();
-    hace30.setDate(hoy.getDate() - 30);
+    var inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
 
-    $('#filtroFechaDesde').val(formatoFecha(hace30));
+    $('#filtroFechaDesde').val(formatoFecha(inicioMes));
     $('#filtroFechaHasta').val(formatoFecha(hoy));
     $('#filtroNumDesde').val('');
     $('#filtroNumHasta').val('');

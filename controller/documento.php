@@ -102,8 +102,27 @@
         break;
 
         case "validar_excel_inventario":
-            if (!isset($_FILES['archivo']) || $_FILES['archivo']['error'] !== UPLOAD_ERR_OK) {
-                echo json_encode(['status' => 'error', 'message' => 'No se recibió el archivo o hubo un error al subir']);
+            // Nota: si el archivo supera post_max_size, PHP entrega $_FILES/$_POST vacíos;
+            // el isset() de abajo lo captura y devolvemos un mensaje claro de "muy grande".
+            if (!isset($_FILES['archivo'])) {
+                echo json_encode(['status' => 'error', 'message' => 'No se recibió el archivo. Puede que supere el tamaño máximo permitido por el servidor. Intenta con un archivo más pequeño.']);
+                break;
+            }
+            if ($_FILES['archivo']['error'] !== UPLOAD_ERR_OK) {
+                $erroresSubida = [
+                    UPLOAD_ERR_INI_SIZE   => 'El archivo excede el tamaño máximo permitido por el servidor.',
+                    UPLOAD_ERR_FORM_SIZE  => 'El archivo excede el tamaño máximo permitido.',
+                    UPLOAD_ERR_PARTIAL    => 'El archivo se subió de forma incompleta. Vuelve a intentarlo.',
+                    UPLOAD_ERR_NO_FILE    => 'No se seleccionó ningún archivo.',
+                    UPLOAD_ERR_NO_TMP_DIR => 'Error temporal del servidor. Reintenta en un momento.',
+                    UPLOAD_ERR_CANT_WRITE => 'Error temporal del servidor. Reintenta en un momento.',
+                ];
+                $msg = $erroresSubida[$_FILES['archivo']['error']] ?? 'Hubo un error al subir el archivo. Vuelve a intentarlo.';
+                echo json_encode(['status' => 'error', 'message' => $msg]);
+                break;
+            }
+            if ($_FILES['archivo']['size'] > Documento::EXCEL_MAX_BYTES) {
+                echo json_encode(['status' => 'error', 'message' => 'El archivo supera el tamaño máximo permitido (8 MB). Divide la carga en archivos más pequeños.']);
                 break;
             }
             $tmpPath  = $_FILES['archivo']['tmp_name'];
@@ -120,7 +139,9 @@
             echo $documento->confirmar_masiva_excel_inventario(
                 $_POST['tipo']   ?? '',
                 $_POST['numdoc'] ?? '',
-                $validos
+                $validos,
+                $_POST['token']  ?? '',
+                $_SESSION['Id_Usuario'] ?? ''
             );
         break;
 
@@ -134,8 +155,27 @@
         break;
 
         case "validar_excel_pedidos":
-            if (!isset($_FILES['archivo']) || $_FILES['archivo']['error'] !== UPLOAD_ERR_OK) {
-                echo json_encode(['status' => 'error', 'message' => 'No se recibió el archivo o hubo un error al subir']);
+            // Nota: si el archivo supera post_max_size, PHP entrega $_FILES/$_POST vacíos;
+            // el isset() de abajo lo captura y devolvemos un mensaje claro de "muy grande".
+            if (!isset($_FILES['archivo'])) {
+                echo json_encode(['status' => 'error', 'message' => 'No se recibió el archivo. Puede que supere el tamaño máximo permitido por el servidor. Intenta con un archivo más pequeño.']);
+                break;
+            }
+            if ($_FILES['archivo']['error'] !== UPLOAD_ERR_OK) {
+                $erroresSubida = [
+                    UPLOAD_ERR_INI_SIZE   => 'El archivo excede el tamaño máximo permitido por el servidor.',
+                    UPLOAD_ERR_FORM_SIZE  => 'El archivo excede el tamaño máximo permitido.',
+                    UPLOAD_ERR_PARTIAL    => 'El archivo se subió de forma incompleta. Vuelve a intentarlo.',
+                    UPLOAD_ERR_NO_FILE    => 'No se seleccionó ningún archivo.',
+                    UPLOAD_ERR_NO_TMP_DIR => 'Error temporal del servidor. Reintenta en un momento.',
+                    UPLOAD_ERR_CANT_WRITE => 'Error temporal del servidor. Reintenta en un momento.',
+                ];
+                $msg = $erroresSubida[$_FILES['archivo']['error']] ?? 'Hubo un error al subir el archivo. Vuelve a intentarlo.';
+                echo json_encode(['status' => 'error', 'message' => $msg]);
+                break;
+            }
+            if ($_FILES['archivo']['size'] > Documento::EXCEL_MAX_BYTES) {
+                echo json_encode(['status' => 'error', 'message' => 'El archivo supera el tamaño máximo permitido (8 MB). Divide la carga en archivos más pequeños.']);
                 break;
             }
             $tmpPath  = $_FILES['archivo']['tmp_name'];
@@ -152,7 +192,9 @@
             echo $documento->confirmar_masiva_excel_pedidos(
                 $_POST['tipo']   ?? '',
                 $_POST['numdoc'] ?? '',
-                $validos
+                $validos,
+                $_POST['token']  ?? '',
+                $_SESSION['Id_Usuario'] ?? ''
             );
         break;
 
@@ -178,6 +220,10 @@
         break;
 
         /*** ENTRADAS ***/  
+
+        case "preview_doc_entrada":
+            echo $documento->preview_doc_entrada($_POST["idTipo"], $_POST["numero"]);
+        break;
 
         case "insert_doc_entrada":
 

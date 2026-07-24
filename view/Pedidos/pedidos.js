@@ -319,7 +319,7 @@ function listardetalle(tipo, consecutivo){
         "paging": true,
         "ordering": false,
         dom: 'Bfrtip',
-        "searching": false,
+        "searching": true,
         lengthChange: true,
         colReorder: false,
         buttons: [
@@ -522,6 +522,26 @@ function eliminarSeleccionados() {
 
 let excelEstadoModal      = 'inicial'; // 'inicial' | 'validado'
 let excelValidosPendientes = [];
+let excelTokenCarga        = ''; // id único por carga; se reutiliza en reintentos para no duplicar
+
+const EXCEL_MAX_BYTES = 8 * 1024 * 1024; // 8 MB (debe coincidir con Documento::EXCEL_MAX_BYTES)
+
+// Genera un id único por carga. Se crea al validar y se mantiene en los reintentos del mismo lote,
+// para que el backend detecte un reenvío (token repetido) y no duplique la carga ya guardada.
+function generarTokenCarga() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'cm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+}
+
+// Traduce un fallo HTTP a un mensaje accionable, distinguiendo "servidor ocupado" (reintentar)
+// de "archivo grande" o "conexión cortada" (revisar antes de reintentar). El 401 lo maneja el
+// interceptor global de sesión en MainJs/js.php, así que aquí no lo tocamos.
+function mensajeErrorHttpExcel(xhr) {
+    if (xhr.status === 413)                      return "El archivo es demasiado grande para el servidor. Divide la carga en archivos más pequeños.";
+    if (xhr.status === 429 || xhr.status === 503) return "El servidor está ocupado en este momento (muchas cargas a la vez). Espera unos segundos y vuelve a intentar.";
+    if (xhr.status === 0)                         return "Se interrumpió la conexión o la carga tardó demasiado. Revisa el detalle del documento antes de reintentar: el sistema no duplica productos ya cargados.";
+    return "Error de comunicación con el servidor. Intenta nuevamente en un momento.";
+}
 
 function resetModalExcel() {
     document.getElementById('archivoExcel').value = '';
@@ -531,6 +551,7 @@ function resetModalExcel() {
 
     excelEstadoModal = 'inicial';
     excelValidosPendientes = [];
+    excelTokenCarga = '';
 
     var btnProcesar = document.getElementById('btnCargarExcel');
     btnProcesar.disabled = false;
@@ -558,23 +579,38 @@ function pintarResultadosExcel(resultados) {
     const tbody = document.getElementById('tbExcelBody');
     tbody.innerHTML = '';
     (resultados || []).forEach(function(r) {
-        const statusBadge = r.status === 'ok'
-            ? '<span class="badge badge-success">OK</span>'
-            : '<span class="badge badge-danger">Error</span>';
+        let statusBadge, rowClass;
+        if (r.status === 'ok') {
+            if (r.warn) {
+                statusBadge = '<span class="badge badge-warning">Duplicado</span>';
+                rowClass    = 'table-warning';
+            } else {
+                statusBadge = '<span class="badge badge-success">OK</span>';
+                rowClass    = 'table-success';
+            }
+        } else {
+            statusBadge = '<span class="badge badge-danger">Error</span>';
+            rowClass    = 'table-danger';
+        }
         const tr = document.createElement('tr');
-        tr.className = r.status === 'ok' ? 'table-success' : 'table-danger';
+        tr.className = rowClass;
         tr.innerHTML = `<td>${r.fila}</td><td>${r.idProducto}</td><td>${formatearCantidadExcel(r.cantidad)}</td><td>${r.lote || '-'}</td><td>${statusBadge}</td><td>${r.mensaje}</td>`;
         tbody.appendChild(tr);
     });
     document.getElementById('excelResultados').style.display = 'block';
 }
 
-function pintarResumenExcel(ok, error, textoOk) {
-    const resumenClass = error > 0 ? (ok > 0 ? 'alert-warning' : 'alert-danger') : 'alert-success';
+function pintarResumenExcel(ok, error, textoOk, advertencia) {
+    advertencia = advertencia || 0;
+    const resumenClass = error > 0 ? (ok > 0 ? 'alert-warning' : 'alert-danger') : (advertencia > 0 ? 'alert-warning' : 'alert-success');
+    const badgeAdvertencia = advertencia > 0
+        ? `<span class="badge badge-warning ml-1">${advertencia} con advertencia</span>`
+        : '';
     document.getElementById('excelResumen').innerHTML =
         `<div class="alert ${resumenClass} py-2 mb-0">
             <strong>Resultado:</strong>
             <span class="badge badge-success ml-2">${ok} ${textoOk}</span>
+            ${badgeAdvertencia}
             <span class="badge badge-danger ml-1">${error} con error</span>
         </div>`;
 }
@@ -599,6 +635,10 @@ function validarExcelPedidos() {
     const file = fileInput.files[0];
     if (!file.name.toLowerCase().endsWith('.xlsx')) {
         swal("Advertencia!", "Solo se aceptan archivos con extensión .xlsx", "warning");
+        return;
+    }
+    if (file.size > EXCEL_MAX_BYTES) {
+        swal("Advertencia!", "El archivo supera el tamaño máximo permitido (8 MB). Divide la carga en archivos más pequeños.", "warning");
         return;
     }
 
@@ -627,12 +667,14 @@ function validarExcelPedidos() {
 
             const ok    = response.ok    || 0;
             const error = response.error || 0;
-            pintarResumenExcel(ok, error, 'válidos');
+            const warn  = response.warn  || 0;
+            pintarResumenExcel(ok, error, 'válidos', warn);
             pintarResultadosExcel(response.resultados);
             document.getElementById('excelAvisoNoGuardado').style.display = 'block';
 
             excelEstadoModal = 'validado';
             excelValidosPendientes = response.validos || [];
+            excelTokenCarga = generarTokenCarga(); // token de esta carga validada (persiste en reintentos)
 
             document.getElementById('btnNuevoArchivo').style.display = 'inline-block';
 
@@ -645,10 +687,11 @@ function validarExcelPedidos() {
             }
         },
         error: function(xhr, status, errorThrown) {
+            if (xhr.status === 401) return; // sesión expirada: lo maneja el interceptor global
             btnProcesar.disabled = false;
             btnProcesar.innerHTML = '<i class="fa fa-upload"></i> Validar Archivo';
             console.error('[validarExcelPedidos] Error HTTP:', status, errorThrown, xhr.responseText);
-            swal("Error!", "Error de comunicación con el servidor.", "error");
+            swal("Error!", mensajeErrorHttpExcel(xhr), "error");
         }
     });
 }
@@ -667,29 +710,39 @@ function confirmarExcelPedidos() {
     btnProcesar.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Procesando...';
 
     $.ajax({
-        url:  "../../controller/documento.php?op=confirmar_excel_pedidos",
-        type: 'POST',
+        url:     "../../controller/documento.php?op=confirmar_excel_pedidos",
+        type:    'POST',
+        timeout: 120000, // 2 min: si se excede, avisamos claro (el token evita duplicar en el reintento)
         data: {
             tipo:    tipo,
             numdoc:  consecutivo,
+            token:   excelTokenCarga,
             validos: JSON.stringify(excelValidosPendientes)
         },
         dataType: 'json',
         success: function(response) {
             if (response.status === 'error') {
                 btnProcesar.disabled = false;
-                swal("Error!", response.message, "error");
+                if (response.code === 'ya_procesada') {
+                    // Reintento de una carga que el servidor ya había guardado: no se duplicó nada.
+                    swal("Aviso", response.message, "warning");
+                    listardetalle(tipo, consecutivo);
+                } else {
+                    swal("Error!", response.message, "error");
+                }
                 return;
             }
 
             const ok    = response.ok    || 0;
             const error = response.error || 0;
-            pintarResumenExcel(ok, error, 'agregados');
+            const warn  = response.warn  || 0;
+            pintarResumenExcel(ok, error, 'agregados', warn);
             pintarResultadosExcel(response.resultados);
             document.getElementById('excelAvisoNoGuardado').style.display = 'none';
 
             excelEstadoModal = 'inicial';
             excelValidosPendientes = [];
+            excelTokenCarga = '';
 
             btnProcesar.style.display = 'none';
             var btnCerrar = document.getElementById('btnCerrarExcel');
@@ -702,10 +755,14 @@ function confirmarExcelPedidos() {
             }
         },
         error: function(xhr, status, errorThrown) {
+            if (xhr.status === 401) return; // sesión expirada: lo maneja el interceptor global
             btnProcesar.disabled = false;
             btnProcesar.innerHTML = '<i class="fa fa-check"></i> Procesar registros válidos';
             console.error('[confirmarExcelPedidos] Error HTTP:', status, errorThrown, xhr.responseText);
-            swal("Error!", "Error de comunicación con el servidor.", "error");
+            const msg = (status === 'timeout')
+                ? "La operación tardó demasiado. Revisa el detalle del documento antes de reintentar: el sistema no duplica productos ya cargados."
+                : mensajeErrorHttpExcel(xhr);
+            swal("Error!", msg, "error");
         }
     });
 }

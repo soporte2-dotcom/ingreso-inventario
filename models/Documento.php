@@ -1,6 +1,12 @@
 <?php
     class Documento extends Conectarserver{
 
+        // Límites de la carga masiva por Excel (protegen memoria/workers de PHP y el SQL Server
+        // cuando muchos usuarios cargan inventario a la vez a inicio de mes).
+        const EXCEL_MAX_FILAS         = 3000;    // tope de filas de datos por archivo
+        const EXCEL_MAX_BYTES         = 8388608; // 8 MB
+        const CONFIRM_LOCK_TIMEOUT_SEG = 10;     // espera máx. por el lock del documento antes de fallar rápido
+
         public function insert_doc($tipo, $nit, $direccion, $usuario){
             $cn = new Conectarserver;
             $conn = $cn->getConecta();
@@ -175,6 +181,11 @@
 
             $rows = [];
             foreach ($sheet->sheetData->row as $rowNode) {
+                // Corte temprano: si el archivo trae más filas del tope permitido, abortamos aquí
+                // en vez de seguir cargando todo a memoria y arriesgar el worker de PHP.
+                if (count($rows) > self::EXCEL_MAX_FILAS) {
+                    return ['error' => 'El archivo supera el máximo de ' . self::EXCEL_MAX_FILAS . ' filas permitidas por carga. Divídelo en archivos más pequeños.'];
+                }
                 $rowData = [];
                 foreach ($rowNode->c as $cell) {
                     $ref = (string)$cell['r'];
@@ -213,9 +224,6 @@
             if (!is_numeric($cantidad) || (float)$cantidad <= 0) {
                 return ['ok' => false, 'mensaje' => 'Cantidad debe ser un número mayor a 0'];
             }
-            if (in_array($idProducto, $procesados)) {
-                return ['ok' => false, 'mensaje' => 'Producto duplicado dentro del archivo'];
-            }
 
             $sqlProd = "SELECT p.Producto, p.unidad_Inventario, p.costo_unitario
                         FROM TblProducto p WHERE p.IdProducto = ?";
@@ -239,14 +247,114 @@
                 }
             }
 
-            $procesados[] = $idProducto;
-            return ['ok' => true, 'mensaje' => htmlspecialchars($rProd['Producto']), 'producto' => $rProd];
+            // Duplicado = MISMO producto y MISMO lote repetidos. El negocio lo permite, así que NO se
+            // bloquea: se inserta igual pero se marca con advertencia para que el usuario lo revise.
+            // Mismo producto con lote distinto es normal y no genera advertencia.
+            $clave        = $idProducto . '|' . $lote;
+            $duplicado    = in_array($clave, $procesados);
+            $procesados[] = $clave;
+
+            $nombre = htmlspecialchars($rProd['Producto']);
+            if ($duplicado) {
+                return ['ok' => true, 'warn' => true, 'mensaje' => 'Producto y lote repetidos — ' . $nombre, 'producto' => $rProd];
+            }
+            return ['ok' => true, 'mensaje' => $nombre, 'producto' => $rProd];
         }
 
         private function abrir_conexion_dev_lotes() {
             require_once(dirname(__FILE__) . '/../config/conexiondev.php');
             $devConn = new ConectarDev();
             return $devConn->getConecta() ?: null;
+        }
+
+        // Minutos tras los cuales un token en estado 'procesando' se considera abandonado
+        // (p. ej. un crash entre el claim y el commit) y puede ser retomado por un nuevo intento.
+        const TOKEN_STALE_MIN = 10;
+
+        // Idempotencia de la carga masiva mediante la tabla MySQL `cargamasivatoken` (patrón claim/confirm).
+        // La tabla vive en OTRA base (permisos_tecno) que Documentos_Lin, así que NO comparte la
+        // transacción de SQL Server; por eso se usa una máquina de estados 'procesando' → 'ok' y se
+        // libera (DELETE) el token si la carga falla. Devuelve null si MySQL/la tabla no están
+        // disponibles, y en ese caso la carga sigue sin protección de reintento.
+        private function abrir_conexion_mysql() {
+            try {
+                require_once(dirname(__FILE__) . '/../config/conexionmysql.php');
+                $my = new ConectarMysql();
+                $pdo = $my->obtenerConexion();
+                $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+                return $pdo;
+            } catch (Exception $e) {
+                $this->registrar_error("carga masiva: no se pudo abrir MySQL para el token: " . $e->getMessage());
+                return null;
+            }
+        }
+
+        // Paso 1 (claim): reclama el token ANTES de tocar SQL Server. Devuelve:
+        //   'nuevo'      → token reclamado, se puede continuar con la inserción
+        //   'duplicado'  → la carga ya se procesó o está en curso (reintento/concurrente): NO reinsertar
+        //   'sin_token'  → sin token o MySQL/tabla no disponibles: continuar sin protección de reintento
+        private function reclamar_token_carga($token, $tipo, $numdoc, $usuario, $filas) {
+            $token = trim($token);
+            if ($token === '') return 'sin_token';
+            $pdo = $this->abrir_conexion_mysql();
+            if ($pdo === null) return 'sin_token';
+            try {
+                $ins = $pdo->prepare("INSERT INTO cargamasivatoken (token, tipo, numdoc, usuario, filas, estado, createdAt)
+                                      VALUES (?, ?, ?, ?, ?, 'procesando', NOW())");
+                $ins->execute([$token, $tipo, (int)$numdoc, (string)$usuario, (int)$filas]);
+                return 'nuevo';
+            } catch (PDOException $e) {
+                // 23000 = violación de clave única: el token ya existe.
+                if ($e->getCode() !== '23000') {
+                    $this->registrar_error("carga masiva: error al reclamar token: " . $e->getMessage());
+                    return 'sin_token'; // ante un error inesperado de MySQL, no bloqueamos la carga
+                }
+                // Si el token existente quedó 'procesando' y es viejo (crash previo), lo retomamos.
+                try {
+                    $del = $pdo->prepare("DELETE FROM cargamasivatoken
+                                          WHERE token = ? AND estado = 'procesando'
+                                            AND createdAt < (NOW() - INTERVAL ? MINUTE)");
+                    $del->execute([$token, self::TOKEN_STALE_MIN]);
+                    if ($del->rowCount() > 0) {
+                        $ins = $pdo->prepare("INSERT INTO cargamasivatoken (token, tipo, numdoc, usuario, filas, estado, createdAt)
+                                              VALUES (?, ?, ?, ?, ?, 'procesando', NOW())");
+                        $ins->execute([$token, $tipo, (int)$numdoc, (string)$usuario, (int)$filas]);
+                        return 'nuevo';
+                    }
+                } catch (PDOException $e2) {
+                    // Otra petición lo retomó primero; se trata como duplicado.
+                }
+                return 'duplicado';
+            }
+        }
+
+        // Paso 2 (confirm): marca el token como 'ok' tras el COMMIT de las líneas en SQL Server.
+        private function confirmar_token_carga($token) {
+            $token = trim($token);
+            if ($token === '') return;
+            $pdo = $this->abrir_conexion_mysql();
+            if ($pdo === null) return;
+            try {
+                $up = $pdo->prepare("UPDATE cargamasivatoken SET estado = 'ok', updatedAt = NOW() WHERE token = ?");
+                $up->execute([$token]);
+            } catch (PDOException $e) {
+                $this->registrar_error("carga masiva: error al confirmar token: " . $e->getMessage());
+            }
+        }
+
+        // Paso 3 (liberar): borra el token si la carga falló o el documento estaba ocupado,
+        // para que un reintento legítimo pueda volver a procesarse.
+        private function liberar_token_carga($token) {
+            $token = trim($token);
+            if ($token === '') return;
+            $pdo = $this->abrir_conexion_mysql();
+            if ($pdo === null) return;
+            try {
+                $del = $pdo->prepare("DELETE FROM cargamasivatoken WHERE token = ? AND estado = 'procesando'");
+                $del->execute([$token]);
+            } catch (PDOException $e) {
+                $this->registrar_error("carga masiva: error al liberar token: " . $e->getMessage());
+            }
         }
 
         // Paso 1: lee y valida el archivo completo, sin tocar Documentos_Lin.
@@ -286,6 +394,7 @@
                     'cantidad'   => $cantidad,
                     'lote'       => $lote,
                     'status'     => $check['ok'] ? 'ok' : 'error',
+                    'warn'       => !empty($check['warn']),
                     'mensaje'    => $check['mensaje']
                 ];
 
@@ -302,11 +411,13 @@
 
             $ok    = count($validos);
             $error = count($resultados) - $ok;
+            $warn  = count(array_filter($resultados, function($r) { return !empty($r['warn']); }));
 
             return json_encode([
                 'status'     => 'ok',
                 'ok'         => $ok,
                 'error'      => $error,
+                'warn'       => $warn,
                 'resultados' => $resultados,
                 'validos'    => $validos
             ]);
@@ -314,7 +425,7 @@
 
         // Paso 2: inserta únicamente las filas ya validadas y confirmadas por el usuario.
         // Revalida cada una por si el catálogo cambió entre la vista previa y la confirmación.
-        public function confirmar_masiva_excel_inventario($tipo, $consecutivo, $validos) {
+        public function confirmar_masiva_excel_inventario($tipo, $consecutivo, $validos, $token = '', $usuario = '') {
             if (!is_array($validos) || count($validos) === 0) {
                 return json_encode(['status' => 'error', 'message' => 'No hay filas válidas para procesar']);
             }
@@ -326,6 +437,13 @@
             $resultados = [];
             $procesados = [];
 
+            // Idempotencia por token (claim): se reclama ANTES de tocar SQL Server. Si esta misma carga
+            // ya se procesó o está en curso (reintento tras timeout / doble envío), no reinsertamos nada.
+            $estadoToken = $this->reclamar_token_carga($token, $tipo, $consecutivo, $usuario, count($validos));
+            if ($estadoToken === 'duplicado') {
+                return json_encode(['status' => 'error', 'code' => 'ya_procesada', 'message' => 'Esta carga ya fue procesada anteriormente. Revisa el detalle del documento: no se duplicó nada.']);
+            }
+
             try {
                 sqlsrv_begin_transaction($conn);
 
@@ -334,9 +452,15 @@
                 // punto de partida (un SELECT normal libera su lock de inmediato bajo READ COMMITTED).
                 $sqlSeq = "SELECT ISNULL(MAX(seq), 0) AS max_seq FROM Documentos_Lin WITH (UPDLOCK, HOLDLOCK)
                            WHERE tipo = ? AND Numero_documento = ?";
-                $stmtSeq = sqlsrv_query($conn, $sqlSeq, array($tipo, $consecutivo));
+                $stmtSeq = sqlsrv_query($conn, $sqlSeq, array($tipo, $consecutivo),
+                                        array("QueryTimeout" => self::CONFIRM_LOCK_TIMEOUT_SEG));
                 if ($stmtSeq === false) {
-                    throw new Exception("Error al calcular la secuencia: " . print_r(sqlsrv_errors(), true));
+                    // Con QueryTimeout, un false aquí casi siempre es lock en espera (otro usuario
+                    // cargando el mismo documento) o servidor saturado. Fallamos rápido y claro,
+                    // liberando el token para que el usuario pueda reintentar.
+                    sqlsrv_rollback($conn);
+                    $this->liberar_token_carga($token);
+                    return json_encode(['status' => 'error', 'message' => 'El documento está siendo cargado por otra persona en este momento o el servidor está ocupado. Espera unos segundos y vuelve a intentar.']);
                 }
                 $rowSeq = sqlsrv_fetch_array($stmtSeq, SQLSRV_FETCH_ASSOC);
                 $seq    = $rowSeq ? (int)$rowSeq['max_seq'] : 0;
@@ -407,27 +531,32 @@
                     }
 
                     $resultado['status']  = 'ok';
+                    $resultado['warn']    = !empty($check['warn']);
                     $resultado['mensaje'] = $check['mensaje'];
                     $resultados[] = $resultado;
                 }
 
                 sqlsrv_commit($conn);
+                $this->confirmar_token_carga($token); // marcar el token como 'ok' tras el commit
 
             } catch (Exception $e) {
                 if (isset($conn) && $conn) {
                     sqlsrv_rollback($conn);
                 }
+                $this->liberar_token_carga($token); // liberar el token para permitir un reintento legítimo
                 $this->registrar_error("Error en confirmar_masiva_excel_inventario: " . $e->getMessage());
                 return json_encode(['status' => 'error', 'message' => $e->getMessage()]);
             }
 
             $ok    = count(array_filter($resultados, function($r) { return $r['status'] === 'ok'; }));
             $error = count(array_filter($resultados, function($r) { return $r['status'] === 'error'; }));
+            $warn  = count(array_filter($resultados, function($r) { return !empty($r['warn']); }));
 
             return json_encode([
                 'status'     => 'ok',
                 'ok'         => $ok,
                 'error'      => $error,
+                'warn'       => $warn,
                 'resultados' => $resultados
             ]);
         }
@@ -545,6 +674,7 @@
                     'cantidad'   => $cantidad,
                     'lote'       => $lote,
                     'status'     => $check['ok'] ? 'ok' : 'error',
+                    'warn'       => !empty($check['warn']),
                     'mensaje'    => $check['mensaje']
                 ];
 
@@ -561,17 +691,19 @@
 
             $ok    = count($validos);
             $error = count($resultados) - $ok;
+            $warn  = count(array_filter($resultados, function($r) { return !empty($r['warn']); }));
 
             return json_encode([
                 'status'     => 'ok',
                 'ok'         => $ok,
                 'error'      => $error,
+                'warn'       => $warn,
                 'resultados' => $resultados,
                 'validos'    => $validos
             ]);
         }
 
-        public function confirmar_masiva_excel_pedidos($tipo, $consecutivo, $validos) {
+        public function confirmar_masiva_excel_pedidos($tipo, $consecutivo, $validos, $token = '', $usuario = '') {
             if (!is_array($validos) || count($validos) === 0) {
                 return json_encode(['status' => 'error', 'message' => 'No hay filas válidas para procesar']);
             }
@@ -583,14 +715,25 @@
             $resultados = [];
             $procesados = [];
 
+            // Idempotencia por token (claim): se reclama ANTES de tocar SQL Server.
+            $estadoToken = $this->reclamar_token_carga($token, $tipo, $consecutivo, $usuario, count($validos));
+            if ($estadoToken === 'duplicado') {
+                return json_encode(['status' => 'error', 'code' => 'ya_procesada', 'message' => 'Esta carga ya fue procesada anteriormente. Revisa el detalle del documento: no se duplicó nada.']);
+            }
+
             try {
                 sqlsrv_begin_transaction($conn);
 
+                // Reserva del rango de seq con UPDLOCK+HOLDLOCK y QueryTimeout: si otra carga tiene
+                // tomado el mismo documento (o el server está ocupado), fallamos rápido y claro.
                 $sqlSeq = "SELECT ISNULL(MAX(seq), 0) AS max_seq FROM Documentos_Lin WITH (UPDLOCK, HOLDLOCK)
                            WHERE tipo = ? AND Numero_documento = ?";
-                $stmtSeq = sqlsrv_query($conn, $sqlSeq, array($tipo, $consecutivo));
+                $stmtSeq = sqlsrv_query($conn, $sqlSeq, array($tipo, $consecutivo),
+                                        array("QueryTimeout" => self::CONFIRM_LOCK_TIMEOUT_SEG));
                 if ($stmtSeq === false) {
-                    throw new Exception("Error al calcular la secuencia: " . print_r(sqlsrv_errors(), true));
+                    sqlsrv_rollback($conn);
+                    $this->liberar_token_carga($token);
+                    return json_encode(['status' => 'error', 'message' => 'El documento está siendo cargado por otra persona en este momento o el servidor está ocupado. Espera unos segundos y vuelve a intentar.']);
                 }
                 $rowSeq = sqlsrv_fetch_array($stmtSeq, SQLSRV_FETCH_ASSOC);
                 $seq    = $rowSeq ? (int)$rowSeq['max_seq'] : 0;
@@ -661,27 +804,32 @@
                     }
 
                     $resultado['status']  = 'ok';
+                    $resultado['warn']    = !empty($check['warn']);
                     $resultado['mensaje'] = $check['mensaje'];
                     $resultados[] = $resultado;
                 }
 
                 sqlsrv_commit($conn);
+                $this->confirmar_token_carga($token); // marcar el token como 'ok' tras el commit
 
             } catch (Exception $e) {
                 if (isset($conn) && $conn) {
                     sqlsrv_rollback($conn);
                 }
+                $this->liberar_token_carga($token); // liberar el token para permitir un reintento legítimo
                 $this->registrar_error("Error en confirmar_masiva_excel_pedidos: " . $e->getMessage());
                 return json_encode(['status' => 'error', 'message' => $e->getMessage()]);
             }
 
             $ok    = count(array_filter($resultados, function($r) { return $r['status'] === 'ok'; }));
             $error = count(array_filter($resultados, function($r) { return $r['status'] === 'error'; }));
+            $warn  = count(array_filter($resultados, function($r) { return !empty($r['warn']); }));
 
             return json_encode([
                 'status'     => 'ok',
                 'ok'         => $ok,
                 'error'      => $error,
+                'warn'       => $warn,
                 'resultados' => $resultados
             ]);
         }
@@ -777,11 +925,9 @@
                 Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = $tipo AND Numero_documento = $consecutivo),
                 valor_total = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
                 FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $consecutivo),
-                costo = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
+                costo = (SELECT ISNULL(SUM(d.Cantidad_Facturada * d.Costo_Unitario), 0)
                 FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $consecutivo),
-                valor_aplicado = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
-                FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $consecutivo),
-                descuento_1 = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (d.Porcentaje_Descuento_1 / 100), 2)) 
+                descuento_1 = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (d.Porcentaje_Descuento_1 / 100), 2))
                 FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $consecutivo),
                 Valor_impuesto = (SELECT SUM(((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100))
                 FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $consecutivo)
@@ -789,13 +935,11 @@
             }else{
                 $sql="UPDATE Documentos SET notas = '$notas', exportado = 'S', IdVendedor = '$remision',
                 Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = $tipo AND Numero_documento = $consecutivo),
-                valor_total = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
+                valor_total = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100))
                 FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $consecutivo),
-                costo = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
+                costo = (SELECT ISNULL(SUM(d.Cantidad_Facturada * d.Costo_Unitario), 0)
                 FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $consecutivo),
-                valor_aplicado = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
-                FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $consecutivo),
-                descuento_1 = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (d.Porcentaje_Descuento_1 / 100), 2)) 
+                descuento_1 = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (d.Porcentaje_Descuento_1 / 100), 2))
                 FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $consecutivo),
                 Valor_impuesto = (SELECT SUM(((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100))
                 FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $consecutivo)
@@ -1140,14 +1284,13 @@
             $sqlUpdate = "UPDATE Documentos SET
                 Total_Items    = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = ? AND Numero_documento = ?),
                 valor_total    = (SELECT ISNULL(SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
-                costo          = (SELECT ISNULL(SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
-                valor_aplicado = (SELECT ISNULL(SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
+                costo          = (SELECT ISNULL(SUM(d.Cantidad_Facturada * d.Costo_Unitario), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
                 descuento_1    = (SELECT ISNULL(SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (d.Porcentaje_Descuento_1 / 100), 2)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
                 Valor_impuesto = (SELECT ISNULL(SUM(((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?)
                 WHERE tipo = ? AND Numero_Documento = ?";
 
             $paramsUpdate = [];
-            for ($i = 0; $i < 6; $i++) {
+            for ($i = 0; $i < 5; $i++) {
                 $paramsUpdate[] = $tipo;
                 $paramsUpdate[] = $consecutivo;
             }
@@ -1189,14 +1332,13 @@
                 $sqlUpdate = "UPDATE Documentos SET 
                     Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = ? AND Numero_documento = ?),
                     valor_total = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?),
-                    costo = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?),
-                    valor_aplicado = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?),
+                    costo = (SELECT ISNULL(SUM(dl.Cantidad_Facturada * dl.Costo_Unitario), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?),
                     descuento_1 = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?),
                     Valor_impuesto = (SELECT ISNULL(SUM(((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?)
                     WHERE tipo = ? AND Numero_Documento = ?";
 
                 $paramsUpdate = array();
-                for ($i = 0; $i < 6; $i++) {
+                for ($i = 0; $i < 5; $i++) {
                     $paramsUpdate[] = $tipo;
                     $paramsUpdate[] = $consecutivo;
                 }
@@ -1242,12 +1384,15 @@
                 return json_encode(['status' => 'error', 'message' => 'Producto no encontrado en el catálogo']);
             }
 
-            $valorUnitario = (float)$rowProd['costo_unitario'];
+            $costoUnitario = (float)$rowProd['costo_unitario'];
             $porcentajeImpuesto = (float)$rowProd['PorcentajeImpuesto'];
 
-            $sql = "UPDATE Documentos_Lin SET Valor_Unitario = ?, Costo_Unitario = ?, Porcentaje_Impuesto = ?
+            // Solo se refrescan %IVA y Costo_Unitario desde el catálogo. Valor_Unitario
+            // no se toca: es el precio de compra real (de la OC o digitado manualmente),
+            // no necesariamente igual al costo registrado en el catálogo.
+            $sql = "UPDATE Documentos_Lin SET Costo_Unitario = ?, Porcentaje_Impuesto = ?
                     WHERE tipo = ? AND Numero_documento = ? AND IdProducto = ? AND seq = ?";
-            $params = array($valorUnitario, $valorUnitario, $porcentajeImpuesto, $tipo, $consecutivo, $producto, $seq);
+            $params = array($costoUnitario, $porcentajeImpuesto, $tipo, $consecutivo, $producto, $seq);
             $stmt = sqlsrv_prepare($cn->getConecta(), $sql, $params);
             if (!sqlsrv_execute($stmt)) {
                 return json_encode(['status' => 'error', 'message' => 'Error al actualizar la línea: ' . print_r(sqlsrv_errors(), true)]);
@@ -1256,14 +1401,13 @@
             $sqlUpdate = "UPDATE Documentos SET
                 Total_Items    = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = ? AND Numero_documento = ?),
                 valor_total    = (SELECT ISNULL(SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
-                costo          = (SELECT ISNULL(SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
-                valor_aplicado = (SELECT ISNULL(SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
+                costo          = (SELECT ISNULL(SUM(d.Cantidad_Facturada * d.Costo_Unitario), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
                 descuento_1    = (SELECT ISNULL(SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (d.Porcentaje_Descuento_1 / 100), 2)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?),
                 Valor_impuesto = (SELECT ISNULL(SUM(((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)), 0) FROM Documentos_Lin d WHERE tipo = ? AND Numero_documento = ?)
                 WHERE tipo = ? AND Numero_Documento = ?";
 
             $paramsUpdate = [];
-            for ($i = 0; $i < 6; $i++) {
+            for ($i = 0; $i < 5; $i++) {
                 $paramsUpdate[] = $tipo;
                 $paramsUpdate[] = $consecutivo;
             }
@@ -1276,7 +1420,6 @@
             return json_encode([
                 'status' => 'success',
                 'message' => 'Línea actualizada desde el producto',
-                'valorUnitario' => number_format($valorUnitario, 2, '.', ''),
                 'porcentajeImpuesto' => number_format($porcentajeImpuesto, 2, '.', '')
             ]);
         }
@@ -1350,11 +1493,19 @@
             
             if ($valor_unitario !== null) {
                 $updates[] = "Valor_Unitario = ?";
-                $updates[] = "Costo_Unitario = ?";
-                $updates[] = "Costo_Unitario_Inicial = ?";
                 $params[] = $valor_unitario;
-                $params[] = $valor_unitario;
-                $params[] = $valor_unitario;
+
+                // El costo real viene del catálogo del producto, no del precio de venta
+                // que se está editando/agregando (antes se guardaban ambos igual).
+                $sqlCostoProd = "SELECT costo_unitario FROM TblProducto WHERE IdProducto = ?";
+                $stmtCostoProd = sqlsrv_query($cn->getConecta(), $sqlCostoProd, array((int)$producto));
+                $rowCostoProd = $stmtCostoProd ? sqlsrv_fetch_array($stmtCostoProd, SQLSRV_FETCH_ASSOC) : null;
+                if ($rowCostoProd) {
+                    $updates[] = "Costo_Unitario = ?";
+                    $updates[] = "Costo_Unitario_Inicial = ?";
+                    $params[] = (float)$rowCostoProd['costo_unitario'];
+                    $params[] = (float)$rowCostoProd['costo_unitario'];
+                }
             }
             
             if ($lote !== null) {
@@ -1449,15 +1600,14 @@
             $sql = "UPDATE Documentos SET 
                 Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = ? AND Numero_documento = ?),
                 valor_total = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?),
-                costo = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?),
-                valor_aplicado = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2) + ((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?),
+                costo = (SELECT ISNULL(SUM(dl.Cantidad_Facturada * dl.Costo_Unitario), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?),
                 descuento_1 = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada * dl.Valor_Unitario) * (ISNULL(dl.Porcentaje_Descuento_1, 0) / 100), 2)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?),
                 Valor_impuesto = (SELECT ISNULL(SUM(((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1, 0) / 100)) * (ISNULL(dl.Porcentaje_Impuesto, 0) / 100)), 0) FROM Documentos_Lin dl WHERE dl.tipo = ? AND dl.Numero_documento = ?)
                 WHERE tipo = ? AND Numero_Documento = ?";
 
             $params = array();
             // Repetir parámetros para cada subconsulta
-            for ($i = 0; $i < 6; $i++) {
+            for ($i = 0; $i < 5; $i++) {
                 $params[] = $tipo;
                 $params[] = $consecutivo;
             }
@@ -1660,13 +1810,57 @@
             @file_put_contents($archivo, $log, FILE_APPEND);
         }
 
+        // Trae la información de la Orden de Compra (sin crear nada) para mostrarla en la
+        // modal de confirmación antes de que el usuario cree el documento de verdad.
+        public function preview_doc_entrada($tipo, $numero) {
+            $cn = new Conectarserver;
+
+            $sql = "SELECT td.TipoDoctos, (c.siguiente + 1) AS proximoConsecutivo,
+                           t.nombre AS proveedor, dir.direccion AS direccion, dp.telefono1 AS telefono,
+                           dp.valor_total AS valorTotal, dp.notas AS notas
+                    FROM Documentos_Ped dp, TblTerceros t, TblTipoDoctos td, Terceros_Dir dir, consecutivos c
+                    WHERE c.tipo = ? AND td.idTipoDoctos = ? AND
+                          dp.nit = t.nit_cedula AND dir.codigo_direccion = dp.direccion_factura AND dir.nit = dp.nit AND
+                          dp.numero_pedido = ? AND dp.sw = '9'";
+            $stmt = sqlsrv_query($cn->getConecta(), $sql, array($tipo, $tipo, $numero));
+            if ($stmt === false) {
+                return json_encode(['status' => 'error', 'message' => 'Error al consultar la orden de compra: ' . print_r(sqlsrv_errors(), true)]);
+            }
+            $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+            if (!$row) {
+                return json_encode(['status' => 'error', 'message' => "El número de pedido '$numero' no existe"]);
+            }
+
+            $totalItems = 0;
+            $sqlItems = "SELECT COUNT(*) AS total FROM Documentos_Lin_Ped WHERE numero_pedido = ? AND sw = '9'";
+            $stmtItems = sqlsrv_query($cn->getConecta(), $sqlItems, array($numero));
+            if ($stmtItems !== false) {
+                $rowItems = sqlsrv_fetch_array($stmtItems, SQLSRV_FETCH_ASSOC);
+                if ($rowItems) $totalItems = (int)$rowItems['total'];
+            }
+
+            return json_encode([
+                'status' => 'success',
+                'data' => [
+                    'tipoDoctos'   => trim($row['TipoDoctos'] ?? ''),
+                    'consecutivo'  => $row['proximoConsecutivo'],
+                    'proveedor'    => trim($row['proveedor'] ?? ''),
+                    'direccion'    => trim($row['direccion'] ?? ''),
+                    'telefono'     => trim($row['telefono'] ?? ''),
+                    'valorTotal'   => (float)($row['valorTotal'] ?? 0),
+                    'notas'        => trim($row['notas'] ?? ''),
+                    'totalItems'   => $totalItems
+                ]
+            ]);
+        }
+
         public function insert_doc_entrada($tipo, $numero, $usuario){
             $cn = new Conectarserver;
 
             try {
 
                 // Primero, validar que el número de pedido exista
-                $sql_validar = "SELECT COUNT(*) AS existe FROM Documentos_Ped 
+                $sql_validar = "SELECT COUNT(*) AS existe FROM Documentos_Ped
                 WHERE numero_pedido = ? AND sw = '9'";
 
                 $params = array($numero);
@@ -1700,11 +1894,11 @@
                 
                 (SELECT td.tipo AS sw, '$tipo' AS tipo, '$tipo' AS modelo, (c.siguiente+1) AS Numero_Documento, '' AS Numero_Docto_Base,
                 dp.nit AS nit_Cedula, dp.direccion_factura AS codigo_direccion,  GETDATE() AS Fecha_Hora_Factura, GETDATE() AS Fecha_Hora_Vencimiento, GETDATE() AS Fecha_orden_Venta,
-                t.condicion AS condicion, dp.valor_total AS valor_total, dp.valor_total AS valor_aplicado, dp.Retencion_1 AS Retencion_1, 0 AS Retencion_2, 0 AS Retencion_3, 
+                t.condicion AS condicion, dp.valor_total AS valor_total, 0 AS valor_aplicado, dp.Retencion_1 AS Retencion_1, 0 AS Retencion_2, 0 AS Retencion_3,
                 0 AS retencion_causada, 0 AS retencion_iva, 0 AS retencion_ica, 0 AS retencion_descuento, 0 AS descuento_pie, 0 AS DescuentoOrdenVenta, 0 AS descuento_1, 0 AS descuento_2,
                 0 AS descuento_3, 0 AS costo, dp.vendedor AS idVendedor, 'N' AS anulado, '$usuario' AS usuario, SUBSTRING(dp.notas, 1, 250) AS notas, SUBSTRING(HOST_NAME(), 1, 20) AS pc, GETDATE() AS fecha_hora,
                 0 AS duracion, td.IdBodega AS bodega, 0 AS Valor_impuesto, 0 AS Impuesto_Consumo, 0 AS impuesto_deporte, dp.concepto AS concepto, GETDATE() AS vencimiento_presup, 
-                'N' AS exportado, '0' AS prefijo, dp.moneda AS moneda, 0 AS CentroDeCostosDoc, 0 AS valor_mercancia, 0 AS abono, 0 AS Comision_Vendedor, 
+                'N' AS exportado, ISNULL(td.Prefijo, '0') AS prefijo, dp.moneda AS moneda, 0 AS CentroDeCostosDoc, 0 AS valor_mercancia, 0 AS abono, 0 AS Comision_Vendedor, 
                 1 AS Tasa_Moneda_Ext, '' AS Tomador, 'V' AS Tasa_Fija_o_Variable, dir.idLista AS Punto_FOB,
                 0 AS Fletes_Moneda_Ext, 0 AS Miselaneos_Moneda_Ext, 0 AS Cargo_Por_Fletes, 0 AS Impuesto_Por_Fletes, 2 AS Total_Items, t.nombre AS Nombre_Cliente, 
                 SUBSTRING(dp.Contacto_Compras,0,20) AS Ordenado_Por, dp.telefono1 AS Telefono_De_Envio_1, '' AS Telefono_De_Envio_2, 'N' AS Factura_Impresa, dp.IdFormaEnvio AS IdFormaEnvio, dp.IdTRansportador AS IdTransportador, 
@@ -1734,11 +1928,11 @@
                 (SELECT td.tipo AS sw, '$tipo' AS tipo, dp.Linea AS seq, p.contable AS Modelo, (c.siguiente+1) AS Numero_Documento,
                 '' AS Numero_Docto_Base, '0' AS Numero_Lote, dp.IdCliente AS Nit_Cedula, dp.DireccionFactura AS codigo_direccion,  GETDATE() AS Fecha_Documento,
                 dp.IdProducto AS IdProducto, dp.und AS IdUnidad, '1' AS Factor_Conversion,  dp.cantidad AS Cantidad_Facturada,
-                0 AS Cantidad_Pendiente, dp.cantidad AS Cantidad_Orden, dp.valor_unitario AS Costo_Unitario, dp.valor_unitario AS Valor_Unitario, 
+                0 AS Cantidad_Pendiente, dp.cantidad AS Cantidad_Orden, p.costo_unitario AS Costo_Unitario, dp.valor_unitario AS Valor_Unitario,
                 ((dp.porcentaje_iva/100) * dp.valor_unitario) AS Valor_Impuesto, dp.porcentaje_iva AS Porcentaje_Impuesto, dp.porcentaje_descuento AS Porcentaje_Descuento_1,
                 dp.porc_dcto_2 AS Porcentaje_Descuento_2, dp.porc_dcto_3 AS Porcentaje_Descuento_3, dp.IdVendedor AS IdVendedor, 0 AS Comision_Vendedor, 0 AS Valor_Comision_Vendedor,
                 td.IdBodega AS IdBodega, 'S' AS Maneja_Inventario, '' AS Tomador, 1 AS IdMoneda, 1 AS Tasa_Moneda_Ext, '0' AS CentroDeCostosDoc,
-                ' ' AS Nota_Linea, '1' AS Unidades, GETDATE() AS Fecha_Vence, 'N' AS Exportado, dp.valor_unitario AS Costo_Unitario_Inicial,
+                ' ' AS Nota_Linea, '1' AS Unidades, GETDATE() AS Fecha_Vence, 'N' AS Exportado, p.costo_unitario AS Costo_Unitario_Inicial,
                 dp.Porcentaje_ReteFuente AS Porcentaje_ReteFuente, 0 AS Envase, 0 AS Numero_Lote_Destino, '' AS serial, 0 AS Impuesto_Consumo, 0 AS Porcentaje_ReteFuente_2,
                 0 AS Porcentaje_ReteFuente_3, 0 AS Porcentaje_ReteFuente_4, 0 AS Emp_1, 0 AS Emp_2, 0 AS Emp_3, 0 AS Emp_4, 0 AS Emp_5, 0 AS Emp_6,
                 0 AS Emp_7, 0 AS Emp_8, 0 AS Tara_1, 0 AS Tara_2, 0 AS Tara_3, 0 AS Tara_4, 0 AS Tara_5, 0 AS Tara_6, 0 AS Tara_7, 0 AS Tara_8
@@ -1748,12 +1942,25 @@
                 WHERE c.tipo = '$tipo' AND td.idTipoDoctos = c.tipo AND p.IdProducto = dp.IdProducto
                 AND dp.numero_pedido = '$numero' AND dp.sw = 9)";
                
-                $registros =  sqlsrv_prepare($cn->getConecta(), $sql1);            
+                $registros =  sqlsrv_prepare($cn->getConecta(), $sql1);
                 if(sqlsrv_execute($registros) === false) {
                     throw new Exception("Error al insertar detalle del documento: " . print_r(sqlsrv_errors(), true));
                 }
 
-                $sql2="UPDATE Consecutivos SET siguiente = siguiente+1 WHERE tipo = '$tipo' ";                
+                // Recalcular totales en cabecera como suma real del detalle (antes Total_Items
+                // quedaba fijo en 2 y costo fijo en 0, sin importar las líneas insertadas).
+                // Se usa (siguiente+1) igual que en los INSERT de arriba, porque Consecutivos
+                // todavía no se ha incrementado en este punto (eso pasa más abajo).
+                $sql_tot = "UPDATE Documentos SET
+                    Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = '$tipo' AND Numero_documento = (SELECT siguiente+1 FROM Consecutivos WHERE tipo = '$tipo')),
+                    costo = (SELECT ISNULL(SUM(dl.Cantidad_Facturada * dl.Costo_Unitario), 0) FROM Documentos_Lin dl WHERE dl.tipo = '$tipo' AND dl.Numero_documento = (SELECT siguiente+1 FROM Consecutivos WHERE tipo = '$tipo'))
+                    WHERE tipo = '$tipo' AND Numero_Documento = (SELECT siguiente+1 FROM Consecutivos WHERE tipo = '$tipo')";
+                $stmt_tot = sqlsrv_prepare($cn->getConecta(), $sql_tot);
+                if (sqlsrv_execute($stmt_tot) === false) {
+                    throw new Exception("Error al actualizar totales: " . print_r(sqlsrv_errors(), true));
+                }
+
+                $sql2="UPDATE Consecutivos SET siguiente = siguiente+1 WHERE tipo = '$tipo' ";
                 $registros =  sqlsrv_prepare($cn->getConecta(), $sql2);
                 if(sqlsrv_execute($registros) === false) {
                     throw new Exception("Error al actualizar consecutivo: " . print_r(sqlsrv_errors(), true));
@@ -2049,9 +2256,13 @@
         public function update_lote($tipo, $numdoc, $id, $lote){
 
             $cn = new Conectarserver;
-            $id = $_POST['id'];            
+            $id = $_POST['id'] ?? [];
+            if (!is_array($id) || count($id) === 0) {
+                echo "No se seleccionó ningún producto \n";
+                return;
+            }
             $count = count($id);
-            //Rebuscamos en busca de resultados $_POST (id selecionados). 
+            //Rebuscamos en busca de resultados $_POST (id selecionados).
             for ($i=0; $i<$count; $i++) {
                 $sql="UPDATE Documentos_Lin 
                 SET Numero_Lote = '$lote'
@@ -2287,15 +2498,20 @@
         public function save_entrada($tipo, $numdoc, $notas, $remision, $nit, $nombre, $direccion, $telefono, $traslfact, $idTransportador = 1, $idVehiculo = 1){
             $cn = new Conectarserver;
 
+            $sqlChkLin = "SELECT COUNT(*) AS total FROM Documentos_Lin WHERE tipo = ? AND Numero_documento = ?";
+            $stmtChkLin = sqlsrv_query($cn->getConecta(), $sqlChkLin, array($tipo, $numdoc));
+            $rowChkLin = $stmtChkLin ? sqlsrv_fetch_array($stmtChkLin, SQLSRV_FETCH_ASSOC) : null;
+            if (!$rowChkLin || (int)$rowChkLin['total'] === 0) {
+                echo "No se puede guardar: el documento debe tener al menos un producto \n";
+                return;
+            }
+
             if(empty($remision)){
                 $sql="UPDATE Documentos SET nit_Cedula_2 = '$nit', codigo_direccion_2 = '$direccion', Numero_Docto_Base = '$traslfact', notas = '$notas', exportado = 'S', IdTransportador = '$idTransportador', IdVehiculo = '$idVehiculo',
                 Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = $tipo AND Numero_documento = $numdoc),
                 valor_total = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
                 FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $numdoc),
-                costo = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
-                FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $numdoc),
-                valor_aplicado = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
-                FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $numdoc),
+                costo = (SELECT ISNULL(SUM(d.Cantidad_Facturada * d.Costo_Unitario), 0) FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $numdoc),
                 descuento_1 = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (d.Porcentaje_Descuento_1 / 100), 2)) 
                 FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $numdoc),
                 Valor_impuesto = (SELECT SUM(((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100))
@@ -2310,10 +2526,7 @@
                 Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = $tipo AND Numero_documento = $numdoc),
                 valor_total = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
                 FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $numdoc),
-                costo = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
-                FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $numdoc),
-                valor_aplicado = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100), 2) + ((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100)) 
-                FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $numdoc),
+                costo = (SELECT ISNULL(SUM(d.Cantidad_Facturada * d.Costo_Unitario), 0) FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $numdoc),
                 descuento_1 = (SELECT SUM(ROUND((d.Cantidad_Facturada * d.Valor_Unitario) * (d.Porcentaje_Descuento_1 / 100), 2)) 
                 FROM Documentos_Lin d WHERE tipo = $tipo AND Numero_documento = $numdoc),
                 Valor_impuesto = (SELECT SUM(((d.Cantidad_Facturada * d.Valor_Unitario) * (1 - d.Porcentaje_Descuento_1 / 100)) * (d.Porcentaje_Impuesto / 100))
@@ -2554,12 +2767,12 @@
                     (SELECT td.tipo AS sw, '$tipo' AS tipo, dp.Linea AS seq, p.contable AS Modelo, $numdoc AS Numero_Documento,
                     '' AS Numero_Docto_Base, '0' AS Numero_Lote, dp.IdCliente AS Nit_Cedula, dp.DireccionFactura AS codigo_direccion, GETDATE() AS Fecha_Documento,
                     dp.IdProducto AS IdProducto, dp.und AS IdUnidad, '1' AS Factor_Conversion, dp.cantidad AS Cantidad_Facturada,
-                    0 AS Cantidad_Pendiente, dp.cantidad AS Cantidad_Orden, dp.valor_unitario AS Costo_Unitario, dp.valor_unitario AS Valor_Unitario,
+                    0 AS Cantidad_Pendiente, dp.cantidad AS Cantidad_Orden, p.costo_unitario AS Costo_Unitario, dp.valor_unitario AS Valor_Unitario,
                     ((dp.porcentaje_iva/100) * dp.valor_unitario) AS Valor_Impuesto, dp.porcentaje_iva AS Porcentaje_Impuesto,
                     dp.porcentaje_descuento AS Porcentaje_Descuento_1, dp.porc_dcto_2 AS Porcentaje_Descuento_2,
                     dp.porc_dcto_3 AS Porcentaje_Descuento_3, dp.IdVendedor AS IdVendedor, 0 AS Comision_Vendedor, 0 AS Valor_Comision_Vendedor,
                     td.IdBodega AS IdBodega, 'S' AS Maneja_Inventario, '' AS Tomador, 1 AS IdMoneda, 1 AS Tasa_Moneda_Ext, '0' AS CentroDeCostosDoc,
-                    ' ' AS Nota_Linea, '1' AS Unidades, GETDATE() AS Fecha_Vence, 'N' AS Exportado, dp.valor_unitario AS Costo_Unitario_Inicial,
+                    ' ' AS Nota_Linea, '1' AS Unidades, GETDATE() AS Fecha_Vence, 'N' AS Exportado, p.costo_unitario AS Costo_Unitario_Inicial,
                     dp.Porcentaje_ReteFuente AS Porcentaje_ReteFuente, 0 AS Envase, 0 AS Numero_Lote_Destino, '' AS serial, 0 AS Impuesto_Consumo,
                     0 AS Porcentaje_ReteFuente_2, 0 AS Porcentaje_ReteFuente_3, 0 AS Porcentaje_ReteFuente_4,
                     0 AS Emp_1, 0 AS Emp_2, 0 AS Emp_3, 0 AS Emp_4, 0 AS Emp_5, 0 AS Emp_6,
@@ -2615,8 +2828,7 @@
                     Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = '$tipo' AND Numero_documento = $numdoc),
                     Valor_impuesto = (SELECT ISNULL(SUM(((dl.Cantidad_Facturada * dl.Valor_Unitario) * (1 - ISNULL(dl.Porcentaje_Descuento_1,0)/100)) * (ISNULL(dl.Porcentaje_Impuesto,0)/100)),0) FROM Documentos_Lin dl WHERE dl.tipo='$tipo' AND dl.Numero_documento=$numdoc),
                     valor_total = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada*dl.Valor_Unitario)*(1-ISNULL(dl.Porcentaje_Descuento_1,0)/100),2)+((dl.Cantidad_Facturada*dl.Valor_Unitario)*(1-ISNULL(dl.Porcentaje_Descuento_1,0)/100))*(ISNULL(dl.Porcentaje_Impuesto,0)/100)),0) FROM Documentos_Lin dl WHERE dl.tipo='$tipo' AND dl.Numero_documento=$numdoc),
-                    valor_aplicado = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada*dl.Valor_Unitario)*(1-ISNULL(dl.Porcentaje_Descuento_1,0)/100),2)+((dl.Cantidad_Facturada*dl.Valor_Unitario)*(1-ISNULL(dl.Porcentaje_Descuento_1,0)/100))*(ISNULL(dl.Porcentaje_Impuesto,0)/100)),0) FROM Documentos_Lin dl WHERE dl.tipo='$tipo' AND dl.Numero_documento=$numdoc),
-                    costo = (SELECT ISNULL(SUM(ROUND((dl.Cantidad_Facturada*dl.Valor_Unitario)*(1-ISNULL(dl.Porcentaje_Descuento_1,0)/100),2)+((dl.Cantidad_Facturada*dl.Valor_Unitario)*(1-ISNULL(dl.Porcentaje_Descuento_1,0)/100))*(ISNULL(dl.Porcentaje_Impuesto,0)/100)),0) FROM Documentos_Lin dl WHERE dl.tipo='$tipo' AND dl.Numero_documento=$numdoc)
+                    costo = (SELECT ISNULL(SUM(dl.Cantidad_Facturada * dl.Costo_Unitario), 0) FROM Documentos_Lin dl WHERE dl.tipo='$tipo' AND dl.Numero_documento=$numdoc)
                     WHERE tipo = '$tipo' AND Numero_Documento = $numdoc";
 
                 $stmt_tot = sqlsrv_prepare($cn->getConecta(), $sql_tot);

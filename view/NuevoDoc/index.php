@@ -69,6 +69,11 @@ $DateAndTime = date('d-m-Y h:i:s a', time());
 								<li class="active">Nuevo Documento</li>
 							</ol>
 						</div>
+						<div class="tbl-cell tbl-cell-action">
+							<a href="../ConsultarInventarios/" class="btn btn-secondary btn-md">
+								<i class="fa fa-arrow-left"></i> Volver
+							</a>
+						</div>
 					</div>
 				</div>
 			</header>
