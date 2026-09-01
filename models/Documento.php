@@ -2595,7 +2595,10 @@
             $cn = new Conectarserver;
             $resultado = array();
 
-            $where = "d.tipo = t.idTipoDoctos AND c.nit_cedula = d.nit_Cedula";
+            // Numero_documento > 0 excluye los BORRADORES de Salidas (números negativos del
+            // consecutivo diferido). No son documentos todavía y no deben aparecer aquí;
+            // mismo criterio que ya usaba listar_salidas_filtro.
+            $where = "d.tipo = t.idTipoDoctos AND c.nit_cedula = d.nit_Cedula AND d.Numero_documento > 0";
             $params = array();
 
             if ($idTipo !== '') {
@@ -2941,8 +2944,12 @@
 
         public function listar_documentos_fecha(){
             $cn = new Conectarserver;
-            $sql="SELECT tipo, Numero_documento, Numero_Docto_Base_2, notas, usuario, CAST(Fecha_Hora_Factura AS date) AS Fecha_Hora_Factura 
-            FROM Documentos WHERE Fecha_Hora_Factura >= DATEADD(day, -100, GETDATE())";
+            // Numero_documento > 0 excluye los BORRADORES de Salidas (números negativos del
+            // consecutivo diferido). No son documentos todavía y no deben aparecer aquí;
+            // mismo criterio que ya usaba listar_salidas_filtro.
+            $sql="SELECT tipo, Numero_documento, Numero_Docto_Base_2, notas, usuario, CAST(Fecha_Hora_Factura AS date) AS Fecha_Hora_Factura
+            FROM Documentos WHERE Fecha_Hora_Factura >= DATEADD(day, -100, GETDATE())
+            AND Numero_documento > 0";
             $registros = sqlsrv_query($cn->getConecta(), $sql);
             if( $registros === false ){
                 echo "Error al ejecutar consulta.\n";

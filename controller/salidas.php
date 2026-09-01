@@ -5,6 +5,15 @@
     require_once("../models/mdlSalidas.php");
     $salidas = new Salidas();
 
+    // Barrido de borradores abandonados (Numero_Documento negativo, exportado='N', más de
+    // 12 h). El consecutivo diferido está desactivado y ya no se generan negativos nuevos,
+    // así que esto queda solo para barrer los que quedaron de antes. Cuesta 0,05 s medido en
+    // producción, y vuelve a ser necesario el día que se reactive el mecanismo.
+    $opsQuePurgan = array('listar_salidas', 'insert_doc_salida', 'insert_doc_manual', 'insert_devolucion_manual');
+    if (in_array($_GET["op"] ?? '', $opsQuePurgan, true)) {
+        $salidas->purgar_borradores_salida(12);
+    }
+
     switch($_GET["op"]){
    
         case "get_farm_info":
@@ -166,10 +175,6 @@
         break;
 
         case "listar_salidas":
-            // Barrido oportunista de borradores abandonados (números negativos, exportado='N')
-            // más viejos que 12h. Garantiza limpieza aunque el sendBeacon de descarte no llegue.
-            $salidas->purgar_borradores_salida(12);
-
             require_once("../models/mdlPermisos.php");
             $permisos = new Permisos();
             $tipos_permitidos_rows = $permisos->get_tipos_documento_salidas_permitidos($_SESSION["Id_Usuario"]);

@@ -179,6 +179,34 @@
             return $pdo;
         }
 
+        // Reserva el consecutivo REAL del tipo de documento de forma atómica: el UPDATE
+        // toma un lock de fila que dura hasta el COMMIT, así que dos creaciones simultáneas
+        // quedan serializadas en vez de recibir el mismo número. Debe llamarse DENTRO de la
+        // transacción, para que un fallo posterior devuelva el número al consecutivo.
+        private function reservar_consecutivo_real($conn, $tipo) {
+            $stmt = sqlsrv_query($conn,
+                "UPDATE Consecutivos SET siguiente = siguiente + 1
+                 OUTPUT INSERTED.siguiente AS nuevo
+                 WHERE tipo = ?",
+                array($tipo));
+            if ($stmt === false) {
+                throw new Exception("Error al reservar consecutivo: " . print_r(sqlsrv_errors(), true));
+            }
+            $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+            if (!$row) {
+                throw new Exception("No existe un consecutivo configurado para el tipo de documento $tipo");
+            }
+            return (int)$row['nuevo'];
+        }
+
+        // ─── DESACTIVADO: consecutivo diferido / borradores negativos ─────────────
+        // Se dejó de usar por petición del negocio: los números negativos se filtraban
+        // hacia pantallas que no los esperaban y complicaban más de lo que resolvían.
+        // Las funciones de abajo (reservar_id_borrador, marcar_borrador,
+        // descartar_borrador, purgar_borradores_salida) quedan en el código, sin usarse,
+        // para poder reactivar el mecanismo cuando se retome. Mientras tanto son inertes:
+        // descartar/purgar solo actúan sobre números negativos, y ya no se generan.
+
         // Reserva un id negativo único de borrador. AUTO_INCREMENT garantiza unicidad
         // global de forma atómica, sin bloquear la tabla caliente Documentos.
         // Devuelve el Numero_Documento negativo a usar. Lanza excepción si MySQL falla.
@@ -305,11 +333,10 @@
         public function insert_doc_manual($tipo, $nit1, $dir1, $nit2, $dir2, $fecha_factura, $usuario) {
             $cn = new Conectarserver;
             try {
-                // Consecutivo diferido: se crea como BORRADOR con Numero_Documento negativo.
-                // El id de MySQL se reserva ANTES de abrir la transacción de SQL Server.
-                $draft = $this->reservar_id_borrador($tipo, $usuario);
-
                 sqlsrv_begin_transaction($cn->getConecta());
+
+                // El documento se crea directamente con su consecutivo real.
+                $draft = $this->reservar_consecutivo_real($cn->getConecta(), $tipo);
 
                 $sql = "INSERT INTO Documentos(sw, tipo, modelo, Numero_Documento, Numero_Docto_Base,
                 nit_Cedula, codigo_direccion, Fecha_Hora_Factura, Fecha_Hora_Vencimiento, Fecha_orden_Venta,
@@ -344,7 +371,6 @@
                     throw new Exception("Error al insertar documento: " . print_r(sqlsrv_errors(), true));
                 }
 
-                // NO se toca Consecutivos: el consecutivo real se asigna al Guardar.
                 sqlsrv_commit($cn->getConecta());
 
                 return json_encode(array(
@@ -384,9 +410,11 @@
             $idVendedorSql = $dotacion ? ", IdVendedor = 12" : "";
             $fechaSql = $fecha_factura ? ", Fecha_Hora_Factura = CONVERT(datetime,'$fecha_factura',120)" : "";
 
-            // Consecutivo diferido: si el documento es un BORRADOR (Numero_Documento negativo),
-            // aquí se reserva el consecutivo REAL de forma atómica y se renumera encabezado + líneas
-            // en una sola transacción. El número solo se consume al guardar → sin huecos.
+            // El consecutivo diferido está DESACTIVADO (ver la nota junto a reservar_id_borrador):
+            // los documentos se crean con su número real, así que $esBorrador siempre es false y
+            // la rama de renumeración de abajo no se ejecuta. Se conserva intacta para poder
+            // reactivar el mecanismo sin volver a escribirla; los documentos negativos que
+            // quedaron de antes siguen guardándose bien si alguien abre uno.
             $esBorrador = ((int)$numdoc < 0);
             $draftNeg   = (int)$numdoc;
             $finalNum   = (int)$numdoc; // número definitivo (real para borrador, el mismo para heredados)
@@ -929,10 +957,10 @@
         public function insert_devolucion_manual($tipo, $nit1, $dir1, $nit2, $dir2, $usuario, $idConcepto, $nombreConcepto) {
             $cn = new Conectarserver;
             try {
-                // Consecutivo diferido: se crea como BORRADOR con Numero_Documento negativo.
-                $draft = $this->reservar_id_borrador($tipo, $usuario);
-
                 sqlsrv_begin_transaction($cn->getConecta());
+
+                // El documento se crea directamente con su consecutivo real.
+                $draft = $this->reservar_consecutivo_real($cn->getConecta(), $tipo);
 
                 $sql = "INSERT INTO Documentos(sw, tipo, modelo, Numero_Documento, Numero_Docto_Base,
                 nit_Cedula, codigo_direccion, Fecha_Hora_Factura, Fecha_Hora_Vencimiento, Fecha_orden_Venta,
@@ -993,7 +1021,6 @@
                     }
                 }
 
-                // NO se toca Consecutivos: el consecutivo real se asigna al Guardar.
                 sqlsrv_commit($cn->getConecta());
 
                 return json_encode(array(
@@ -1071,11 +1098,10 @@
                     }
                 }
 
-                // Consecutivo diferido: se crea como BORRADOR con Numero_Documento negativo.
-                // El id de MySQL se reserva ANTES de abrir la transacción de SQL Server.
-                $numDoc = $this->reservar_id_borrador($tipo, $usuario);
-
                 sqlsrv_begin_transaction($cn->getConecta());
+
+                // El documento se crea directamente con su consecutivo real.
+                $numDoc = $this->reservar_consecutivo_real($cn->getConecta(), $tipo);
 
                 $sql="INSERT INTO Documentos(sw, tipo, modelo, Numero_Documento, Numero_Docto_Base,
                 nit_Cedula, codigo_direccion, Fecha_Hora_Factura,Fecha_Hora_Vencimiento,Fecha_orden_Venta,
@@ -1166,7 +1192,6 @@
                     throw new Exception("Error al actualizar totales en cabecera: " . print_r(sqlsrv_errors(), true));
                 }
 
-                // NO se toca Consecutivos: el consecutivo real se asigna al Guardar.
 
                 // Calcular si quedan pendientes para marcar exportado en Documentos_ped (P=parcial, S=completo)
                 $sql_chk_pend = "SELECT COUNT(*) AS con_pendiente
