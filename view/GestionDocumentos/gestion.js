@@ -67,34 +67,79 @@ $(document).on('click', '#btnBuscarDoc', function() {
     }, 'json');
 });
 
+function urlVerDocumento(doc) {
+    // Pedidos está acotado a un idTipoDoctos puntual (948), no a una categoría.
+    if (String(doc.tipo) === '948') {
+        return '../Pedidos/index.php?tipo=' + doc.tipo + '&consecutivo=' + doc.numero;
+    }
+    switch (String(doc.categoria)) {
+        case '99':
+            return '../NuevoDoc/index.php?tipo=' + doc.tipo + '&consecutivo=' + doc.numero;
+        case '12':
+        case '3':
+            return '../Entradas/index.php?tipo=' + doc.tipo + '&consecutivo=' + doc.numero;
+        case '11':
+        case '2':
+            return '../Salidas/index.php?tipo=' + doc.tipo + '&consecutivo=' + doc.numero;
+        default:
+            return null;
+    }
+}
+
+$(document).on('click', '#btnVerDocumento', function() {
+    if (!documentoActual) return;
+
+    const url = urlVerDocumento(documentoActual);
+    if (!url) {
+        swal("Advertencia!", "No se pudo determinar el módulo para ver este tipo de documento.", "warning");
+        return;
+    }
+    window.location.href = url;
+});
+
+// Desmarcar pide motivo en una modal, igual que anular: es la operación que vuelve
+// editable un documento ya impreso, y sin motivo no queda rastro de por qué se hizo.
 $(document).on('click', '#btnDesmarcar', function() {
     if (!documentoActual) return;
 
-    swal({
-        title: "¿Desmarcar documento?",
-        text: `El documento ${documentoActual.tipoNombre} N° ${documentoActual.numero} pasará de Exportado (S) a No Exportado (N). Esta acción puede afectar reportes e integraciones que dependan de este estado.`,
-        type: "warning",
-        showCancelButton: true,
-        confirmButtonColor: "#f0ad4e",
-        confirmButtonText: "Sí, desmarcar",
-        cancelButtonText: "Cancelar",
-        closeOnConfirm: false
-    }, function(confirmado) {
-        if (!confirmado) return;
+    $('#motivoDesmarca').val('');
+    $('#motivoDesmarcaDocInfo').text(
+        `Documento: ${documentoActual.tipoNombre} N° ${documentoActual.numero}. Pasará de Exportado (S) a No Exportado (N).`
+    );
+    $('#modalMotivoDesmarca').modal('show');
+});
 
-        $.post(CONFIG.baseUrl + CONFIG.endpoints.desmarcar,
-            { tipo: documentoActual.tipo, numero: documentoActual.numero },
-            function(response) {
-                if (response.status === 'success') {
+$('#modalMotivoDesmarca').on('shown.bs.modal', function() {
+    $('#motivoDesmarca').focus();
+});
+
+$(document).on('click', '#btnConfirmarDesmarca', function() {
+    if (!documentoActual) return;
+
+    const motivo = $('#motivoDesmarca').val().trim();
+    if (!motivo) {
+        swal("Advertencia!", "Debe indicar el motivo por el cual desmarca el documento.", "warning");
+        return;
+    }
+
+    $.post(CONFIG.baseUrl + CONFIG.endpoints.desmarcar,
+        { tipo: documentoActual.tipo, numero: documentoActual.numero, motivo: motivo },
+        function(response) {
+            if (response.status === 'success') {
+                // Se espera a que la modal cierre antes del swal, para que los overlays de
+                // Bootstrap y SweetAlert no choquen y dejen la pantalla bloqueada.
+                $('#modalMotivoDesmarca').one('hidden.bs.modal', function() {
                     swal({ title: "Correcto!", text: response.message, type: "success" }, function() {
                         documentoActual.exportado = 'N';
+                        if (response.notas !== undefined) documentoActual.notas = response.notas;
                         pintarDocumento(documentoActual);
                     });
-                } else {
-                    swal({ title: "Error!", text: response.message, type: "error" });
-                }
-            }, 'json');
-    });
+                });
+                $('#modalMotivoDesmarca').modal('hide');
+            } else {
+                swal({ title: "Error!", text: response.message, type: "error" });
+            }
+        }, 'json');
 });
 
 $(document).on('click', '#btnAnular', function() {

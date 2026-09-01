@@ -36,7 +36,54 @@ $(document).ready(function() {
     var tipo =  getUrlParameter('tipo');
     var consecutivo =  getUrlParameter('consecutivo');
 
+    // Evitar que el formulario haga un submit normal (recargaría la página y
+    // borraría los filtros); la consulta y la actualización se hacen por AJAX.
+    $('#doc_form').on('submit', function(event) {
+        event.preventDefault();
+        return false;
+    });
+
+    $(document).on('click', '#btnConsultar', function() {
+        consultarUtilidades();
+    });
+
 });
+
+// Consulta los documentos por Tipo/Fecha y repinta la tabla, sin tocar los
+// filtros ni recargar la página (mismo criterio que Gestión de Documentos).
+function consultarUtilidades() {
+    var idTipo = $('#idTipo').val() || '';
+    var fecha1 = $('#fecha1').val() || '';
+
+    var $tbody = $('#tb-doc tbody');
+    $tbody.empty();
+
+    $.post('../../controller/documento.php?op=listar_utilidades_doc_ref', { idTipo: idTipo, fecha1: fecha1 }, function(response) {
+        var data = typeof response === 'string' ? JSON.parse(response) : response;
+
+        if (!data.status || !data.data || data.data.length === 0) {
+            $tbody.append($('<tr>').append($('<td colspan="6">').text('No se encontraron resultados.')));
+            return;
+        }
+
+        data.data.forEach(function(row) {
+            var $tr = $('<tr>');
+            $tr.append($('<td>').text(row.tipoDoctos));
+            $tr.append($('<td>').text(row.numero));
+            $tr.append($('<td>').text(row.nombre));
+            $tr.append($('<td>').text(row.fecha));
+
+            var $input = $('<input type="text" class="form-control">')
+                .attr('id', row.tipo + '_' + row.numero)
+                .val(row.numeroDoctoBase);
+            $tr.append($('<td>').append($input));
+
+            $tbody.append($tr);
+        });
+    }, 'json').fail(function() {
+        $tbody.empty().append($('<tr>').append($('<td colspan="6">').text('Error al consultar los documentos.')));
+    });
+}
 
 var getUrlParameter = function getUrlParameter(sParam) {
     var sPageURL = decodeURIComponent(window.location.search.substring(1)),
@@ -138,8 +185,8 @@ $(document).on("click","#btnupdate", function(event){
                     let data = JSON.parse(response);
                     if(data.status) {
                         swal("¡Éxito!", "Registros actualizados correctamente", "success");
-                        // Opcional: recargar la tabla
-                        $("#tb-doc").submit();
+                        // Refrescar la tabla sin tocar los filtros ni recargar la página.
+                        consultarUtilidades();
                     } else {
                         swal("Error", "No se pudieron actualizar los registros", "error");
                     }

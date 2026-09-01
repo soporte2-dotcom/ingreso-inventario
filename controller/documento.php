@@ -678,7 +678,7 @@
                 $idTransportador = (isset($_POST["idTransportador"]) && $_POST["idTransportador"] !== '') ? $_POST["idTransportador"] : '1';
                 $idVehiculo      = (isset($_POST["idVehiculo"])      && $_POST["idVehiculo"]      !== '') ? $_POST["idVehiculo"]      : '1';
 
-                $documento->save_entrada($_POST["tipo"],$_POST["numdoc"],$_POST["notas"],$_POST["remision"],$_POST["nit3"],$_POST["nombre3"],$direccion[0],$_POST["telefono3"],$_POST["traslfact1"],$idTransportador,$idVehiculo);
+                $documento->save_entrada($_POST["tipo"],$_POST["numdoc"],$_POST["notas"],$_POST["remision"] ?? '',$_POST["nit3"],$_POST["nombre3"],$direccion[0],$_POST["telefono3"],$_POST["traslfact1"],$idTransportador,$idVehiculo);
             }
                                    
         break;
@@ -690,6 +690,22 @@
         case "update_doc_ref":
             $registros = json_decode($_POST["registros"]); // Decodificar el JSON primero
             $documento->update_doc_ref($registros);
+        break;
+
+        case "listar_utilidades_doc_ref":
+            $datos = $documento->listar_utilidades_doc_ref($_POST['idTipo'] ?? '', $_POST['fecha1'] ?? '');
+            $data = array();
+            foreach ($datos as $row) {
+                $data[] = array(
+                    "tipo"           => $row["tipo"],
+                    "tipoDoctos"     => trim($row["TipoDoctos"]),
+                    "numero"         => $row["Numero_documento"],
+                    "numeroDoctoBase"=> $row["Numero_Docto_Base"],
+                    "nombre"         => trim($row["nombre"] ?? ''),
+                    "fecha"          => $row["Fecha_Hora_Factura"] ? date_format($row["Fecha_Hora_Factura"], "Y-m-d") : ''
+                );
+            }
+            echo json_encode(array("status" => true, "data" => $data));
         break;
 
         case "update_doc_ref1":
@@ -803,7 +819,10 @@
 
         case "reiniciar_doc_desde_pedido":
         case "reiniciar_doc_entrada":
-            echo $documento->reiniciar_doc_entrada($_POST["tipo"], $_POST["numdoc"]);
+            // 'confirmado' lo envía la vista solo tras el segundo aviso, cuando el documento
+            // ya había sido guardado y alguien lo desmarcó (ver reiniciar_doc_entrada).
+            echo $documento->reiniciar_doc_entrada($_POST["tipo"], $_POST["numdoc"],
+                                                   ($_POST["confirmado"] ?? '') === '1');
         break;
 
         // Módulo Gestión de Documentos: requiere el permiso de módulo 'gestion_documentos'
@@ -828,7 +847,14 @@
             if ($_GET["op"] === "buscar_documento_gestion") {
                 echo $documento->buscar_documento_gestion($tipoGestion, $numeroGestion);
             } elseif ($_GET["op"] === "desmarcar_documento") {
-                echo $documento->desmarcar_documento($tipoGestion, $numeroGestion);
+                // Desmarcar exige motivo igual que anular: es la operación que vuelve
+                // editable un documento ya impreso, y sin motivo no queda rastro de por qué.
+                $motivoDesmarca = trim($_POST["motivo"] ?? '');
+                if ($motivoDesmarca === '') {
+                    echo json_encode(["status" => "error", "message" => "Debe indicar el motivo por el cual desmarca el documento."]);
+                    break;
+                }
+                echo $documento->desmarcar_documento($tipoGestion, $numeroGestion, $motivoDesmarca, $_SESSION["Id_Usuario"]);
             } else {
                 $motivoAnulacion = trim($_POST["motivo"] ?? '');
                 if ($motivoAnulacion === '') {

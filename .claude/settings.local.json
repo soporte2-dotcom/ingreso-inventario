@@ -112,7 +112,24 @@
       "Bash(node --check view/Pedidos/pedidos.js)",
       "Bash(/c/xampp/mysql/bin/mysql.exe -uroot -e 'SELECT VERSION\\(\\);' permisos_tecno)",
       "Bash(/c/xampp/mysql/bin/mysql.exe -uroot permisos_tecno)",
-      "Bash(/c/xampp/mysql/bin/mysql.exe -uroot -e 'DESCRIBE cargamasivatoken;' permisos_tecno)"
+      "Bash(/c/xampp/mysql/bin/mysql.exe -uroot -e 'DESCRIBE cargamasivatoken;' permisos_tecno)",
+      "Bash(php -l \"c:\\\\xampp\\\\htdocs\\\\ingresoinventario\\\\models\\\\Documento.php\")",
+      "Bash(php -l \"c:\\\\xampp\\\\htdocs\\\\ingresoinventario\\\\view\\\\GestionDocumentos\\\\index.php\")",
+      "Bash(node --check \"c:\\\\xampp\\\\htdocs\\\\ingresoinventario\\\\view\\\\GestionDocumentos\\\\gestion.js\")",
+      "Bash(php -l \"c:\\\\xampp\\\\htdocs\\\\ingresoinventario\\\\controller\\\\documento.php\")",
+      "Bash(php -l \"c:\\\\xampp\\\\htdocs\\\\ingresoinventario\\\\view\\\\Utilidades\\\\index.php\")",
+      "Bash(node --check \"c:\\\\xampp\\\\htdocs\\\\ingresoinventario\\\\view\\\\Utilidades\\\\nuevodoc.js\")",
+      "Bash(ls \"c:/xampp/htdocs/ingresoinventario/sql\" 2>/dev/null || echo \"no sql dir\"; ls \"c:/xampp/mysql/bin/mysql.exe\" 2>/dev/null && echo \"mysql found\")",
+      "Read(//c/xampp/mysql/bin/**)",
+      "Bash(\"c:/xampp/mysql/bin/mysql.exe\" -u root permisos_tecno)",
+      "Bash(\"c:/xampp/mysql/bin/mysql.exe\" -u root permisos_tecno -e \"DESCRIBE salida_borrador_seq;\")",
+      "Bash(\"c:/xampp/php/php.exe\" -l \"c:/xampp/htdocs/ingresoinventario/models/mdlSalidas.php\")",
+      "Bash(\"c:/xampp/php/php.exe\" -l \"c:/xampp/htdocs/ingresoinventario/controller/salidas.php\")",
+      "Bash(\"c:/xampp/php/php.exe\" -l \"c:/xampp/htdocs/ingresoinventario/view/Salidas/index.php\")",
+      "Bash(command -v node)",
+      "Bash(node --check \"c:/xampp/htdocs/ingresoinventario/view/Salidas/salidas.js\")",
+      "Bash(\"c:/xampp/php/php.exe\" -m)",
+      "Bash(\"c:/xampp/php/php.exe\" \"C:/Users/soporte2/AppData/Local/Temp/claude/c--xampp-htdocs-ingresoinventario/a370ea0a-fb54-4dd1-9e1a-c5062ed72f47/scratchpad/diag_borrador.php\")"
     ],
     "additionalDirectories": [
       "\\tmp"

@@ -1,4 +1,8 @@
 <?php
+    // Bitácora en MySQL de toda operación que crea, modifica o borra líneas de
+    // documentos. SQL Server es la base heredada y no admite triggers propios.
+    require_once(dirname(__FILE__) . '/AuditoriaDocumentos.php');
+
     class Documento extends Conectarserver{
 
         // Límites de la carga masiva por Excel (protegen memoria/workers de PHP y el SQL Server
@@ -90,8 +94,48 @@
             }
         }
         
+        // El parámetro $seq llega del navegador por compatibilidad con la vista, pero NO se
+        // usa: el navegador lo refresca de forma asíncrona tras cada alta, así que con un
+        // lector de código de barras dos productos seguidos podían quedar con el mismo seq.
+        // Dos líneas con igual seq y producto hacen que delete_id borre AMBAS de un clic.
+        // Aquí el seq se calcula en el servidor bajo UPDLOCK/HOLDLOCK, igual que en la
+        // carga masiva de inventario, y queda serializado dentro de la transacción.
         public function insert_detalle($tipo, $consecutivo, $nit, $seq, $producto, $cantidad){
             $cn = new Conectarserver;
+            $conn = $cn->getConecta();
+
+            // Un documento ya guardado o anulado no admite líneas nuevas (mismo criterio
+            // que delete_id/delete_masivo; hasta ahora esta ruta no lo validaba).
+            $sqlChk = "SELECT exportado, anulado FROM Documentos WHERE tipo = ? AND Numero_documento = ?";
+            $stmtChk = sqlsrv_query($conn, $sqlChk, array($tipo, $consecutivo));
+            $rowChk  = $stmtChk ? sqlsrv_fetch_array($stmtChk, SQLSRV_FETCH_ASSOC) : null;
+            if (!$rowChk) {
+                echo "No Agregado: documento no encontrado \n";
+                return;
+            }
+            if (trim($rowChk['exportado']) === 'S' || trim($rowChk['anulado'] ?? 'N') === 'S') {
+                AuditoriaDocumentos::registrar(array(
+                    'modulo' => 'Documentos', 'operacion' => 'insert_detalle',
+                    'tipo' => $tipo, 'numero' => $consecutivo,
+                    'exportado_antes' => $rowChk['exportado'], 'anulado_antes' => $rowChk['anulado'] ?? 'N',
+                    'resultado' => 'bloqueado',
+                    'mensaje' => "Intento de agregar producto=$producto a documento guardado/anulado"
+                ));
+                echo "No Agregado: el documento ya está guardado o anulado \n";
+                return;
+            }
+
+            sqlsrv_begin_transaction($conn);
+            try {
+
+            $sqlSeq = "SELECT ISNULL(MAX(seq), 0) + 1 AS next_seq FROM Documentos_Lin WITH (UPDLOCK, HOLDLOCK)
+                       WHERE tipo = ? AND Numero_documento = ?";
+            $stmtSeq = sqlsrv_query($conn, $sqlSeq, array($tipo, $consecutivo));
+            if ($stmtSeq === false) {
+                throw new Exception("Error al reservar la secuencia de línea: " . print_r(sqlsrv_errors(), true));
+            }
+            $rowSeq  = sqlsrv_fetch_array($stmtSeq, SQLSRV_FETCH_ASSOC);
+            $nuevoSeq = $rowSeq ? (int)$rowSeq['next_seq'] : 1;
 
             $sql="INSERT INTO Documentos_Lin (sw,tipo, seq, modelo, Numero_Documento, Numero_Docto_Base, Numero_Lote, Nit_Cedula, Codigo_Direccion, Fecha_Documento,
             IdProducto, IdUnidad, Factor_Conversion, Cantidad_Facturada, Cantidad_Pendiente, Cantidad_Orden, Costo_Unitario, Valor_Unitario,
@@ -102,7 +146,7 @@
             Porcentaje_ReteFuente_3, Porcentaje_ReteFuente_4, Emp_1, Emp_2, Emp_3, Emp_4, Emp_5, Emp_6,
             Emp_7, Emp_8, Tara_1, Tara_2, Tara_3, Tara_4, Tara_5, Tara_6, Tara_7, Tara_8)
             
-            (SELECT do.tipo AS sw, '$tipo' AS tipo,  $seq+1 AS seq, p.contable AS Modelo,  $consecutivo AS Numero_Documento,
+            (SELECT do.tipo AS sw, '$tipo' AS tipo,  $nuevoSeq AS seq, p.contable AS Modelo,  $consecutivo AS Numero_Documento,
             0 AS Numero_Docto_Base, '0' AS Numero_Lote, '$nit' AS Nit_Cedula, d.codigo_direccion AS codigo_direccion,  GETDATE() AS Fecha_Documento,
             '$producto' AS IdProducto, p.unidad_Inventario AS IdUnidad, '1' AS Factor_Conversion,  $cantidad AS Cantidad_Facturada,
             ($cantidad)* -1 AS Cantidad_Pendiente, 0 AS Cantidad_Orden, p.costo_unitario AS costo_unitario, p.costo_unitario AS Valor_Unitario, 0 AS Valor_Impuesto, 
@@ -117,10 +161,40 @@
                         
             WHERE p.IdProducto = '$producto' AND d.tipo = '$tipo' AND d.Numero_Documento = '$consecutivo' AND do.idTipoDoctos = d.tipo) ";
 
-            $registros = sqlsrv_prepare($cn->getConecta(), $sql);
-            if(sqlsrv_execute($registros)){
+            $registros = sqlsrv_prepare($conn, $sql);
+            if(sqlsrv_execute($registros) === false){
+                throw new Exception("Error al insertar la línea: " . print_r(sqlsrv_errors(), true));
+            }
+            $filas = sqlsrv_rows_affected($registros);
+            sqlsrv_commit($conn);
+
+            AuditoriaDocumentos::registrar(array(
+                'modulo' => 'Documentos', 'operacion' => 'insert_detalle',
+                'tipo' => $tipo, 'numero' => $consecutivo,
+                'exportado_antes' => $rowChk['exportado'], 'anulado_antes' => $rowChk['anulado'] ?? 'N',
+                'lineas_antes' => $nuevoSeq - 1,
+                'lineas_despues' => AuditoriaDocumentos::contarLineas($conn, $tipo, $consecutivo),
+                'filas_afectadas' => $filas,
+                'resultado' => 'ok',
+                'mensaje' => "seq=$nuevoSeq producto=$producto cantidad=$cantidad"
+            ));
+
+            // El INSERT ... SELECT rinde 0 filas si el producto o el documento no casan
+            // en el FROM; antes eso se reportaba como "Agregado correctamente".
+            if ($filas < 1) {
+                echo"No Agregado: no se encontró el producto o el documento \n";
+            } else {
                 echo"Agregado correctamente \n";
-            }else{
+            }
+
+            } catch (Exception $e) {
+                @sqlsrv_rollback($conn);
+                AuditoriaDocumentos::registrar(array(
+                    'modulo' => 'Documentos', 'operacion' => 'insert_detalle',
+                    'tipo' => $tipo, 'numero' => $consecutivo,
+                    'resultado' => 'error',
+                    'mensaje' => "producto=$producto cantidad=$cantidad - " . $e->getMessage()
+                ));
                 echo"No Agregado \n";
             }
 
@@ -946,10 +1020,32 @@
                 WHERE tipo = $tipo AND Numero_Documento = $consecutivo";
             }
 
+            // Estado y conteo justo antes de sellar el documento: esta es la foto de
+            // referencia contra la que se compara si más tarde el detalle no coincide
+            // con lo que se imprimió.
+            $estadoPrevio = AuditoriaDocumentos::estadoDocumento($cn->getConecta(), $tipo, $consecutivo);
+            $snap = AuditoriaDocumentos::snapshotLineas($cn->getConecta(), $tipo, $consecutivo);
+
             $registros = sqlsrv_prepare($cn->getConecta(), $sql);
             if(sqlsrv_execute($registros)){
+                AuditoriaDocumentos::registrar(array(
+                    'modulo' => 'Entradas', 'operacion' => 'guardar_doc',
+                    'tipo' => $tipo, 'numero' => $consecutivo,
+                    'exportado_antes' => $estadoPrevio['exportado'], 'anulado_antes' => $estadoPrevio['anulado'],
+                    'lineas_antes' => $snap['lineas'], 'lineas_despues' => $snap['lineas'],
+                    'resultado' => 'ok',
+                    'mensaje' => 'Documento sellado (exportado = S). remision=' . $remision,
+                    'detalle_antes' => $snap['detalle']
+                ));
                 echo"Documento Actualizado Correctamente \n";
             }else{
+                AuditoriaDocumentos::registrar(array(
+                    'modulo' => 'Entradas', 'operacion' => 'guardar_doc',
+                    'tipo' => $tipo, 'numero' => $consecutivo,
+                    'exportado_antes' => $estadoPrevio['exportado'], 'anulado_antes' => $estadoPrevio['anulado'],
+                    'lineas_antes' => $snap['lineas'],
+                    'resultado' => 'error', 'mensaje' => print_r(sqlsrv_errors(), true)
+                ));
                 echo"No se Actualizo Documento \n";
             }
             
@@ -1257,6 +1353,13 @@
                 return "error: documento no encontrado";
             }
             if (trim($rowChk['exportado']) === 'S' || trim($rowChk['anulado'] ?? 'N') === 'S') {
+                AuditoriaDocumentos::registrar(array(
+                    'modulo' => 'Documentos', 'operacion' => 'delete_masivo', 'destructiva' => 1,
+                    'tipo' => $tipo, 'numero' => $consecutivo,
+                    'exportado_antes' => $rowChk['exportado'], 'anulado_antes' => $rowChk['anulado'] ?? 'N',
+                    'resultado' => 'bloqueado',
+                    'mensaje' => 'Intento de borrado masivo sobre documento guardado/anulado. seqs=' . $seqs
+                ));
                 return "error: el documento ya está guardado o anulado";
             }
 
@@ -1264,6 +1367,10 @@
             $prodArr    = array_filter(array_map('trim', explode(',', $productos)));
 
             if (empty($seqArr)) return "error: sin secuencias";
+
+            // Foto del detalle ANTES de borrar: es lo que permite reponer las líneas
+            // si después se reclama que el documento perdió información.
+            $snap = AuditoriaDocumentos::snapshotLineas($cn->getConecta(), $tipo, $consecutivo);
 
             $errores = 0;
             foreach ($seqArr as $i => $seq) {
@@ -1277,6 +1384,18 @@
                 $stmt = sqlsrv_prepare($cn->getConecta(), $sql, $params);
                 if (!sqlsrv_execute($stmt)) $errores++;
             }
+
+            AuditoriaDocumentos::registrar(array(
+                'modulo' => 'Documentos', 'operacion' => 'delete_masivo', 'destructiva' => 1,
+                'tipo' => $tipo, 'numero' => $consecutivo,
+                'exportado_antes' => $rowChk['exportado'], 'anulado_antes' => $rowChk['anulado'] ?? 'N',
+                'lineas_antes' => $snap['lineas'],
+                'lineas_despues' => AuditoriaDocumentos::contarLineas($cn->getConecta(), $tipo, $consecutivo),
+                'filas_afectadas' => count($seqArr) - $errores,
+                'resultado' => $errores > 0 ? 'error' : 'ok',
+                'mensaje' => 'seqs=' . $seqs . ' productos=' . $productos . ($errores > 0 ? " ($errores fallaron)" : ''),
+                'detalle_antes' => $snap['detalle']
+            ));
 
             if ($errores > 0) return "error: fallaron $errores eliminaciones";
 
@@ -1316,9 +1435,20 @@
                 return;
             }
             if (trim($rowChk['exportado']) === 'S' || trim($rowChk['anulado'] ?? 'N') === 'S') {
+                AuditoriaDocumentos::registrar(array(
+                    'modulo' => 'Documentos', 'operacion' => 'delete_id', 'destructiva' => 1,
+                    'tipo' => $tipo, 'numero' => $consecutivo,
+                    'exportado_antes' => $rowChk['exportado'], 'anulado_antes' => $rowChk['anulado'] ?? 'N',
+                    'resultado' => 'bloqueado',
+                    'mensaje' => "Intento de borrado sobre documento guardado/anulado. seq=$seq producto=$producto"
+                ));
                 echo "error";
                 return;
             }
+
+            // Foto del detalle ANTES de borrar: es lo que permite reponer la línea
+            // si después se reclama que el documento perdió información.
+            $snap = AuditoriaDocumentos::snapshotLineas($cn->getConecta(), $tipo, $consecutivo);
 
             // Eliminar el registro
             $sql = "DELETE FROM Documentos_Lin
@@ -1328,6 +1458,20 @@
             $stmt = sqlsrv_prepare($cn->getConecta(), $sql, $params);
             
             if(sqlsrv_execute($stmt)) {
+                // Se registra sqlsrv_rows_affected: si borra más de 1 fila hay seq
+                // duplicados en el documento y el operario perdió una línea que no tocó.
+                $filas = sqlsrv_rows_affected($stmt);
+                AuditoriaDocumentos::registrar(array(
+                    'modulo' => 'Documentos', 'operacion' => 'delete_id', 'destructiva' => 1,
+                    'tipo' => $tipo, 'numero' => $consecutivo,
+                    'exportado_antes' => $rowChk['exportado'], 'anulado_antes' => $rowChk['anulado'] ?? 'N',
+                    'lineas_antes' => $snap['lineas'],
+                    'lineas_despues' => AuditoriaDocumentos::contarLineas($cn->getConecta(), $tipo, $consecutivo),
+                    'filas_afectadas' => $filas,
+                    'resultado' => 'ok',
+                    'mensaje' => "seq=$seq producto=$producto" . ($filas > 1 ? " *** BORRÓ $filas FILAS (seq duplicado) ***" : ''),
+                    'detalle_antes' => $snap['detalle']
+                ));
                 
                 $sqlUpdate = "UPDATE Documentos SET 
                     Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = ? AND Numero_documento = ?),
@@ -1353,6 +1497,15 @@
                 if (($errors = sqlsrv_errors()) != null) {
                     error_log("Error SQL en delete_id: " . print_r($errors, true));
                 }
+                AuditoriaDocumentos::registrar(array(
+                    'modulo' => 'Documentos', 'operacion' => 'delete_id', 'destructiva' => 1,
+                    'tipo' => $tipo, 'numero' => $consecutivo,
+                    'exportado_antes' => $rowChk['exportado'], 'anulado_antes' => $rowChk['anulado'] ?? 'N',
+                    'lineas_antes' => $snap['lineas'],
+                    'resultado' => 'error',
+                    'mensaje' => "seq=$seq producto=$producto - " . print_r(sqlsrv_errors(), true),
+                    'detalle_antes' => $snap['detalle']
+                ));
                 echo "error";
             }
         }
@@ -1390,6 +1543,8 @@
             // Solo se refrescan %IVA y Costo_Unitario desde el catálogo. Valor_Unitario
             // no se toca: es el precio de compra real (de la OC o digitado manualmente),
             // no necesariamente igual al costo registrado en el catálogo.
+            $snapProd = AuditoriaDocumentos::snapshotLineas($cn->getConecta(), $tipo, $consecutivo);
+
             $sql = "UPDATE Documentos_Lin SET Costo_Unitario = ?, Porcentaje_Impuesto = ?
                     WHERE tipo = ? AND Numero_documento = ? AND IdProducto = ? AND seq = ?";
             $params = array($costoUnitario, $porcentajeImpuesto, $tipo, $consecutivo, $producto, $seq);
@@ -1397,6 +1552,17 @@
             if (!sqlsrv_execute($stmt)) {
                 return json_encode(['status' => 'error', 'message' => 'Error al actualizar la línea: ' . print_r(sqlsrv_errors(), true)]);
             }
+
+            AuditoriaDocumentos::registrar(array(
+                'modulo' => 'Documentos', 'operacion' => 'actualizar_producto_linea', 'destructiva' => 1,
+                'tipo' => $tipo, 'numero' => $consecutivo,
+                'exportado_antes' => $rowChk['exportado'], 'anulado_antes' => $rowChk['anulado'] ?? 'N',
+                'lineas_antes' => $snapProd['lineas'], 'lineas_despues' => $snapProd['lineas'],
+                'filas_afectadas' => sqlsrv_rows_affected($stmt),
+                'resultado' => 'ok',
+                'mensaje' => "seq=$seq producto=$producto | costo=$costoUnitario iva=$porcentajeImpuesto",
+                'detalle_antes' => $snapProd['detalle']
+            ));
 
             $sqlUpdate = "UPDATE Documentos SET
                 Total_Items    = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = ? AND Numero_documento = ?),
@@ -1463,6 +1629,32 @@
 
         public function update_prod_doc($tipo, $consecutivo, $producto, $seq, $cantidad = null, $valor_unitario = null, $lote = null, $fecha_vence = null, $descuento = null, $nota = null, $unidades = null) {
             $cn = new Conectarserver;
+
+            // Un documento guardado o anulado no se puede modificar. Esta ruta cambia
+            // cantidad, valor, lote y descuento SIN alterar el número de líneas, así que
+            // un cambio sobre un documento ya impreso no descuadra Total_Items y pasaba
+            // inadvertido: el detalle simplemente dejaba de coincidir con lo impreso.
+            // Mismo criterio que delete_id/delete_masivo.
+            $sqlChk = "SELECT exportado, anulado FROM Documentos WHERE tipo = ? AND Numero_documento = ?";
+            $stmtChk = sqlsrv_query($cn->getConecta(), $sqlChk, array($tipo, $consecutivo));
+            $rowChk  = $stmtChk ? sqlsrv_fetch_array($stmtChk, SQLSRV_FETCH_ASSOC) : null;
+            if (!$rowChk) {
+                return ['status' => 'error', 'message' => 'Documento no encontrado'];
+            }
+            if (trim($rowChk['exportado']) === 'S' || trim($rowChk['anulado'] ?? 'N') === 'S') {
+                AuditoriaDocumentos::registrar(array(
+                    'modulo' => 'Documentos', 'operacion' => 'update_prod_doc', 'destructiva' => 1,
+                    'tipo' => $tipo, 'numero' => $consecutivo,
+                    'exportado_antes' => $rowChk['exportado'], 'anulado_antes' => $rowChk['anulado'] ?? 'N',
+                    'resultado' => 'bloqueado',
+                    'mensaje' => "Intento de modificar la línea seq=$seq producto=$producto de un documento guardado/anulado"
+                ));
+                return ['status' => 'error', 'message' => 'El documento ya está guardado o anulado, no se puede modificar'];
+            }
+
+            // Foto previa: un cambio de cantidad o de lote no se nota en ningún total,
+            // así que sin esto no habría forma de saber qué decía la línea antes.
+            $snapUpd = AuditoriaDocumentos::snapshotLineas($cn->getConecta(), $tipo, $consecutivo);
             
             error_log("🔄 Actualizando producto: tipo=$tipo, consecutivo=$consecutivo, producto=$producto, seq=$seq");
             
@@ -1576,6 +1768,28 @@
                 error_log("✅ Actualización exitosa. Filas afectadas: " . $filas_afectadas);
 
                 sqlsrv_free_stmt($stmt);
+
+                // Se registra qué campos cambiaron y cuántas filas tocó: si toca más de
+                // una, el WHERE no fue lo bastante específico y se modificó de más.
+                $camposCambiados = array();
+                if ($cantidad       !== null) $camposCambiados[] = "cantidad=$cantidad";
+                if ($valor_unitario !== null) $camposCambiados[] = "valor=$valor_unitario";
+                if ($lote           !== null) $camposCambiados[] = "lote=$lote";
+                if ($fecha_vence    !== null) $camposCambiados[] = "vence=$fecha_vence";
+                if ($descuento      !== null) $camposCambiados[] = "descuento=$descuento";
+                if ($nota           !== null) $camposCambiados[] = "nota=$nota";
+                if ($unidades       !== null) $camposCambiados[] = "unidades=$unidades";
+                AuditoriaDocumentos::registrar(array(
+                    'modulo' => 'Documentos', 'operacion' => 'update_prod_doc', 'destructiva' => 1,
+                    'tipo' => $tipo, 'numero' => $consecutivo,
+                    'exportado_antes' => $rowChk['exportado'], 'anulado_antes' => $rowChk['anulado'] ?? 'N',
+                    'lineas_antes' => $snapUpd['lineas'], 'lineas_despues' => $snapUpd['lineas'],
+                    'filas_afectadas' => $filas_afectadas,
+                    'resultado' => 'ok',
+                    'mensaje' => "seq=$seq producto=$producto | " . implode(' ', $camposCambiados)
+                              . ($filas_afectadas > 1 ? " *** MODIFICÓ $filas_afectadas FILAS ***" : ''),
+                    'detalle_antes' => $snapUpd['detalle']
+                ));
 
                 // Actualizar los totales del documento
                 $this->actualizar_totales_documento($tipo, $consecutivo);
@@ -1882,6 +2096,25 @@
 
                 sqlsrv_begin_transaction($cn->getConecta()); // Iniciar la transacción
 
+                // Reserva atómica del consecutivo (mismo patrón que insert_doc): el UPDATE
+                // toma un lock de fila que dura hasta el COMMIT. Antes se leía (c.siguiente+1)
+                // dentro de cada INSERT y solo al final se incrementaba Consecutivos; en esa
+                // ventana los UPDATE que apuntaban a "(SELECT siguiente+1 FROM Consecutivos)"
+                // podían caer sobre el documento de otro usuario.
+                $stmtSeq = sqlsrv_query($cn->getConecta(),
+                    "UPDATE Consecutivos SET siguiente = siguiente + 1
+                     OUTPUT INSERTED.siguiente AS nuevo
+                     WHERE tipo = ?",
+                    array($tipo));
+                if ($stmtSeq === false) {
+                    throw new Exception("Error al reservar consecutivo: " . print_r(sqlsrv_errors(), true));
+                }
+                $rowSeq = sqlsrv_fetch_array($stmtSeq, SQLSRV_FETCH_ASSOC);
+                if (!$rowSeq) {
+                    throw new Exception("No existe un consecutivo configurado para el tipo de documento $tipo");
+                }
+                $numDoc = (int)$rowSeq['nuevo'];
+
                 $sql="INSERT INTO Documentos(sw, tipo, modelo, Numero_Documento, Numero_Docto_Base,
                 nit_Cedula, codigo_direccion, Fecha_Hora_Factura,Fecha_Hora_Vencimiento,Fecha_orden_Venta,
                 condicion,valor_total, valor_aplicado, Retencion_1,Retencion_2, Retencion_3, retencion_causada, retencion_iva,retencion_ica,
@@ -1892,7 +2125,7 @@
                 Telefono_De_Envio_2, Factura_Impresa, IdFormaEnvio, IdTransportador, nit_Cedula_2, codigo_direccion_2, Numero_Docto_Base_2, Tipo_Docto_Base, 
                 Tipo_Docto_Base_2, IdActividadEconomica, TarifaReteFuenteCree, Valor_ReteCree, IdVehiculo)
                 
-                (SELECT td.tipo AS sw, '$tipo' AS tipo, '$tipo' AS modelo, (c.siguiente+1) AS Numero_Documento, '' AS Numero_Docto_Base,
+                (SELECT td.tipo AS sw, '$tipo' AS tipo, '$tipo' AS modelo, $numDoc AS Numero_Documento, '' AS Numero_Docto_Base,
                 dp.nit AS nit_Cedula, dp.direccion_factura AS codigo_direccion,  GETDATE() AS Fecha_Hora_Factura, GETDATE() AS Fecha_Hora_Vencimiento, GETDATE() AS Fecha_orden_Venta,
                 t.condicion AS condicion, dp.valor_total AS valor_total, 0 AS valor_aplicado, dp.Retencion_1 AS Retencion_1, 0 AS Retencion_2, 0 AS Retencion_3,
                 0 AS retencion_causada, 0 AS retencion_iva, 0 AS retencion_ica, 0 AS retencion_descuento, 0 AS descuento_pie, 0 AS DescuentoOrdenVenta, 0 AS descuento_1, 0 AS descuento_2,
@@ -1905,8 +2138,8 @@
                 dp.nit_destino AS nit_Cedula_2, dp.direccion_entrega AS codigo_direccion_2, '$numero' AS Numero_Docto_Base_2, '0' AS Tipo_Docto_Base, 
                 '9' AS Tipo_Docto_Base_2, '0' AS IdActividadEconomica, 0 AS TarifaReteFuenteCree, 0 AS Valor_ReteCree, '1' AS IdVehiculo           
                 
-                FROM Documentos_Ped dp, TblTerceros t, TblTipoDoctos td, Terceros_Dir dir, consecutivos c      
-                WHERE c.tipo = '$tipo' AND td.idTipoDoctos = '$tipo' AND
+                FROM Documentos_Ped dp, TblTerceros t, TblTipoDoctos td, Terceros_Dir dir
+                WHERE td.idTipoDoctos = '$tipo' AND
                 dp.nit = t.nit_cedula AND dir.codigo_direccion = dp.direccion_factura AND dir.nit = dp.nit AND
                 dp.numero_pedido = '$numero' AND dp.sw = '9') ";
 
@@ -1925,7 +2158,7 @@
                 Porcentaje_ReteFuente_3, Porcentaje_ReteFuente_4, Emp_1, Emp_2, Emp_3, Emp_4, Emp_5, Emp_6,
                 Emp_7, Emp_8, Tara_1, Tara_2, Tara_3, Tara_4, Tara_5, Tara_6, Tara_7, Tara_8)
                 
-                (SELECT td.tipo AS sw, '$tipo' AS tipo, dp.Linea AS seq, p.contable AS Modelo, (c.siguiente+1) AS Numero_Documento,
+                (SELECT td.tipo AS sw, '$tipo' AS tipo, dp.Linea AS seq, p.contable AS Modelo, $numDoc AS Numero_Documento,
                 '' AS Numero_Docto_Base, '0' AS Numero_Lote, dp.IdCliente AS Nit_Cedula, dp.DireccionFactura AS codigo_direccion,  GETDATE() AS Fecha_Documento,
                 dp.IdProducto AS IdProducto, dp.und AS IdUnidad, '1' AS Factor_Conversion,  dp.cantidad AS Cantidad_Facturada,
                 0 AS Cantidad_Pendiente, dp.cantidad AS Cantidad_Orden, p.costo_unitario AS Costo_Unitario, dp.valor_unitario AS Valor_Unitario,
@@ -1937,9 +2170,9 @@
                 0 AS Porcentaje_ReteFuente_3, 0 AS Porcentaje_ReteFuente_4, 0 AS Emp_1, 0 AS Emp_2, 0 AS Emp_3, 0 AS Emp_4, 0 AS Emp_5, 0 AS Emp_6,
                 0 AS Emp_7, 0 AS Emp_8, 0 AS Tara_1, 0 AS Tara_2, 0 AS Tara_3, 0 AS Tara_4, 0 AS Tara_5, 0 AS Tara_6, 0 AS Tara_7, 0 AS Tara_8
                                                                 
-                FROM  consecutivos c, Documentos_Lin_Ped dp, TblTipoDoctos td, TblProducto p
+                FROM  Documentos_Lin_Ped dp, TblTipoDoctos td, TblProducto p
                                         
-                WHERE c.tipo = '$tipo' AND td.idTipoDoctos = c.tipo AND p.IdProducto = dp.IdProducto
+                WHERE td.idTipoDoctos = '$tipo' AND p.IdProducto = dp.IdProducto
                 AND dp.numero_pedido = '$numero' AND dp.sw = 9)";
                
                 $registros =  sqlsrv_prepare($cn->getConecta(), $sql1);
@@ -1949,21 +2182,14 @@
 
                 // Recalcular totales en cabecera como suma real del detalle (antes Total_Items
                 // quedaba fijo en 2 y costo fijo en 0, sin importar las líneas insertadas).
-                // Se usa (siguiente+1) igual que en los INSERT de arriba, porque Consecutivos
-                // todavía no se ha incrementado en este punto (eso pasa más abajo).
+                // Se usa $numDoc, el consecutivo reservado al inicio de la transacción.
                 $sql_tot = "UPDATE Documentos SET
-                    Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = '$tipo' AND Numero_documento = (SELECT siguiente+1 FROM Consecutivos WHERE tipo = '$tipo')),
-                    costo = (SELECT ISNULL(SUM(dl.Cantidad_Facturada * dl.Costo_Unitario), 0) FROM Documentos_Lin dl WHERE dl.tipo = '$tipo' AND dl.Numero_documento = (SELECT siguiente+1 FROM Consecutivos WHERE tipo = '$tipo'))
-                    WHERE tipo = '$tipo' AND Numero_Documento = (SELECT siguiente+1 FROM Consecutivos WHERE tipo = '$tipo')";
+                    Total_Items = (SELECT COUNT(*) FROM Documentos_Lin WHERE tipo = '$tipo' AND Numero_documento = $numDoc),
+                    costo = (SELECT ISNULL(SUM(dl.Cantidad_Facturada * dl.Costo_Unitario), 0) FROM Documentos_Lin dl WHERE dl.tipo = '$tipo' AND dl.Numero_documento = $numDoc)
+                    WHERE tipo = '$tipo' AND Numero_Documento = $numDoc";
                 $stmt_tot = sqlsrv_prepare($cn->getConecta(), $sql_tot);
                 if (sqlsrv_execute($stmt_tot) === false) {
                     throw new Exception("Error al actualizar totales: " . print_r(sqlsrv_errors(), true));
-                }
-
-                $sql2="UPDATE Consecutivos SET siguiente = siguiente+1 WHERE tipo = '$tipo' ";
-                $registros =  sqlsrv_prepare($cn->getConecta(), $sql2);
-                if(sqlsrv_execute($registros) === false) {
-                    throw new Exception("Error al actualizar consecutivo: " . print_r(sqlsrv_errors(), true));
                 }
 
                 sqlsrv_commit($cn->getConecta()); // Confirmar la transacción si todo ha ido bien
@@ -1973,7 +2199,7 @@
                     "status" => "success",
                     "message" => "Documento registrado correctamente",
                     "tipo" => $tipo,
-                    "consecutivo" => $this->obtener_consecutivo_actual($tipo)
+                    "consecutivo" => $numDoc
                 ));
 
             }catch (Exception $e) {
@@ -2021,6 +2247,25 @@
 
                 sqlsrv_begin_transaction($cn->getConecta()); // Iniciar la transacción
 
+                // Reserva atómica del consecutivo (mismo patrón que insert_doc): el UPDATE
+                // toma un lock de fila que dura hasta el COMMIT. Antes se leía (c.siguiente+1)
+                // dentro de cada INSERT y solo al final se incrementaba Consecutivos; en esa
+                // ventana los UPDATE que apuntaban a "(SELECT siguiente+1 FROM Consecutivos)"
+                // podían caer sobre el documento de otro usuario.
+                $stmtSeq = sqlsrv_query($cn->getConecta(),
+                    "UPDATE Consecutivos SET siguiente = siguiente + 1
+                     OUTPUT INSERTED.siguiente AS nuevo
+                     WHERE tipo = ?",
+                    array($tipo));
+                if ($stmtSeq === false) {
+                    throw new Exception("Error al reservar consecutivo: " . print_r(sqlsrv_errors(), true));
+                }
+                $rowSeq = sqlsrv_fetch_array($stmtSeq, SQLSRV_FETCH_ASSOC);
+                if (!$rowSeq) {
+                    throw new Exception("No existe un consecutivo configurado para el tipo de documento $tipo");
+                }
+                $numDoc = (int)$rowSeq['nuevo'];
+
                 $sql="INSERT INTO Documentos(sw, tipo, modelo, Numero_Documento, Numero_Docto_Base,
                 nit_Cedula, codigo_direccion, Fecha_Hora_Factura,Fecha_Hora_Vencimiento,Fecha_orden_Venta,
                 condicion,valor_total, valor_aplicado, Retencion_1,Retencion_2, Retencion_3, retencion_causada, retencion_iva,retencion_ica,
@@ -2031,7 +2276,7 @@
                 Telefono_De_Envio_2, Factura_Impresa, IdFormaEnvio, IdTransportador, nit_Cedula_2, codigo_direccion_2, Numero_Docto_Base_2, Tipo_Docto_Base, 
                 Tipo_Docto_Base_2, IdActividadEconomica, TarifaReteFuenteCree, Valor_ReteCree, IdVehiculo)
                 
-                (SELECT td.tipo AS sw, '$tipo' AS tipo, '$tipo' AS modelo, (c.siguiente+1) AS Numero_Documento, '$numero' AS Numero_Docto_Base,
+                (SELECT td.tipo AS sw, '$tipo' AS tipo, '$tipo' AS modelo, $numDoc AS Numero_Documento, '$numero' AS Numero_Docto_Base,
                 d.nit_Cedula AS nit_Cedula, d.codigo_direccion AS codigo_direccion,  GETDATE() AS Fecha_Hora_Factura, GETDATE() AS Fecha_Hora_Vencimiento, GETDATE() AS Fecha_orden_Venta,
                 d.condicion AS condicion, d.valor_total AS valor_total, 0 AS valor_aplicado, d.Retencion_1 AS Retencion_1, d.Retencion_2 AS Retencion_2, d.Retencion_3 AS Retencion_3, 0 AS retencion_causada, 0 AS retencion_iva, 
                 0 AS retencion_ica, 0 AS retencion_descuento, 0 AS descuento_pie, 0 AS DescuentoOrdenVenta, d.descuento_1 AS descuento_1, d.descuento_2 AS descuento_2, d.descuento_3 AS descuento_3, 
@@ -2045,8 +2290,8 @@
                 d.nit_Cedula_2 AS nit_Cedula_2, d.codigo_direccion_2 AS codigo_direccion_2, d.Numero_Docto_Base_2 AS Numero_Docto_Base_2, '$tiporef' AS Tipo_Docto_Base, 
                 '' AS Tipo_Docto_Base_2, d.IdActividadEconomica AS IdActividadEconomica, d.TarifaReteFuenteCree AS TarifaReteFuenteCree, d.Valor_ReteCree AS Valor_ReteCree, d.IdVehiculo AS IdVehiculo
 
-                FROM Documentos d, consecutivos c, TblTipoDoctos td      
-                WHERE c.tipo = '$tipo' AND d.Numero_documento = '$numero' AND d.tipo = '$tiporef' AND td.idTipoDoctos = '$tipo')";
+                FROM Documentos d, TblTipoDoctos td
+                WHERE d.Numero_documento = '$numero' AND d.tipo = '$tiporef' AND td.idTipoDoctos = '$tipo')";
                 
                 $registros = sqlsrv_prepare($cn->getConecta(), $sql);            
                 if(sqlsrv_execute($registros) === false) {
@@ -2063,7 +2308,7 @@
                 Porcentaje_ReteFuente_3, Porcentaje_ReteFuente_4, Emp_1, Emp_2, Emp_3, Emp_4, Emp_5, Emp_6,
                 Emp_7, Emp_8, Tara_1, Tara_2, Tara_3, Tara_4, Tara_5, Tara_6, Tara_7, Tara_8)
                 
-                (SELECT td.tipo AS sw, '$tipo' AS tipo, dl.seq AS seq,  p.contable AS Modelo,  (c.siguiente+1) AS Numero_Documento,
+                (SELECT td.tipo AS sw, '$tipo' AS tipo, dl.seq AS seq,  p.contable AS Modelo,  $numDoc AS Numero_Documento,
                 '' AS Numero_Docto_Base, '0' AS Numero_Lote, dl.Nit_Cedula AS Nit_Cedula, dl.codigo_direccion AS codigo_direccion,  GETDATE() AS Fecha_Documento,
                 dl.IdProducto AS IdProducto, dl.IdUnidad AS IdUnidad, '1' AS Factor_Conversion,  Cantidad_Facturada AS Cantidad_Facturada,
                 (dl.Cantidad_Facturada)* -1 AS Cantidad_Pendiente, dl.Cantidad_Orden AS Cantidad_Orden, 
@@ -2079,9 +2324,9 @@
                 0 AS Porcentaje_ReteFuente_3, 0 AS Porcentaje_ReteFuente_4, 0 AS Emp_1, 0 AS Emp_2, 0 AS Emp_3, 0 AS Emp_4, 0 AS Emp_5, 0 AS Emp_6,
                 0 AS Emp_7, 0 AS Emp_8, 0 AS Tara_1, 0 AS Tara_2, 0 AS Tara_3, 0 AS Tara_4, 0 AS Tara_5, 0 AS Tara_6, 0 AS Tara_7, 0 AS Tara_8
                                                                     
-                FROM  consecutivos c, Documentos_Lin dl, Documentos d, TblTerceros t, TblTipoDoctos td, TblProducto p, TblRetencion r
+                FROM  Documentos_Lin dl, Documentos d, TblTerceros t, TblTipoDoctos td, TblProducto p, TblRetencion r
                                             
-                WHERE c.tipo = $tipo AND dl.Numero_documento = '$numero' AND dl.tipo = '$tiporef'
+                WHERE dl.Numero_documento = '$numero' AND dl.tipo = '$tiporef'
                 AND td.idTipoDoctos = c.tipo AND d.Numero_documento=dl.Numero_Documento AND d.tipo = dl.tipo
                 AND dl.Nit_Cedula=t.nit_cedula 
                 AND p.IdProducto = dl.IdProducto
@@ -2092,13 +2337,6 @@
                     throw new Exception("Error al insertar detalle del documento: " . print_r(sqlsrv_errors(), true));
                 }
 
-                $sql2="UPDATE Consecutivos SET siguiente = siguiente+1 WHERE tipo = '$tipo' ";
-                
-                $registros =  sqlsrv_prepare($cn->getConecta(), $sql2);
-                if(sqlsrv_execute($registros) === false) {
-                    throw new Exception("Error al actualizar consecutivo: " . print_r(sqlsrv_errors(), true));
-                }
-
                 sqlsrv_commit($cn->getConecta()); // Confirmar la transacción si todo ha ido bien
 
                 // Devolvemos un objeto JSON con un status de éxito
@@ -2106,7 +2344,7 @@
                     "status" => "success",
                     "message" => "Documento registrado correctamente",
                     "tipo" => $tipo,
-                    "consecutivo" => $this->obtener_consecutivo_actual($tipo)
+                    "consecutivo" => $numDoc
                 ));
 
             }catch (Exception $e) {
@@ -2131,6 +2369,25 @@
             try {
                 sqlsrv_begin_transaction($cn->getConecta());
 
+                // Reserva atómica del consecutivo (mismo patrón que insert_doc): el UPDATE
+                // toma un lock de fila que dura hasta el COMMIT. Antes se leía (c.siguiente+1)
+                // dentro de cada INSERT y solo al final se incrementaba Consecutivos; en esa
+                // ventana los UPDATE que apuntaban a "(SELECT siguiente+1 FROM Consecutivos)"
+                // podían caer sobre el documento de otro usuario.
+                $stmtSeq = sqlsrv_query($cn->getConecta(),
+                    "UPDATE Consecutivos SET siguiente = siguiente + 1
+                     OUTPUT INSERTED.siguiente AS nuevo
+                     WHERE tipo = ?",
+                    array($tipo));
+                if ($stmtSeq === false) {
+                    throw new Exception("Error al reservar consecutivo: " . print_r(sqlsrv_errors(), true));
+                }
+                $rowSeq = sqlsrv_fetch_array($stmtSeq, SQLSRV_FETCH_ASSOC);
+                if (!$rowSeq) {
+                    throw new Exception("No existe un consecutivo configurado para el tipo de documento $tipo");
+                }
+                $numDoc = (int)$rowSeq['nuevo'];
+
                 $sql = "INSERT INTO Documentos(sw, tipo, modelo, Numero_Documento, Numero_Docto_Base,
                 nit_Cedula, codigo_direccion, Fecha_Hora_Factura, Fecha_Hora_Vencimiento, Fecha_orden_Venta,
                 condicion, valor_total, valor_aplicado, Retencion_1, Retencion_2, Retencion_3, retencion_causada, retencion_iva, retencion_ica,
@@ -2141,7 +2398,7 @@
                 Telefono_De_Envio_2, Factura_Impresa, IdFormaEnvio, IdTransportador, nit_Cedula_2, codigo_direccion_2, Numero_Docto_Base_2, Tipo_Docto_Base,
                 Tipo_Docto_Base_2, IdActividadEconomica, TarifaReteFuenteCree, Valor_ReteCree, IdVehiculo)
 
-                (SELECT td.tipo AS sw, '$tipo' AS tipo, '$tipo' AS modelo, (c.siguiente+1) AS Numero_Documento, '' AS Numero_Docto_Base,
+                (SELECT td.tipo AS sw, '$tipo' AS tipo, '$tipo' AS modelo, $numDoc AS Numero_Documento, '' AS Numero_Docto_Base,
                 '$nit' AS nit_Cedula, '$dir' AS codigo_direccion, GETDATE() AS Fecha_Hora_Factura, GETDATE() AS Fecha_Hora_Vencimiento, GETDATE() AS Fecha_orden_Venta,
                 0 AS condicion, 0 AS valor_total, 0 AS valor_aplicado, 0 AS Retencion_1, 0 AS Retencion_2, 0 AS Retencion_3,
                 0 AS retencion_causada, 0 AS retencion_iva, 0 AS retencion_ica, 0 AS retencion_descuento, 0 AS descuento_pie, 0 AS DescuentoOrdenVenta,
@@ -2156,18 +2413,12 @@
                 '$nit2' AS nit_Cedula_2, '$dir2' AS codigo_direccion_2, '' AS Numero_Docto_Base_2, '0' AS Tipo_Docto_Base,
                 '9' AS Tipo_Docto_Base_2, '0' AS IdActividadEconomica, 0 AS TarifaReteFuenteCree, 0 AS Valor_ReteCree, '1' AS IdVehiculo
 
-                FROM TblTipoDoctos td, consecutivos c, TblTerceros t
-                WHERE c.tipo = '$tipo' AND td.idTipoDoctos = '$tipo' AND t.nit_cedula = '$nit')";
+                FROM TblTipoDoctos td, TblTerceros t
+                WHERE td.idTipoDoctos = '$tipo' AND t.nit_cedula = '$nit')";
 
                 $registros = sqlsrv_prepare($cn->getConecta(), $sql);
                 if (sqlsrv_execute($registros) === false) {
                     throw new Exception("Error al insertar documento manual: " . print_r(sqlsrv_errors(), true));
-                }
-
-                $sql2 = "UPDATE Consecutivos SET siguiente = siguiente+1 WHERE tipo = '$tipo'";
-                $registros2 = sqlsrv_prepare($cn->getConecta(), $sql2);
-                if (sqlsrv_execute($registros2) === false) {
-                    throw new Exception("Error al actualizar consecutivo: " . print_r(sqlsrv_errors(), true));
                 }
 
                 sqlsrv_commit($cn->getConecta());
@@ -2176,7 +2427,7 @@
                     "status" => "success",
                     "message" => "Documento Entrada Frigopork manual registrado correctamente",
                     "tipo" => $tipo,
-                    "consecutivo" => $this->obtener_consecutivo_actual($tipo)
+                    "consecutivo" => $numDoc
                 ));
 
             } catch (Exception $e) {
@@ -2199,12 +2450,40 @@
                 $lote                = ($lote !== '' && $lote !== null) ? addslashes($lote) : '0';
                 $valorImpuesto       = round($valorUnitario * $cantidad * ($porcentaje_impuesto / 100), 2);
 
+                // Un documento guardado o anulado no admite líneas nuevas (mismo criterio
+                // que insert_detalle/duplicar_linea; esta ruta tampoco lo validaba).
+                $sqlChk = "SELECT exportado, anulado FROM Documentos WHERE tipo = ? AND Numero_documento = ?";
+                $stmtChk = sqlsrv_query($cn->getConecta(), $sqlChk, array($tipo, $consecutivo));
+                $rowChk  = $stmtChk ? sqlsrv_fetch_array($stmtChk, SQLSRV_FETCH_ASSOC) : null;
+                if (!$rowChk) {
+                    return json_encode(["status" => "error", "message" => "Documento no encontrado"]);
+                }
+                if (trim($rowChk['exportado']) === 'S' || trim($rowChk['anulado'] ?? 'N') === 'S') {
+                    AuditoriaDocumentos::registrar(array(
+                        'modulo' => 'Entradas', 'operacion' => 'insert_linea_entrada_manual',
+                        'tipo' => $tipo, 'numero' => $consecutivo,
+                        'exportado_antes' => $rowChk['exportado'], 'anulado_antes' => $rowChk['anulado'] ?? 'N',
+                        'resultado' => 'bloqueado',
+                        'mensaje' => "Intento de agregar producto=$idproducto a un documento guardado/anulado"
+                    ));
+                    return json_encode(["status" => "error", "message" => "El documento ya está guardado o anulado, no se puede modificar"]);
+                }
+
                 $sql_prod = "SELECT COUNT(*) AS existe FROM TblProducto WHERE IdProducto = ?";
                 $stmt = sqlsrv_query($cn->getConecta(), $sql_prod, [$idproducto]);
                 $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
                 if (!$row || $row['existe'] == 0) {
                     return json_encode(["status" => "error", "message" => "El producto '$idproducto' no existe"]);
                 }
+
+                AuditoriaDocumentos::registrar(array(
+                    'modulo' => 'Entradas', 'operacion' => 'insert_linea_entrada_manual',
+                    'tipo' => $tipo, 'numero' => $consecutivo,
+                    'exportado_antes' => $rowChk['exportado'], 'anulado_antes' => $rowChk['anulado'] ?? 'N',
+                    'lineas_antes' => AuditoriaDocumentos::contarLineas($cn->getConecta(), $tipo, $consecutivo),
+                    'resultado' => 'ok',
+                    'mensaje' => "producto=$idproducto cantidad=$cantidad valor=$valorUnitario lote=$lote"
+                ));
 
                 $sql = "INSERT INTO Documentos_Lin (sw, tipo, seq, modelo, Numero_Documento, Numero_Docto_Base, Numero_Lote,
                 Nit_Cedula, Codigo_Direccion, Fecha_Documento, IdProducto, IdUnidad, Factor_Conversion,
@@ -2261,6 +2540,39 @@
                 echo "No se seleccionó ningún producto \n";
                 return;
             }
+
+            // Un documento guardado o anulado no se puede modificar. Además este UPDATE
+            // filtra por IdProducto SIN seq: si el mismo producto está en varias líneas,
+            // les cambia el lote a todas de una vez.
+            $sqlChk = "SELECT exportado, anulado FROM Documentos WHERE tipo = ? AND Numero_documento = ?";
+            $stmtChk = sqlsrv_query($cn->getConecta(), $sqlChk, array($tipo, $numdoc));
+            $rowChk  = $stmtChk ? sqlsrv_fetch_array($stmtChk, SQLSRV_FETCH_ASSOC) : null;
+            if (!$rowChk) {
+                echo "Documento no encontrado \n";
+                return;
+            }
+            if (trim($rowChk['exportado']) === 'S' || trim($rowChk['anulado'] ?? 'N') === 'S') {
+                AuditoriaDocumentos::registrar(array(
+                    'modulo' => 'Documentos', 'operacion' => 'update_lote', 'destructiva' => 1,
+                    'tipo' => $tipo, 'numero' => $numdoc,
+                    'exportado_antes' => $rowChk['exportado'], 'anulado_antes' => $rowChk['anulado'] ?? 'N',
+                    'resultado' => 'bloqueado',
+                    'mensaje' => "Intento de cambiar el lote a '$lote' en un documento guardado/anulado"
+                ));
+                echo "El documento ya está guardado o anulado, no se puede modificar \n";
+                return;
+            }
+
+            $snapLote = AuditoriaDocumentos::snapshotLineas($cn->getConecta(), $tipo, $numdoc);
+            AuditoriaDocumentos::registrar(array(
+                'modulo' => 'Documentos', 'operacion' => 'update_lote', 'destructiva' => 1,
+                'tipo' => $tipo, 'numero' => $numdoc,
+                'exportado_antes' => $rowChk['exportado'], 'anulado_antes' => $rowChk['anulado'] ?? 'N',
+                'lineas_antes' => $snapLote['lineas'], 'lineas_despues' => $snapLote['lineas'],
+                'resultado' => 'ok',
+                'mensaje' => "Lote -> '$lote' en productos: " . implode(',', $id),
+                'detalle_antes' => $snapLote['detalle']
+            ));
             $count = count($id);
             //Rebuscamos en busca de resultados $_POST (id selecionados).
             for ($i=0; $i<$count; $i++) {
@@ -2275,6 +2587,42 @@
                 }
             } 
 
+        }
+
+        // Lista documentos para el módulo Utilidades (edición manual de Numero_Docto_Base),
+        // filtrado opcionalmente por tipo de documento y fecha exacta.
+        public function listar_utilidades_doc_ref($idTipo, $fecha1){
+            $cn = new Conectarserver;
+            $resultado = array();
+
+            $where = "d.tipo = t.idTipoDoctos AND c.nit_cedula = d.nit_Cedula";
+            $params = array();
+
+            if ($idTipo !== '') {
+                $where .= " AND d.tipo = ?";
+                $params[] = $idTipo;
+            }
+            if ($fecha1 !== '') {
+                $where .= " AND CONVERT(date, d.Fecha_Hora_Factura) = ?";
+                $params[] = $fecha1;
+            }
+
+            $sql = "SELECT d.tipo, t.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.notas, d.usuario, d.Fecha_Hora_Factura, d.nit_Cedula, c.nombre
+                    FROM Documentos d, TblTipoDoctos t, TblTerceros c
+                    WHERE $where
+                    ORDER BY d.Numero_documento DESC";
+
+            $stmt = sqlsrv_query($cn->getConecta(), $sql, $params);
+            if ($stmt === false) {
+                $this->registrar_error("Error en listar_utilidades_doc_ref: " . print_r(sqlsrv_errors(), true));
+                return $resultado;
+            }
+
+            while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+                $resultado[] = $row;
+            }
+
+            return $resultado;
         }
 
         public function update_doc_ref1($tipo, $consecutivo, $numero){
@@ -2462,7 +2810,21 @@
 
             foreach ($ids_seleccionados as $id_seleccionado) {
                 list($tipo, $numdoc) = explode('|', $id_seleccionado);
-                $sql = "UPDATE Documentos 
+
+                // Cambia la fecha de la cabecera y la Fecha_Documento de TODAS las líneas,
+                // sin mirar si el documento ya está guardado. Se registra por documento
+                // para poder reconstruir qué se movió y cuándo.
+                $estadoFecha = AuditoriaDocumentos::estadoDocumento($cn->getConecta(), $tipo, $numdoc);
+                AuditoriaDocumentos::registrar(array(
+                    'modulo' => 'Utilidades', 'operacion' => 'update_fecha', 'destructiva' => 1,
+                    'tipo' => $tipo, 'numero' => $numdoc,
+                    'exportado_antes' => $estadoFecha['exportado'], 'anulado_antes' => $estadoFecha['anulado'],
+                    'lineas_antes' => AuditoriaDocumentos::contarLineas($cn->getConecta(), $tipo, $numdoc),
+                    'resultado' => 'ok',
+                    'mensaje' => "Fecha del documento y de todas sus líneas -> $fecha_datetime"
+                ));
+
+                $sql = "UPDATE Documentos
                         SET Fecha_Hora_Factura = '$fecha_datetime'
                         WHERE tipo = '$tipo' AND Numero_Documento = '$numdoc' ";             
                 $registros = sqlsrv_prepare($cn->getConecta(), $sql);
@@ -2562,14 +2924,9 @@
                     echo"No se Actualizo el ICA \n";
                 }
 
-            $sql2="UPDATE Documentos_Lin SET Numero_Docto_Base = '$traslfact'
-                WHERE tipo = '$tipo' AND Numero_Documento = '$numdoc' ";
-            $registros = sqlsrv_prepare($cn->getConecta(), $sql2);            
-                if(sqlsrv_execute($registros)){
-                    echo"Se Actualizo el doc base de la Entrada Correctamente \n";
-                }else{
-                    echo"No se Actualizo el doc base de la Entrada \n";
-                }
+            // La factura/traslado se guarda SOLO en la cabecera (Documentos.Numero_Docto_Base, varchar).
+            // En Documentos_Lin.Numero_Docto_Base (int) NO se propaga: no corresponde a nivel de línea
+            // y las facturas alfanuméricas (p. ej. 'FE4720') rompían ese UPDATE con error de conversión.
 
             $sql5="(EXEC UPDATE_PRODUCTO_STO )";
             $registros =  sqlsrv_prepare($cn->getConecta(), $sql5);
@@ -2604,10 +2961,30 @@
             
             try {
                 $conexion = $cn->getConecta();
-                
-                // 1. Obtener el próximo seq PRIMERO
-                $sql_seq = "SELECT ISNULL(MAX(CAST(seq AS INT)), 0) + 1 as next_seq 
-                        FROM Documentos_Lin 
+
+                // Un documento guardado o anulado no admite líneas nuevas (mismo criterio
+                // que insert_detalle/delete_id; esta ruta tampoco lo validaba).
+                $sqlChk = "SELECT exportado, anulado FROM Documentos WHERE tipo = ? AND Numero_documento = ?";
+                $stmtChk = sqlsrv_query($conexion, $sqlChk, array($tipo, $consecutivo));
+                $rowChk  = $stmtChk ? sqlsrv_fetch_array($stmtChk, SQLSRV_FETCH_ASSOC) : null;
+                if (!$rowChk) {
+                    return false;
+                }
+                if (trim($rowChk['exportado']) === 'S' || trim($rowChk['anulado'] ?? 'N') === 'S') {
+                    AuditoriaDocumentos::registrar(array(
+                        'modulo' => 'Documentos', 'operacion' => 'duplicar_linea', 'destructiva' => 1,
+                        'tipo' => $tipo, 'numero' => $consecutivo,
+                        'exportado_antes' => $rowChk['exportado'], 'anulado_antes' => $rowChk['anulado'] ?? 'N',
+                        'resultado' => 'bloqueado',
+                        'mensaje' => "Intento de duplicar la línea seq=$seq producto=$producto de un documento guardado/anulado"
+                    ));
+                    return false;
+                }
+
+                // El seq se reserva bajo UPDLOCK/HOLDLOCK para que dos duplicados
+                // simultáneos no obtengan el mismo número de línea.
+                $sql_seq = "SELECT ISNULL(MAX(CAST(seq AS INT)), 0) + 1 as next_seq
+                        FROM Documentos_Lin WITH (UPDLOCK, HOLDLOCK)
                         WHERE tipo = ? AND Numero_Documento = ?";
                 $params_seq = array($tipo, $consecutivo);
                 
@@ -2683,6 +3060,17 @@
                 
                 $filas_afectadas = sqlsrv_rows_affected($stmt_duplicar);
                 error_log("✅ Línea duplicada exitosamente. Filas afectadas: " . $filas_afectadas);
+
+                AuditoriaDocumentos::registrar(array(
+                    'modulo' => 'Documentos', 'operacion' => 'duplicar_linea',
+                    'tipo' => $tipo, 'numero' => $consecutivo,
+                    'exportado_antes' => $rowChk['exportado'], 'anulado_antes' => $rowChk['anulado'] ?? 'N',
+                    'lineas_antes' => $next_seq - 1,
+                    'lineas_despues' => AuditoriaDocumentos::contarLineas($conexion, $tipo, $consecutivo),
+                    'filas_afectadas' => $filas_afectadas,
+                    'resultado' => 'ok',
+                    'mensaje' => "Duplicada seq=$seq producto=$producto -> nuevo seq=$next_seq"
+                ));
                 
                 sqlsrv_free_stmt($stmt_duplicar);
                 
@@ -2727,11 +3115,11 @@
             return $html;
         }
 
-        public function reiniciar_doc_desde_pedido($tipo, $numdoc) {
-            return $this->reiniciar_doc_entrada($tipo, $numdoc);
+        public function reiniciar_doc_desde_pedido($tipo, $numdoc, $confirmado = false) {
+            return $this->reiniciar_doc_entrada($tipo, $numdoc, $confirmado);
         }
 
-        public function reiniciar_doc_entrada($tipo, $numdoc) {
+        public function reiniciar_doc_entrada($tipo, $numdoc, $confirmado = false) {
             $cn = new Conectarserver;
             try {
                 sqlsrv_begin_transaction($cn->getConecta());
@@ -2743,6 +3131,34 @@
                 $row_check = sqlsrv_fetch_array($stmt_check, SQLSRV_FETCH_ASSOC);
                 if (!$row_check) throw new Exception("Documento no encontrado.");
                 if ($row_check['exportado'] === 'S') throw new Exception("El documento ya fue exportado y no puede reiniciarse.");
+
+                // Un documento que estuvo exportado y volvió a editable con "Desmarcar" ya
+                // pudo haberse impreso: reiniciarlo regenera el detalle desde el pedido con
+                // las cantidades pendientes de HOY, que no son las que se imprimieron.
+                // Se exige una confirmación explícita adicional antes de destruirlo.
+                $desmarcado = AuditoriaDocumentos::fueDesmarcado($tipo, (int)$numdoc);
+                if ($desmarcado && !$confirmado) {
+                    sqlsrv_rollback($cn->getConecta());
+                    AuditoriaDocumentos::registrar(array(
+                        'modulo' => 'Entradas', 'operacion' => 'reiniciar_doc_entrada', 'destructiva' => 1,
+                        'tipo' => $tipo, 'numero' => $numdoc,
+                        'exportado_antes' => $row_check['exportado'],
+                        'resultado' => 'bloqueado',
+                        'mensaje' => 'Requiere confirmación: documento desmarcado el ' . $desmarcado['fecha']
+                                   . ' por ' . $desmarcado['usuario']
+                    ));
+                    return json_encode(array(
+                        "status"  => "confirmar",
+                        "message" => "ATENCIÓN: este documento ya había sido guardado y fue desmarcado el "
+                                   . $desmarcado['fecha'] . " por " . $desmarcado['usuario']
+                                   . ". Si lo reinicia, el detalle actual se BORRA y se regenera con las "
+                                   . "cantidades pendientes de hoy, que pueden no coincidir con lo ya impreso."
+                    ));
+                }
+
+                // Foto del detalle ANTES de destruirlo, para poder reponerlo si el
+                // resultado regenerado no coincide con lo que se imprimió.
+                $snap = AuditoriaDocumentos::snapshotLineas($cn->getConecta(), $tipo, (int)$numdoc);
 
                 $tipo_base_2  = trim($row_check['Tipo_Docto_Base_2'] ?? '');
                 $numero_base_2 = trim($row_check['Numero_Docto_Base_2'] ?? '');
@@ -2835,10 +3251,30 @@
                 if (sqlsrv_execute($stmt_tot) === false) throw new Exception("Error al actualizar totales: " . print_r(sqlsrv_errors(), true));
 
                 sqlsrv_commit($cn->getConecta());
+
+                AuditoriaDocumentos::registrar(array(
+                    'modulo' => 'Entradas', 'operacion' => 'reiniciar_doc_entrada', 'destructiva' => 1,
+                    'tipo' => $tipo, 'numero' => $numdoc,
+                    'exportado_antes' => $row_check['exportado'],
+                    'lineas_antes' => $snap['lineas'],
+                    'lineas_despues' => AuditoriaDocumentos::contarLineas($cn->getConecta(), $tipo, (int)$numdoc),
+                    'resultado' => 'ok',
+                    'mensaje' => 'Detalle borrado y regenerado desde el documento de referencia'
+                               . ($desmarcado ? ' (documento previamente DESMARCADO)' : ''),
+                    'detalle_antes' => $snap['detalle']
+                ));
+
                 return json_encode(array("status" => "success", "message" => "Documento reiniciado correctamente."));
 
             } catch (Exception $e) {
                 if (isset($cn) && $cn->getConecta()) sqlsrv_rollback($cn->getConecta());
+                AuditoriaDocumentos::registrar(array(
+                    'modulo' => 'Entradas', 'operacion' => 'reiniciar_doc_entrada', 'destructiva' => 1,
+                    'tipo' => $tipo, 'numero' => $numdoc,
+                    'lineas_antes' => isset($snap) ? $snap['lineas'] : null,
+                    'resultado' => 'error', 'mensaje' => $e->getMessage(),
+                    'detalle_antes' => isset($snap) ? $snap['detalle'] : null
+                ));
                 return json_encode(array("status" => "error", "message" => $e->getMessage()));
             }
         }
@@ -2847,7 +3283,7 @@
 
         public function buscar_documento_gestion($tipo, $numero) {
             $cn = new Conectarserver;
-            $sql = "SELECT d.tipo, t.TipoDoctos, d.Numero_documento, d.exportado, d.anulado, d.usuario,
+            $sql = "SELECT d.tipo, t.TipoDoctos, t.tipo AS categoria, d.Numero_documento, d.exportado, d.anulado, d.usuario,
                            d.Fecha_Hora_Factura, d.nit_Cedula, d.Nombre_Cliente, d.notas
                     FROM Documentos d
                     INNER JOIN TblTipoDoctos t ON d.tipo = t.idTipoDoctos
@@ -2866,6 +3302,7 @@
                 'documento' => [
                     'tipo'       => $row['tipo'],
                     'tipoNombre' => trim($row['TipoDoctos']),
+                    'categoria'  => trim($row['categoria']),
                     'numero'     => $row['Numero_documento'],
                     'exportado'  => trim($row['exportado']),
                     'anulado'    => trim($row['anulado']),
@@ -2878,9 +3315,13 @@
             ]);
         }
 
-        public function desmarcar_documento($tipo, $numero) {
+        // Devuelve un documento ya guardado a estado editable (exportado 'S' pasa a 'N').
+        // Es la operación de mayor riesgo del sistema: a partir de aquí el detalle de un
+        // documento YA IMPRESO puede recortarse o regenerarse. Por eso exige motivo, deja
+        // rastro en las notas del propio documento y queda registrada en la bitácora MySQL.
+        public function desmarcar_documento($tipo, $numero, $motivo = '', $usuario = '') {
             $cn = new Conectarserver;
-            $sqlChk = "SELECT exportado, anulado FROM Documentos WHERE tipo = ? AND Numero_documento = ?";
+            $sqlChk = "SELECT exportado, anulado, notas FROM Documentos WHERE tipo = ? AND Numero_documento = ?";
             $stmtChk = sqlsrv_query($cn->getConecta(), $sqlChk, array($tipo, $numero));
             $row = $stmtChk ? sqlsrv_fetch_array($stmtChk, SQLSRV_FETCH_ASSOC) : null;
             if (!$row) {
@@ -2892,12 +3333,55 @@
             if (trim($row['exportado']) !== 'S') {
                 return json_encode(['status' => 'error', 'message' => 'El documento ya está desmarcado (Exportado = N)']);
             }
-            $sql = "UPDATE Documentos SET exportado = 'N' WHERE tipo = ? AND Numero_documento = ?";
-            $stmt = sqlsrv_query($cn->getConecta(), $sql, array($tipo, $numero));
-            if ($stmt === false) {
-                return json_encode(['status' => 'error', 'message' => 'Error al desmarcar el documento: ' . print_r(sqlsrv_errors(), true)]);
+            if (trim($motivo) === '') {
+                return json_encode(['status' => 'error', 'message' => 'Debe indicar el motivo por el cual desmarca el documento']);
             }
-            return json_encode(['status' => 'success', 'message' => 'Documento desmarcado correctamente (Exportado = N)']);
+
+            // Mismo criterio de rastro que anular_documento: la zona horaria se fija aquí
+            // porque este endpoint AJAX no pasa por una vista que la establezca.
+            date_default_timezone_set("America/Bogota");
+            $fecha = date('Y-m-d H:i:s');
+            $notaExistente = trim($row['notas'] ?? '');
+            $partes = array();
+            if ($notaExistente !== '') $partes[] = $notaExistente;
+            $partes[] = trim($motivo);
+            $partes[] = 'DESMARCADO';
+            $partes[] = $fecha;
+            $partes[] = $usuario;
+            $notaFinal = implode(' - ', $partes);
+
+            // Cuántas líneas tenía al desmarcarse: si luego aparece con menos, la bitácora
+            // muestra exactamente entre qué dos operaciones se perdieron.
+            $snap = AuditoriaDocumentos::snapshotLineas($cn->getConecta(), $tipo, $numero);
+
+            $sql = "UPDATE Documentos SET exportado = 'N', notas = ? WHERE tipo = ? AND Numero_documento = ?";
+            $stmt = sqlsrv_query($cn->getConecta(), $sql, array($notaFinal, $tipo, $numero));
+            if ($stmt === false) {
+                $err = print_r(sqlsrv_errors(), true);
+                AuditoriaDocumentos::registrar(array(
+                    'modulo' => 'GestionDocumentos', 'operacion' => 'desmarcar', 'destructiva' => 1,
+                    'tipo' => $tipo, 'numero' => $numero,
+                    'exportado_antes' => $row['exportado'], 'anulado_antes' => $row['anulado'],
+                    'resultado' => 'error', 'mensaje' => $err
+                ));
+                return json_encode(['status' => 'error', 'message' => 'Error al desmarcar el documento: ' . $err]);
+            }
+
+            AuditoriaDocumentos::registrar(array(
+                'modulo' => 'GestionDocumentos', 'operacion' => 'desmarcar', 'destructiva' => 1,
+                'tipo' => $tipo, 'numero' => $numero,
+                'exportado_antes' => $row['exportado'], 'anulado_antes' => $row['anulado'],
+                'lineas_antes' => $snap['lineas'], 'lineas_despues' => $snap['lineas'],
+                'resultado' => 'ok',
+                'mensaje' => 'Motivo: ' . trim($motivo),
+                'detalle_antes' => $snap['detalle']
+            ));
+
+            return json_encode([
+                'status'  => 'success',
+                'message' => 'Documento desmarcado correctamente (Exportado = N)',
+                'notas'   => $notaFinal
+            ]);
         }
 
         public function anular_documento($tipo, $numero, $motivo, $usuario) {
@@ -2927,11 +3411,27 @@
             $partesNota[] = $usuario;
             $notaFinal = implode(' - ', $partesNota);
 
+            $lineas = AuditoriaDocumentos::contarLineas($cn->getConecta(), $tipo, $numero);
+
             $sql = "UPDATE Documentos SET anulado = 'S', notas = ? WHERE tipo = ? AND Numero_documento = ?";
             $stmt = sqlsrv_query($cn->getConecta(), $sql, array($notaFinal, $tipo, $numero));
             if ($stmt === false) {
-                return json_encode(['status' => 'error', 'message' => 'Error al anular el documento: ' . print_r(sqlsrv_errors(), true)]);
+                $err = print_r(sqlsrv_errors(), true);
+                AuditoriaDocumentos::registrar(array(
+                    'modulo' => 'GestionDocumentos', 'operacion' => 'anular',
+                    'tipo' => $tipo, 'numero' => $numero, 'anulado_antes' => $row['anulado'],
+                    'resultado' => 'error', 'mensaje' => $err
+                ));
+                return json_encode(['status' => 'error', 'message' => 'Error al anular el documento: ' . $err]);
             }
+
+            AuditoriaDocumentos::registrar(array(
+                'modulo' => 'GestionDocumentos', 'operacion' => 'anular',
+                'tipo' => $tipo, 'numero' => $numero, 'anulado_antes' => $row['anulado'],
+                'lineas_antes' => $lineas, 'lineas_despues' => $lineas,
+                'resultado' => 'ok', 'mensaje' => 'Motivo: ' . trim($motivo)
+            ));
+
             return json_encode(['status' => 'success', 'message' => 'Documento anulado correctamente', 'notas' => $notaFinal]);
         }
 

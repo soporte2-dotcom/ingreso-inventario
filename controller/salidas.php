@@ -112,7 +112,8 @@
 
             $idTransportador = (isset($_POST["idTransportador"]) && $_POST["idTransportador"] !== '') ? $_POST["idTransportador"] : '1';
             $idVehiculo      = (isset($_POST["idVehiculo"])      && $_POST["idVehiculo"]      !== '') ? $_POST["idVehiculo"]      : '1';
-            $salidas->guardar_salida(
+            // Devuelve JSON con el consecutivo REAL asignado al guardar (antes era un borrador negativo).
+            echo $salidas->guardar_salida(
                 $_POST["tipo"], $_POST["numdoc"],
                 $_POST["nit1"], $dir1,
                 $_POST["nit2"], $dir2,
@@ -121,8 +122,16 @@
             );
         break;
 
+        case "descartar_borrador":
+            // Descarta un borrador abandonado (encabezado + líneas). Best-effort vía sendBeacon.
+            echo $salidas->descartar_borrador($_POST["tipo"] ?? '', $_POST["numdoc"] ?? 0);
+        break;
+
         case "reiniciar_doc_desde_os":
-            echo $salidas->reiniciar_doc_desde_os($_POST["tipo"], $_POST["numdoc"]);
+            // 'confirmado' lo envía la vista solo tras el segundo aviso, cuando el documento
+            // ya había sido guardado y alguien lo desmarcó (ver reiniciar_doc_desde_os).
+            echo $salidas->reiniciar_doc_desde_os($_POST["tipo"], $_POST["numdoc"],
+                                                  ($_POST["confirmado"] ?? '') === '1');
         break;
 
         case "update_lote_salida":
@@ -157,6 +166,10 @@
         break;
 
         case "listar_salidas":
+            // Barrido oportunista de borradores abandonados (números negativos, exportado='N')
+            // más viejos que 12h. Garantiza limpieza aunque el sendBeacon de descarte no llegue.
+            $salidas->purgar_borradores_salida(12);
+
             require_once("../models/mdlPermisos.php");
             $permisos = new Permisos();
             $tipos_permitidos_rows = $permisos->get_tipos_documento_salidas_permitidos($_SESSION["Id_Usuario"]);

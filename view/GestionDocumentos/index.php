@@ -93,6 +93,9 @@ if (!$permiteGestionDocumentos) {
 
 					<div class="row">
 						<div class="col-sm-6 col-md-4 col-lg-3 d-flex mx-auto">
+							<button type="button" id="btnVerDocumento" class="d-flex w-15 btn btn-rounded btn-inline btn-primary">Ver Documento</button>
+						</div>
+						<div class="col-sm-6 col-md-4 col-lg-3 d-flex mx-auto">
 							<button type="button" id="btnDesmarcar" class="d-flex w-15 btn btn-rounded btn-inline btn-warning">Desmarcar (Exportado &rarr; N)</button>
 						</div>
 						<div class="col-sm-6 col-md-4 col-lg-3 d-flex mx-auto">
@@ -132,6 +135,40 @@ if (!$permiteGestionDocumentos) {
 		</div>
 	</div>
 	<!-- Fin modal Motivo de Anulación -->
+
+	<!-- Modal Motivo de Desmarca.
+	     Desmarcar devuelve a editable un documento ya guardado e impreso: a partir de ahí
+	     su detalle puede recortarse o regenerarse. Se exige motivo, igual que en anulación,
+	     y queda registrado en la bitácora de auditoría junto con el usuario y la hora. -->
+	<div class="modal fade" id="modalMotivoDesmarca" tabindex="-1" role="dialog" aria-labelledby="modalMotivoDesmarcaTitle" aria-hidden="true" data-backdrop="static" data-keyboard="false">
+		<div class="modal-dialog" role="document">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title" id="modalMotivoDesmarcaTitle"><i class="fa fa-unlock"></i> Motivo para Desmarcar</h5>
+					<button type="button" class="close" data-dismiss="modal" aria-label="Close">
+						<span aria-hidden="true">&times;</span>
+					</button>
+				</div>
+				<div class="modal-body">
+					<p id="motivoDesmarcaDocInfo" class="text-muted"></p>
+					<div class="alert alert-warning mb-3">
+						<i class="fa fa-exclamation-triangle"></i>
+						El documento volverá a ser editable. Si luego se reinicia o se le eliminan
+						líneas, el detalle dejará de coincidir con lo que ya se imprimió.
+					</div>
+					<div class="form-group">
+						<label class="font-weight-bold">Motivo <span class="text-danger">*</span></label>
+						<textarea id="motivoDesmarca" class="form-control" rows="3" placeholder="Explique por qué necesita desmarcar este documento..."></textarea>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+					<button type="button" id="btnConfirmarDesmarca" class="btn btn-warning">Desmarcar Documento</button>
+				</div>
+			</div>
+		</div>
+	</div>
+	<!-- Fin modal Motivo de Desmarca -->
 
 	<script type="text/javascript" src="gestion.js?v=<?php echo time(); ?>"></script>
 

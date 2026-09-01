@@ -54,12 +54,12 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 
 					<div class="col-lg-3">
 						<label class="form-label semibold">Fecha</label>
-						<input type="date" class="form-control" name="fecha1" required>
+						<input type="date" class="form-control" id="fecha1" name="fecha1" required>
 					</div>
 
 					<div class="col-lg-2">
 						<br/>
-						<button type="submit" class="btn btn-success" name="generar_reporte">Consultar</button>
+						<button type="button" id="btnConsultar" class="btn btn-success">Consultar</button>
 					</div>
 
 				</div>
@@ -80,48 +80,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 								</thead>
 
 								<tbody>
-									<?php
-									require_once("../../config/conexion.php");
-									if (isset($_POST['idTipo']) || isset($_POST['fecha1'])) {
-										$sql = "SELECT d.tipo, t.TipoDoctos, d.Numero_documento, d.Numero_Docto_Base, d.notas, d.usuario, d.Fecha_Hora_Factura , d.nit_Cedula, c.nombre
-												FROM Documentos d, TblTipoDoctos t, TblTerceros c
-												WHERE d.tipo = t.idTipoDoctos AND c.nit_cedula=d.nit_Cedula";
-
-										if (isset($_POST["idTipo"]) && !empty($_POST["idTipo"])) {
-											$sql .= " AND d.tipo = '" . $_POST["idTipo"] . "'";
-										}
-
-										if (isset($_POST['fecha1']) && !empty($_POST['fecha1'])) {
-											$fecha1 = date('Y-m-d', strtotime($_POST['fecha1']));
-											$sql .= " AND CONVERT(date, d.Fecha_Hora_Factura) = '$fecha1' ";
-										}
-
-										$sql .= " ORDER BY d.Numero_documento DESC";
-										$params = array();
-										$options =  array( "Scrollable" => SQLSRV_CURSOR_KEYSET );
-										$stmt = sqlsrv_query($con, $sql, $params, $options);
-
-										$row_count = sqlsrv_num_rows($stmt);
-										if ($row_count == 0) {
-											echo '<tr><td colspan="8">No se encontraron resultados.</td></tr>';
-										} else {
-											while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-												echo '<tr>
-														<td>' . $row['TipoDoctos'] . '</td>
-														<td>' . $row['Numero_documento'] . '</td>
-														<td>' . $row['nombre'] . '</td>
-														<td>' . date_format($row["Fecha_Hora_Factura"], "Y-m-d"). '</td>
-														<td><input type="text" id="' . $row["tipo"] . '_' . $row["Numero_documento"] . '" value="'. $row["Numero_Docto_Base"] . '" class="form-control"></td>
-													</tr>';
-
-											}
-										}
-										sqlsrv_close($con);
-									} else {
-										// Mostrar la tabla vacía si no se ha realizado ningún filtro
-										echo '<tr><td colspan="8">Realice una consulta para ver los resultados.</td></tr>';
-									}
-									?>
+									<tr><td colspan="6">Realice una consulta para ver los resultados.</td></tr>
 								</tbody>
 
 							</table>

@@ -72,9 +72,74 @@ function init() {
     // Inicialización si es necesaria
 }
 
+// La pantalla se recarga sola en varios flujos (reiniciar desde la OS, volver con el
+// botón Atrás). Esas recargas las dispara el sistema, NO son el usuario abandonando el
+// documento, así que el borrador tiene que sobrevivir. Sin esta marca, el listener de
+// 'pagehide' de abajo alcanzaba a borrarlo antes de que la página volviera a cargar.
+function recargarConservandoBorrador() {
+    window.__conservarBorrador = true;
+    window.location.reload();
+}
+
 // Forzar reload al volver con el botón Atrás del navegador (bfcache)
 window.addEventListener('pageshow', function(e) {
-    if (e.persisted) window.location.reload();
+    if (e.persisted) recargarConservandoBorrador();
+});
+
+// ─── Ciclo de vida del BORRADOR al salir de la pantalla ──────────────────────
+// Regla de negocio: abandonar un borrador = se pierde. Lo que cambió es que ya no se
+// pierde en silencio ni por una recarga que dispara el propio sistema:
+//   1. beforeunload  -> avisa al usuario si hay líneas cargadas, y él decide.
+//   2. pagehide      -> descarta, solo si el usuario ya confirmó que se va.
+//   3. recargarConservandoBorrador() -> para las recargas internas de la aplicación,
+//      que no son un abandono y deben conservar el documento.
+
+// ¿Estamos en un borrador sin guardar? (la URL trae el número negativo)
+function esBorradorSinGuardar() {
+    if (window.__borradorGuardado) return false;
+    var cons = getUrlParameter('consecutivo');
+    return !!(getUrlParameter('tipo') && cons && parseInt(cons, 10) < 0);
+}
+
+// ¿El borrador tiene trabajo que se perdería? Un borrador vacío no vale un aviso.
+function borradorTieneLineas() {
+    try {
+        return $.fn.DataTable.isDataTable('#tb-doc') &&
+               $('#tb-doc').DataTable().rows().count() > 0;
+    } catch (e) {
+        return false;
+    }
+}
+
+// Aviso antes de salir: el navegador muestra su diálogo nativo ("los cambios podrían no
+// guardarse"). Es la protección clave -- antes, cerrar la pestaña o presionar F5 por
+// reflejo borraba el documento en el acto, sin decir nada. Solo se avisa si hay líneas
+// cargadas y la salida no la disparó la propia aplicación.
+window.addEventListener('beforeunload', function(e) {
+    if (window.__conservarBorrador) return;
+    if (!esBorradorSinGuardar() || !borradorTieneLineas()) return;
+    e.preventDefault();
+    e.returnValue = '';   // los navegadores modernos muestran su propio texto
+    return '';
+});
+
+// Descarte del BORRADOR al abandonar la pantalla. Solo llega aquí si el usuario ya
+// confirmó el aviso de arriba (o si el borrador estaba vacío, donde no hay nada que
+// perder). El endpoint solo elimina filas con Numero_Documento negativo y exportado='N',
+// así que NUNCA toca un documento ya guardado. Los que se escapen por un cierre abrupto
+// los recoge purgar_borradores_salida a las 12 horas.
+window.addEventListener('pagehide', function() {
+    // __conservarBorrador: la recarga la disparó la propia aplicación (ver
+    // recargarConservandoBorrador), no el usuario cerrando o abandonando la pantalla.
+    if (window.__borradorGuardado || window.__conservarBorrador) return;
+    var cons = getUrlParameter('consecutivo');
+    var tp   = getUrlParameter('tipo');
+    if (tp && cons && parseInt(cons, 10) < 0 && navigator.sendBeacon) {
+        var fd = new FormData();
+        fd.append('tipo', tp);
+        fd.append('numdoc', cons);
+        navigator.sendBeacon('../../controller/salidas.php?op=descartar_borrador', fd);
+    }
 });
 
 $(document).ready(function() {
@@ -100,6 +165,12 @@ $(document).ready(function() {
     const consecutivo = getUrlParameter('consecutivo');
     if(tipo && consecutivo){
         listardetalle(tipo, consecutivo);
+
+        // Al volver tras guardar un borrador con "Imprimir", se recarga en el documento ya
+        // numerado con ?print=1: se dispara la impresión una vez cargados los datos.
+        if (getUrlParameter('print') === '1') {
+            setTimeout(function() { imprimirDocumento(); }, 1500);
+        }
     }
 });
 
@@ -246,7 +317,9 @@ function inicializarEventos() {
 
         $.post(CONFIG.baseUrl + CONFIG.endpoints.tipodoctos.consecutivos, { idTipo }, function(data) {
             data = JSON.parse(data);
-            $("#consecutivo").val(data.consecutivo);
+            // Consecutivo diferido: este número es solo TENTATIVO. El definitivo se asigna al Guardar
+            // (evita huecos si el usuario abandona o si otro usuario guarda primero).
+            $("#consecutivo").val(data.consecutivo + ' (tentativo)');
         });
 
         // Consultar información de la granja para auto-llenado
@@ -1218,9 +1291,15 @@ function continuarGuardarDocumento() {
 
 function procesarGuardado(endpoint) {
     $.blockUI({ message: '<h2>Guardando por favor Espere...</h2>' });
-    
+
     const formData = new FormData($("#doc_form")[0]);
-    
+
+    // El número/tipo del documento se toman SIEMPRE de la URL (fuente canónica), no del campo
+    // visible: para un BORRADOR el consecutivo es negativo y el backend lo usa para renumerar.
+    // Esto evita depender del valor mostrado en #numdoc (que puede decir "BORRADOR").
+    formData.set('numdoc', getUrlParameter('consecutivo'));
+    formData.set('tipo',   getUrlParameter('tipo'));
+
     $.ajax({
         url: CONFIG.baseUrl + endpoint,
         type: "POST",
@@ -1229,9 +1308,37 @@ function procesarGuardado(endpoint) {
         processData: false,
         success: function(datos) {
             console.log(datos);
+
+            // guardar_salida ahora responde JSON (consecutivo diferido). Las otras ramas
+            // (guardar_entrada/guardar_doc) siguen respondiendo texto: si no parsea, es flujo heredado.
+            var resp = null;
+            try { resp = (typeof datos === 'object') ? datos : JSON.parse(datos); } catch (e) { resp = null; }
+
+            if (resp && resp.status === 'error') {
+                if (resp.code === 'ya_guardado') {
+                    // El borrador ya fue guardado (p. ej. desde otra pestaña): no se duplicó ni se perdió número.
+                    swal({ title: "Aviso", text: resp.message, type: "warning" }, function() {
+                        window.location.href = 'index.php';
+                    });
+                } else {
+                    swal("Error!", resp.message || "No se pudo guardar el documento.", "error");
+                }
+                return;
+            }
+
+            // Guardado exitoso: marcar para que el listener de 'pagehide' NO intente borrar el borrador
+            // al navegar (además, tras renumerar ya es un documento positivo y el endpoint no lo tocaría).
+            window.__borradorGuardado = true;
+
+            // ¿El documento era un BORRADOR? (la URL trae el número negativo). Si lo era, el número
+            // real viene en resp.consecutivo y hay que navegar a él (la URL negativa ya no existe en BD).
+            var fueBorrador = parseInt(getUrlParameter('consecutivo'), 10) < 0;
+            var tipoActual  = getUrlParameter('tipo');
+            var numeroReal  = (resp && resp.consecutivo) ? resp.consecutivo : getUrlParameter('consecutivo');
+
             swal({
                 title: "Correcto!",
-                text: "Documento Registrado Correctamente",
+                text: fueBorrador ? ("Documento guardado con el número " + numeroReal) : "Documento Registrado Correctamente",
                 type: "success",
                 showCancelButton: true,
                 confirmButtonText: "Aceptar",
@@ -1241,6 +1348,9 @@ function procesarGuardado(endpoint) {
             }, function(isConfirm) {
                 if (isConfirm) {
                     window.location.href = 'index.php';
+                } else if (fueBorrador) {
+                    // Recargar en el documento ya numerado y disparar la impresión al cargar.
+                    window.location.href = 'index.php?tipo=' + tipoActual + '&consecutivo=' + numeroReal + '&print=1';
                 } else {
                     imprimirDocumento();
                     setTimeout(function() {
@@ -1493,7 +1603,13 @@ function listardetalle(tipo, consecutivo){
         $('#tipo').val(data.tipo);
         $('#tipodoc').val(data.TipoDoctos);
         $('#prefijo_doc').val(data.Prefijo || '');
+        // Consecutivo diferido: un Numero_documento negativo es un BORRADOR (aún sin numerar).
+        // IMPORTANTE: #numdoc SIEMPRE conserva el número real (negativo para borrador) porque ese
+        // campo se envía en el formulario al Guardar y lo leen otras acciones. Para el usuario se
+        // muestra "BORRADOR" en un campo aparte (#numdoc_display), no tocando el valor de #numdoc.
+        var esBorrador = parseInt(data.Numero_documento, 10) < 0;
         $('#numdoc').val(data.Numero_documento);
+        $('#avisoBorrador').toggle(esBorrador);
         $('#pedido1').val(data.Numero_Docto_Base_2);
         $('#nroOcTercero').val(data.NroOcTercero || '');
         $('#traslfact1').val(data.Numero_Docto_Base);
@@ -1572,7 +1688,16 @@ function listardetalle(tipo, consecutivo){
 
         if(data !== null){
             configurarInterfazParaDocumentoExistente(data);
-        }      
+        }
+
+        // Para un BORRADOR se oculta el número real (#numdoc) y se muestra el rótulo "BORRADOR"
+        // (#numdoc_display). Se hace DESPUÉS de configurar la interfaz, que muestra #numdoc.
+        if (esBorrador) {
+            $('#numdoc').hide();
+            $('#numdoc_display').show();
+        } else {
+            $('#numdoc_display').hide();
+        }
 
     });
 
@@ -2559,27 +2684,49 @@ $(document).on("click", "#btnreiniciar", function() {
         confirmButtonColor: "#d33"
     }, function(confirm) {
         if (!confirm) return;
-        $.ajax({
-            url: CONFIG.endpoints.salidas.reiniciar_doc_desde_os,
-            type: "POST",
-            data: { tipo: tipo, numdoc: consecutivo },
-            dataType: "json",
-            success: function(data) {
-                if (data.status === "success") {
-                    setTimeout(function() {
-                        window.location.reload();
-                    }, 400);
-                } else {
-                    swal("Error", data.message, "error");
-                }
-            },
-            error: function(xhr, status, err) {
-                console.log("reiniciar error:", xhr.responseText, status, err);
-                swal("Error", "No se pudo conectar con el servidor.", "error");
-            }
-        });
+        enviarReinicioSalida(tipo, consecutivo, false);
     });
 });
+
+// El backend responde status "confirmar" cuando el documento ya había sido guardado y
+// alguien lo desmarcó: en ese caso el detalle actual pudo haberse impreso, así que se
+// pide un segundo sí explícito antes de destruirlo.
+function enviarReinicioSalida(tipo, consecutivo, confirmado) {
+    $.ajax({
+        url: CONFIG.endpoints.salidas.reiniciar_doc_desde_os,
+        type: "POST",
+        data: { tipo: tipo, numdoc: consecutivo, confirmado: confirmado ? '1' : '0' },
+        dataType: "json",
+        success: function(data) {
+            if (data.status === "success") {
+                // Recarga interna tras reiniciar: el borrador debe sobrevivir. Antes se
+                // usaba window.location.reload() a secas y el listener de 'pagehide'
+                // descartaba el borrador recién regenerado, dejando la pantalla apuntando
+                // a un documento que ya no existía.
+                setTimeout(recargarConservandoBorrador, 400);
+            } else if (data.status === "confirmar") {
+                swal({
+                    title: "Documento ya impreso",
+                    text: data.message + "\n\n¿Reiniciar de todas formas?",
+                    type: "warning",
+                    showCancelButton: true,
+                    confirmButtonText: "Sí, reiniciar igual",
+                    cancelButtonText: "No, cancelar",
+                    confirmButtonColor: "#d33",
+                    closeOnConfirm: true
+                }, function(seguro) {
+                    if (seguro) enviarReinicioSalida(tipo, consecutivo, true);
+                });
+            } else {
+                swal("Error", data.message, "error");
+            }
+        },
+        error: function(xhr, status, err) {
+            console.log("reiniciar error:", xhr.responseText, status, err);
+            swal("Error", "No se pudo conectar con el servidor.", "error");
+        }
+    });
+}
 
 function mostrarNotificacion(tipo, mensaje) {
     var color = tipo === 'success' ? 'alert-success' : 'alert-danger';

@@ -76,3 +76,17 @@
 
 )
 
+[2026-07-29 15:42:44] Error en guardar_salida: Error al guardar la salida: Array
+(
+    [0] => Array
+        (
+            [0] => 42S22
+            [SQLSTATE] => 42S22
+            [1] => 207
+            [code] => 207
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]El nombre de columna 'BORRADOR' no es válido.
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]El nombre de columna 'BORRADOR' no es válido.
+        )
+
+)
+

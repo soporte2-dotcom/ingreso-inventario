@@ -91,6 +91,17 @@ $permiteLoteManual        = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 					<i class="fa fa-ban"></i> Este documento está <b>ANULADO</b>. Solo puede consultarse, no se puede modificar.
 				</div>
 
+				<!-- El aviso dice explícitamente que el trabajo se pierde: antes solo hablaba
+				     del consecutivo, y un usuario podía cerrar la pestaña con 20 líneas
+				     cargadas sin saber que las estaba perdiendo. -->
+				<div id="avisoBorrador" class="alert alert-warning" style="display:none">
+					<i class="fa fa-pencil"></i> Documento en <b>BORRADOR</b>. El número consecutivo se asignará
+					cuando presione <b>Guardar</b>, así que no se consume ninguno si abandona.
+					<br>
+					<b>Importante:</b> mientras esté en borrador el documento no está guardado.
+					Si cierra esta pantalla sin presionar <b>Guardar</b>, se pierden los productos que haya cargado.
+				</div>
+
 				<form method="post" id="doc_form">
 
 				<div class="row">
@@ -221,6 +232,9 @@ $permiteLoteManual        = $_permisos->tiene_permiso_especial($_SESSION["Id_Usu
 						<fieldset class="form-group">
 							<label class="form-label semibold" style="display: none" id="txt_numdoc">Consecutivo</label>
 							<input type="text" style="display: none" name="numdoc" id="numdoc" class="form-control" readonly/>
+							<!-- Solo visual: muestra "BORRADOR" mientras el documento no tiene consecutivo real.
+							     No lleva name para NO enviarse en el formulario (el número real va en #numdoc). -->
+							<input type="text" style="display: none" id="numdoc_display" class="form-control" value="BORRADOR" readonly/>
 						</fieldset>
 					</div>
 

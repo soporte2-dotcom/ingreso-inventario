@@ -660,27 +660,47 @@ function reiniciarDocumento() {
         closeOnConfirm: false
     }, function(confirmed) {
         if (!confirmed) return;
-        $.blockUI({ message: '<h2>Reiniciando, favor espere...</h2>' });
-        $.ajax({
-            url: CONFIG.endpoints.documento.reiniciar_doc_desde_pedido,
-            type: "POST",
-            data: { tipo: tipo, numdoc: consecutivo },
-            dataType: "json",
-            success: function(resp) {
-                $.unblockUI();
-                if (resp.status === 'success') {
-                    swal("Correcto!", resp.message, "success");
-                    $('#tb-doc').DataTable().ajax.reload();
-                    actualizarTodosLosTotales(tipo, consecutivo);
-                } else {
-                    swal("Error!", resp.message, "error");
-                }
-            },
-            error: function() {
-                $.unblockUI();
-                swal("Error!", "No se pudo reiniciar el documento.", "error");
+        enviarReinicioEntrada(tipo, consecutivo, false);
+    });
+}
+
+// El backend responde status "confirmar" cuando el documento ya había sido guardado y
+// alguien lo desmarcó: en ese caso el detalle actual pudo haberse impreso, así que se
+// pide un segundo sí explícito antes de destruirlo.
+function enviarReinicioEntrada(tipo, consecutivo, confirmado) {
+    $.blockUI({ message: '<h2>Reiniciando, favor espere...</h2>' });
+    $.ajax({
+        url: CONFIG.endpoints.documento.reiniciar_doc_desde_pedido,
+        type: "POST",
+        data: { tipo: tipo, numdoc: consecutivo, confirmado: confirmado ? '1' : '0' },
+        dataType: "json",
+        success: function(resp) {
+            $.unblockUI();
+            if (resp.status === 'success') {
+                swal("Correcto!", resp.message, "success");
+                $('#tb-doc').DataTable().ajax.reload();
+                actualizarTodosLosTotales(tipo, consecutivo);
+            } else if (resp.status === 'confirmar') {
+                swal({
+                    title: "Documento ya impreso",
+                    text: resp.message + "\n\n¿Reiniciar de todas formas?",
+                    type: "warning",
+                    showCancelButton: true,
+                    confirmButtonColor: "#d33",
+                    confirmButtonText: "Sí, reiniciar igual",
+                    cancelButtonText: "No, cancelar",
+                    closeOnConfirm: true
+                }, function(seguro) {
+                    if (seguro) enviarReinicioEntrada(tipo, consecutivo, true);
+                });
+            } else {
+                swal("Error!", resp.message, "error");
             }
-        });
+        },
+        error: function() {
+            $.unblockUI();
+            swal("Error!", "No se pudo reiniciar el documento.", "error");
+        }
     });
 }
 
