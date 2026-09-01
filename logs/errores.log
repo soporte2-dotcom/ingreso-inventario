@@ -90,3 +90,17 @@
 
 )
 
+[2026-09-01 19:45:42] seguimiento_os cabecera (OS_QUE_NO_EXISTE_999999): Array
+(
+    [0] => Array
+        (
+            [0] => 22018
+            [SQLSTATE] => 22018
+            [1] => 245
+            [code] => 245
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Error de conversión al convertir el valor nvarchar 'OS_QUE_NO_EXISTE_999999' al tipo de datos int.
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Error de conversión al convertir el valor nvarchar 'OS_QUE_NO_EXISTE_999999' al tipo de datos int.
+        )
+
+)
+

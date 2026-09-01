@@ -1964,6 +1964,208 @@
             return json_encode($resultado);
         }
 
+        /**
+         * Seguimiento de una Orden de Salida ítem por ítem: cuánto se pidió de cada línea,
+         * cuánto se ha descontado y EN QUÉ DOCUMENTOS se descontó.
+         *
+         * El enlace entre una línea de la OS y una línea de documento es por
+         * (IdProducto + Linea/seq), no solo por producto: una misma OS puede pedir el mismo
+         * producto en varias líneas con cantidades distintas, y agrupar solo por producto
+         * las mezclaría.
+         *
+         * Las devoluciones (Tipo_Docto_Base <> '0') restan, igual que en el cálculo de
+         * pendientes que ya usan insert_doc_salida y reiniciar_doc_desde_os, para que el
+         * pendiente que se muestra aquí sea el mismo que el sistema aplica al despachar.
+         */
+        public function seguimiento_os($numero) {
+            $cn = new Conectarserver;
+            $conn = $cn->getConecta();
+            $vacio = array('status' => 'no_existe', 'message' => 'La Orden de Salida no existe');
+
+            $numero = trim($numero);
+            if ($numero === '') {
+                return json_encode(array('status' => 'error', 'message' => 'Debe indicar el número de la Orden de Salida'));
+            }
+            // numero_pedido es int en la base: sin esta validación, un texto provoca un
+            // error de conversión de SQL Server en vez de un mensaje entendible.
+            if (!ctype_digit($numero)) {
+                return json_encode(array('status' => 'error', 'message' => 'El número de la Orden de Salida debe ser numérico'));
+            }
+
+            // 1. Cabecera de la OS
+            $sqlOs = "SELECT dp.numero_pedido, dp.nit, LTRIM(RTRIM(t.nombre)) AS cliente, dp.bodega,
+                             dp.fecha_hora_pedido, dp.anulado, dp.exportado, dp.despacho,
+                             LTRIM(RTRIM(dp.notas)) AS notas, LTRIM(RTRIM(dp.usuario)) AS usuario
+                      FROM Documentos_Ped dp
+                      LEFT JOIN TblTerceros t ON t.nit_cedula = dp.nit
+                      WHERE dp.numero_pedido = ? AND dp.sw = '10'";
+            $stOs = sqlsrv_query($conn, $sqlOs, array($numero));
+            if ($stOs === false) {
+                $this->registrar_error("seguimiento_os cabecera ($numero): " . print_r(sqlsrv_errors(), true));
+                return json_encode(array('status' => 'error', 'message' => 'Error al consultar la Orden de Salida'));
+            }
+            $os = sqlsrv_fetch_array($stOs, SQLSRV_FETCH_ASSOC);
+            if (!$os) return json_encode($vacio);
+
+            // En Documentos_Ped el campo anulado se guarda invertido: 1 = vigente, 0 = anulada.
+            // Es el mismo criterio que usa validar_os (CAST(anulado AS int) = 1).
+            $osAnulada = ((int)$os['anulado'] === 0);
+
+            // 2. Líneas de la OS (todas, incluso las que aún no se han despachado)
+            $sqlLin = "SELECT dlp.Linea, dlp.IdProducto, LTRIM(RTRIM(p.Producto)) AS Producto,
+                              LTRIM(RTRIM(u.Unidad)) AS Unidad, dlp.cantidad AS ordenado,
+                              LTRIM(RTRIM(ISNULL(dlp.nota, ''))) AS nota
+                       FROM Documentos_Lin_Ped dlp
+                       LEFT JOIN TblProducto p ON p.IdProducto = dlp.IdProducto
+                       LEFT JOIN TblUnidad  u ON u.idUnidad   = dlp.und
+                       WHERE dlp.numero_pedido = ? AND dlp.sw = '10'
+                       ORDER BY dlp.Linea";
+            $stLin = sqlsrv_query($conn, $sqlLin, array($numero));
+            if ($stLin === false) {
+                $this->registrar_error("seguimiento_os lineas ($numero): " . print_r(sqlsrv_errors(), true));
+                return json_encode(array('status' => 'error', 'message' => 'Error al consultar las líneas de la OS'));
+            }
+            $lineas = array();
+            while ($r = sqlsrv_fetch_array($stLin, SQLSRV_FETCH_ASSOC)) {
+                $lineas[(string)$r['Linea']] = array(
+                    'linea'       => $r['Linea'],
+                    'idProducto'  => $r['IdProducto'],
+                    'producto'    => $r['Producto'],
+                    'unidad'      => $r['Unidad'],
+                    'nota'        => $r['nota'],
+                    'ordenado'    => (float)$r['ordenado'],
+                    'despachado'  => 0.0,
+                    'pendiente'   => (float)$r['ordenado'],
+                    'movimientos' => array()
+                );
+            }
+
+            // 3. Movimientos: una fila por (línea de la OS x documento que la consumió).
+            //    A propósito NO se filtra por bodega. El cálculo de pendientes del despacho
+            //    sí lo hace (d.bodega = bodega de la OS), y por eso ignora los documentos
+            //    hechos desde otra bodega: en producción eso afecta a más de la mitad de las
+            //    órdenes, casi siempre porque la OS quedó con bodega 0. Este módulo existe
+            //    para mostrar la realidad, así que los trae todos y marca cuáles quedan
+            //    fuera de ese cálculo.
+            $sqlMov = "SELECT dlp.Linea, d.tipo, LTRIM(RTRIM(tt.TipoDoctos)) AS TipoDoctos,
+                              d.Numero_documento, d.Fecha_Hora_Factura, d.exportado, d.anulado,
+                              LTRIM(RTRIM(d.usuario)) AS usuario, dl.seq,
+                              dl.Cantidad_Facturada, dl.Numero_Lote, d.bodega,
+                              CASE WHEN d.Tipo_Docto_Base = '0' THEN 1 ELSE 0 END AS es_despacho
+                       FROM Documentos_Lin_Ped dlp
+                       INNER JOIN Documentos d
+                               ON d.Numero_Docto_Base_2 = ? AND d.Tipo_Docto_Base_2 = '10'
+                       INNER JOIN Documentos_Lin dl
+                               ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
+                              AND dl.IdProducto = dlp.IdProducto AND dl.seq = dlp.Linea
+                       LEFT JOIN TblTipoDoctos tt ON tt.idTipoDoctos = d.tipo
+                       WHERE dlp.numero_pedido = ? AND dlp.sw = '10'
+                       ORDER BY dlp.Linea, d.Fecha_Hora_Factura, d.Numero_documento";
+            $stMov = sqlsrv_query($conn, $sqlMov, array($numero, $numero));
+            if ($stMov === false) {
+                $this->registrar_error("seguimiento_os movimientos ($numero): " . print_r(sqlsrv_errors(), true));
+                return json_encode(array('status' => 'error', 'message' => 'Error al consultar los movimientos'));
+            }
+
+            $bodegaOs   = trim($os['bodega'] ?? '');
+            $documentos = array();
+            $movsOtraBodega = 0;
+            while ($m = sqlsrv_fetch_array($stMov, SQLSRV_FETCH_ASSOC)) {
+                $k = (string)$m['Linea'];
+                if (!isset($lineas[$k])) continue;   // movimiento sin línea de OS: se ignora
+
+                $esDespacho = ((int)$m['es_despacho'] === 1);
+                $cantidad   = (float)$m['Cantidad_Facturada'];
+                $anulado    = (trim($m['anulado'] ?? 'N') === 'S');
+                $bodegaDoc  = trim($m['bodega'] ?? '');
+                $otraBodega = ($bodegaDoc !== $bodegaOs);
+                if ($otraBodega) $movsOtraBodega++;
+
+                // Un documento anulado ya no descuenta: sus cantidades quedaron en cero al
+                // anularlo, así que sumarlo no cambiaría nada, pero se muestra igual para
+                // que se entienda por qué el pendiente volvió a subir.
+                $lineas[$k]['despachado'] += ($esDespacho ? $cantidad : -$cantidad);
+
+                $lineas[$k]['movimientos'][] = array(
+                    'tipo'       => trim($m['tipo']),
+                    'tipoNombre' => $m['TipoDoctos'],
+                    'numero'     => $m['Numero_documento'],
+                    'fecha'      => ($m['Fecha_Hora_Factura'] instanceof DateTime)
+                                    ? $m['Fecha_Hora_Factura']->format('d/m/Y H:i') : '',
+                    'cantidad'   => $cantidad,
+                    'esDespacho' => $esDespacho,
+                    'lote'       => is_string($m['Numero_Lote']) ? trim($m['Numero_Lote']) : $m['Numero_Lote'],
+                    'exportado'  => trim($m['exportado']),
+                    'anulado'    => $anulado ? 'S' : 'N',
+                    'usuario'    => $m['usuario'],
+                    'bodega'     => $bodegaDoc,
+                    'otraBodega' => $otraBodega ? 'S' : 'N'
+                );
+                $documentos[trim($m['tipo']) . '-' . $m['Numero_documento']] = true;
+            }
+
+            // Documentos que apuntan a esta OS pero de los que no salió ni un movimiento:
+            // sus líneas no enlazan por (IdProducto + Linea/seq). Ocurre en el 0,85% de los
+            // documentos de OS, y como el cálculo de pendientes usa ese mismo enlace,
+            // esas cantidades tampoco le cuentan a él. Sin este aviso, el usuario vería
+            // "0 descontado" sin ninguna explicación.
+            $docsSinEnlace = 0;
+            $sqlHuerf = "SELECT COUNT(*) AS n FROM Documentos d
+                         WHERE d.Numero_Docto_Base_2 = ? AND d.Tipo_Docto_Base_2 = '10'
+                           AND NOT EXISTS (
+                               SELECT 1 FROM Documentos_Lin dl
+                               JOIN Documentos_Lin_Ped dlp
+                                    ON dlp.numero_pedido = ? AND dlp.sw = '10'
+                                   AND dlp.IdProducto = dl.IdProducto AND dlp.Linea = dl.seq
+                               WHERE dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento)";
+            $stHuerf = sqlsrv_query($conn, $sqlHuerf, array($numero, $numero));
+            if ($stHuerf !== false) {
+                $rowHuerf = sqlsrv_fetch_array($stHuerf, SQLSRV_FETCH_ASSOC);
+                $docsSinEnlace = $rowHuerf ? (int)$rowHuerf['n'] : 0;
+            }
+
+            $totOrdenado = 0.0; $totDespachado = 0.0; $lineasPendientes = 0;
+            foreach ($lineas as $k => $l) {
+                $pendiente = $l['ordenado'] - $l['despachado'];
+                $lineas[$k]['pendiente'] = $pendiente;
+                $totOrdenado   += $l['ordenado'];
+                $totDespachado += $l['despachado'];
+                if ($pendiente > 0) $lineasPendientes++;
+            }
+
+            return json_encode(array(
+                'status' => 'ok',
+                'os' => array(
+                    'numero'  => trim($os['numero_pedido']),
+                    'nit'     => trim($os['nit'] ?? ''),
+                    'cliente' => $os['cliente'],
+                    'bodega'  => trim($os['bodega'] ?? ''),
+                    'fecha'   => ($os['fecha_hora_pedido'] instanceof DateTime)
+                                 ? $os['fecha_hora_pedido']->format('d/m/Y H:i') : '',
+                    'usuario' => $os['usuario'],
+                    'notas'   => $os['notas'],
+                    'anulada' => $osAnulada ? 'S' : 'N'
+                ),
+                'totales' => array(
+                    'lineas'           => count($lineas),
+                    'lineasPendientes' => $lineasPendientes,
+                    'documentos'       => count($documentos),
+                    // Movimientos que el cálculo de pendientes del despacho NO ve, por estar
+                    // en una bodega distinta a la de la OS. Si es > 0, esta orden puede
+                    // volver a despacharse aunque ya esté servida.
+                    'movsOtraBodega'   => $movsOtraBodega,
+                    'bodegaOs'         => $bodegaOs,
+                    // Documentos que apuntan a la OS pero cuyas líneas no enlazan por
+                    // (producto + número de línea): tampoco los ve el despacho.
+                    'docsSinEnlace'    => $docsSinEnlace,
+                    'ordenado'         => $totOrdenado,
+                    'despachado'       => $totDespachado,
+                    'pendiente'        => $totOrdenado - $totDespachado
+                ),
+                'lineas' => array_values($lineas)
+            ));
+        }
+
         public function preview_doc_devolucion($numero, $tiporef) {
             $cn = new Conectarserver;
 
