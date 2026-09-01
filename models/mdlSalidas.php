@@ -2034,7 +2034,8 @@
                     'unidad'      => $r['Unidad'],
                     'nota'        => $r['nota'],
                     'ordenado'    => (float)$r['ordenado'],
-                    'despachado'  => 0.0,
+                    'despachado'      => 0.0,
+                    'despachadoOtros' => 0.0,
                     'pendiente'   => (float)$r['ordenado'],
                     'movimientos' => array()
                 );
@@ -2051,10 +2052,11 @@
                               d.Numero_documento, d.Fecha_Hora_Factura, d.exportado, d.anulado,
                               LTRIM(RTRIM(d.usuario)) AS usuario, dl.seq,
                               dl.Cantidad_Facturada, dl.Numero_Lote, d.bodega,
+                              d.Tipo_Docto_Base_2,
                               CASE WHEN d.Tipo_Docto_Base = '0' THEN 1 ELSE 0 END AS es_despacho
                        FROM Documentos_Lin_Ped dlp
                        INNER JOIN Documentos d
-                               ON d.Numero_Docto_Base_2 = ? AND d.Tipo_Docto_Base_2 = '10'
+                               ON d.Numero_Docto_Base_2 = ?
                        INNER JOIN Documentos_Lin dl
                                ON dl.tipo = d.tipo AND dl.Numero_Documento = d.Numero_documento
                               AND dl.IdProducto = dlp.IdProducto AND dl.seq = dlp.Linea
@@ -2070,6 +2072,7 @@
             $bodegaOs   = trim($os['bodega'] ?? '');
             $documentos = array();
             $movsOtraBodega = 0;
+            $movsPorContenido = 0;
             while ($m = sqlsrv_fetch_array($stMov, SQLSRV_FETCH_ASSOC)) {
                 $k = (string)$m['Linea'];
                 if (!isset($lineas[$k])) continue;   // movimiento sin línea de OS: se ignora
@@ -2081,10 +2084,28 @@
                 $otraBodega = ($bodegaDoc !== $bodegaOs);
                 if ($otraBodega) $movsOtraBodega++;
 
+                // Cómo quedó enlazado el documento con la OS:
+                //  - 'oficial'  : Tipo_Docto_Base_2 = '10', el vínculo que el sistema declara
+                //                 y el único que el cálculo de pendientes reconoce.
+                //  - 'contenido': el documento apunta al mismo número pero con otro
+                //                 Tipo_Docto_Base_2 (0, 9, ...). Aparece aquí solo porque sus
+                //                 líneas SÍ casan con las de la OS por producto y número de
+                //                 línea. No se suma al descontado oficial: los números de
+                //                 pedido (sw=9) y de OS (sw=10) se solapan en 108.570 casos,
+                //                 así que un vínculo por contenido no prueba por sí solo que
+                //                 el movimiento pertenezca a esta orden.
+                $vinculo = (trim($m['Tipo_Docto_Base_2'] ?? '') === '10') ? 'oficial' : 'contenido';
+                if ($vinculo !== 'oficial') $movsPorContenido++;
+
                 // Un documento anulado ya no descuenta: sus cantidades quedaron en cero al
                 // anularlo, así que sumarlo no cambiaría nada, pero se muestra igual para
                 // que se entienda por qué el pendiente volvió a subir.
-                $lineas[$k]['despachado'] += ($esDespacho ? $cantidad : -$cantidad);
+                $aporte = ($esDespacho ? $cantidad : -$cantidad);
+                if ($vinculo === 'oficial') {
+                    $lineas[$k]['despachado'] += $aporte;
+                } else {
+                    $lineas[$k]['despachadoOtros'] += $aporte;
+                }
 
                 $lineas[$k]['movimientos'][] = array(
                     'tipo'       => trim($m['tipo']),
@@ -2099,7 +2120,9 @@
                     'anulado'    => $anulado ? 'S' : 'N',
                     'usuario'    => $m['usuario'],
                     'bodega'     => $bodegaDoc,
-                    'otraBodega' => $otraBodega ? 'S' : 'N'
+                    'otraBodega' => $otraBodega ? 'S' : 'N',
+                    'vinculo'    => $vinculo,
+                    'tipoBase2'  => trim($m['Tipo_Docto_Base_2'] ?? '')
                 );
                 $documentos[trim($m['tipo']) . '-' . $m['Numero_documento']] = true;
             }
@@ -2124,12 +2147,13 @@
                 $docsSinEnlace = $rowHuerf ? (int)$rowHuerf['n'] : 0;
             }
 
-            $totOrdenado = 0.0; $totDespachado = 0.0; $lineasPendientes = 0;
+            $totOrdenado = 0.0; $totDespachado = 0.0; $totOtros = 0.0; $lineasPendientes = 0;
             foreach ($lineas as $k => $l) {
                 $pendiente = $l['ordenado'] - $l['despachado'];
                 $lineas[$k]['pendiente'] = $pendiente;
                 $totOrdenado   += $l['ordenado'];
                 $totDespachado += $l['despachado'];
+                $totOtros      += $l['despachadoOtros'];
                 if ($pendiente > 0) $lineasPendientes++;
             }
 
@@ -2158,6 +2182,9 @@
                     // Documentos que apuntan a la OS pero cuyas líneas no enlazan por
                     // (producto + número de línea): tampoco los ve el despacho.
                     'docsSinEnlace'    => $docsSinEnlace,
+                    // Movimientos enlazados solo por contenido (no por Tipo_Docto_Base_2='10').
+                    'movsPorContenido' => $movsPorContenido,
+                    'despachadoOtros'  => $totOtros,
                     'ordenado'         => $totOrdenado,
                     'despachado'       => $totDespachado,
                     'pendiente'        => $totOrdenado - $totDespachado

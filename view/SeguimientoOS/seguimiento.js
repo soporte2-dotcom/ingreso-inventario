@@ -95,6 +95,8 @@ function tablaMovimientos(item) {
         if (!m.esDespacho)            estado += ' <span class="badge badge-info">Devolución</span>';
         // El despacho no cuenta los documentos de otra bodega al calcular pendientes.
         if (m.otraBodega === 'S')     estado += ' <span class="badge badge-danger" title="El cálculo de pendientes del despacho ignora este documento">Bodega ' + txt(m.bodega) + '</span>';
+        // Enlazado por coincidencia de líneas, no porque el documento se declare de esta OS.
+        if (m.vinculo !== 'oficial')  estado += ' <span class="badge badge-warning" title="Tipo_Docto_Base_2 = ' + txt(m.tipoBase2) + ', no 10. No se suma al descontado.">Por contenido</span>';
 
         filas +=
             '<tr>' +
@@ -157,6 +159,16 @@ function consultar() {
             $('#avisoBodega').show();
         } else {
             $('#avisoBodega').hide();
+        }
+
+        if (r.totales.movsPorContenido > 0) {
+            $('#avisoContenidoNum').text(r.totales.movsPorContenido);
+            $('#avisoContenido').show();
+            $('#t_otros').text(num(r.totales.despachadoOtros));
+            $('#fila_otros').show();
+        } else {
+            $('#avisoContenido').hide();
+            $('#fila_otros').hide();
         }
 
         if (r.totales.docsSinEnlace > 0) {

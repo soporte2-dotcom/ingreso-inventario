@@ -102,6 +102,7 @@ if (!$_permisos->tiene_permiso_especial($_SESSION["Id_Usuario"], 'seguimiento_os
 									<tr><th>Cantidad ordenada</th><td id="t_ordenado" class="text-right"></td></tr>
 									<tr><th>Cantidad descontada</th><td id="t_despachado" class="text-right"></td></tr>
 									<tr class="font-weight-bold"><th>Pendiente</th><td id="t_pendiente" class="text-right"></td></tr>
+									<tr id="fila_otros" style="display:none"><th>Enlazado solo por contenido</th><td id="t_otros" class="text-right"></td></tr>
 								</tbody>
 							</table>
 						</div>
@@ -115,6 +116,19 @@ if (!$_permisos->tiene_permiso_especial($_SESSION["Id_Usuario"], 'seguimiento_os
 						orden pero cuyas líneas <b>no enlazan</b> con ningún ítem de la orden: el producto
 						existe, pero el número de línea no coincide. Ni este seguimiento ni el cálculo de
 						pendientes del despacho pueden atribuirles cantidad.
+					</div>
+
+					<!-- Documentos que apuntan al mismo número pero sin declararse como OS
+					     (Tipo_Docto_Base_2 distinto de 10). Aparecen porque sus líneas sí casan. -->
+					<div id="avisoContenido" class="alert alert-warning" style="display:none">
+						<i class="fa fa-link"></i>
+						<b>Nota:</b> hay <b id="avisoContenidoNum"></b> movimiento(s) de documentos que
+						apuntan a este número pero <b>no están marcados como Orden de Salida</b>
+						(su <i>Tipo_Docto_Base_2</i> no es 10). Se muestran porque sus líneas coinciden
+						con las de la orden en producto y número de línea, pero
+						<b>no se suman al descontado</b>: los números de pedido y de orden se solapan,
+						así que la coincidencia por sí sola no prueba que pertenezcan a esta orden.
+						Están marcados abajo como <span class="badge badge-warning">Por contenido</span>.
 					</div>
 
 					<div class="alert alert-info">
