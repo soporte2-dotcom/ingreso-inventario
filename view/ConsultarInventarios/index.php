@@ -178,7 +178,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
     .dt-buttons {
         margin-bottom: 15px;
     }
-</style
+</style>
 
 </body>
 </html>

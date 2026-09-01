@@ -341,6 +341,18 @@ function listardetalle(tipo, consecutivo){
         "bInfo":true,
         "iDisplayLength": 10,
         "autoWidth": false,
+        // Junto al número de registros se muestra la suma de la columna Cantidad.
+        // Se totaliza sobre todas las filas que pasan el filtro actual, no solo las de la
+        // página visible, igual que el contador de registros que ya estaba.
+        "infoCallback": function(settings, start, end, max, total, pre) {
+            var suma = this.api().column(3, { search: 'applied' }).data().reduce(function(acum, v) {
+                var n = parseFloat(v);
+                return acum + (isNaN(n) ? 0 : n);
+            }, 0);
+            return pre + ' &nbsp;|&nbsp; <b>Total cantidad: ' +
+                   suma.toLocaleString('es-CO', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) +
+                   '</b>';
+        },
         "language": {
             "sProcessing":     "Procesando...",
             "sLengthMenu":     "Mostrar _MENU_ registros",

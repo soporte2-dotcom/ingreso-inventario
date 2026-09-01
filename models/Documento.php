@@ -3411,28 +3411,89 @@
             $partesNota[] = $usuario;
             $notaFinal = implode(' - ', $partesNota);
 
-            $lineas = AuditoriaDocumentos::contarLineas($cn->getConecta(), $tipo, $numero);
+            // Foto del detalle ANTES de poner las cantidades en cero. La nota de cada linea
+            // conserva la cantidad original en texto, pero este snapshot la guarda
+            // estructurada, que es lo que permite reponerla si la anulacion fue un error.
+            $conn = $cn->getConecta();
+            $snapAnula = AuditoriaDocumentos::snapshotLineas($conn, $tipo, $numero);
+            $lineas = $snapAnula['lineas'];
 
-            $sql = "UPDATE Documentos SET anulado = 'S', notas = ? WHERE tipo = ? AND Numero_documento = ?";
-            $stmt = sqlsrv_query($cn->getConecta(), $sql, array($notaFinal, $tipo, $numero));
-            if ($stmt === false) {
-                $err = print_r(sqlsrv_errors(), true);
+            sqlsrv_begin_transaction($conn);
+            try {
+                // Anular pone las cantidades en cero y deja constancia de cual era la
+                // cantidad en la nota de la linea, conservando la nota que ya tuviera.
+                // El formato es el mismo que viene usando el sistema anterior en los 1.732
+                // documentos ya anulados, para que las notas historicas sean homogeneas:
+                //     Cantidad Antes de Anular: 1600.00Nota: <nota original>
+                //
+                // Un solo UPDATE para todo el documento: hacerlo linea por linea seria
+                // lento en documentos grandes (los inventarios pasan de 1.000 lineas).
+                // Los CONVERT dan el numero con 2 decimales ("1600.00"); sin el paso por
+                // decimal, el tipo money se convertiria como "1600.0000".
+                // LEFT(...,250) evita el error de truncamiento: Nota_Linea es varchar(250)
+                // y ya hay notas de 218 caracteres, que con el prefijo se pasarian.
+                $sqlLineas = "UPDATE Documentos_Lin
+                    SET Nota_Linea = LEFT('Cantidad Antes de Anular: '
+                                          + CONVERT(varchar(30), CONVERT(decimal(18,2), Cantidad_Facturada))
+                                          + 'Nota: ' + ISNULL(Nota_Linea, ''), 250),
+                        Cantidad_Facturada = 0,
+                        Cantidad_Orden     = 0,
+                        Valor_Impuesto     = 0
+                    WHERE tipo = ? AND Numero_Documento = ?";
+                $stmtLineas = sqlsrv_query($conn, $sqlLineas, array($tipo, $numero));
+                if ($stmtLineas === false) {
+                    throw new Exception("Error al anular las lineas: " . print_r(sqlsrv_errors(), true));
+                }
+                $lineasAnuladas = sqlsrv_rows_affected($stmtLineas);
+
+                // Cabecera: ademas de marcarla anulada se ponen en cero los totales que
+                // dependen de las cantidades, para que no quede afirmando un valor que el
+                // detalle ya no respalda. costo y Total_Items se conservan, igual que hace
+                // el sistema anterior.
+                $sql = "UPDATE Documentos SET anulado = 'S', notas = ?, valor_total = 0, Valor_impuesto = 0
+                        WHERE tipo = ? AND Numero_documento = ?";
+                $stmt = sqlsrv_query($conn, $sql, array($notaFinal, $tipo, $numero));
+                if ($stmt === false) {
+                    throw new Exception("Error al anular el documento: " . print_r(sqlsrv_errors(), true));
+                }
+
+                sqlsrv_commit($conn);
+            } catch (Exception $e) {
+                @sqlsrv_rollback($conn);
+                $this->registrar_error("Error en anular_documento ($tipo/$numero): " . $e->getMessage());
                 AuditoriaDocumentos::registrar(array(
-                    'modulo' => 'GestionDocumentos', 'operacion' => 'anular',
+                    'modulo' => 'GestionDocumentos', 'operacion' => 'anular', 'destructiva' => 1,
                     'tipo' => $tipo, 'numero' => $numero, 'anulado_antes' => $row['anulado'],
-                    'resultado' => 'error', 'mensaje' => $err
+                    'lineas_antes' => $lineas,
+                    'resultado' => 'error', 'mensaje' => $e->getMessage(),
+                    'detalle_antes' => $snapAnula['detalle']
                 ));
-                return json_encode(['status' => 'error', 'message' => 'Error al anular el documento: ' . $err]);
+                return json_encode(['status' => 'error', 'message' => $e->getMessage()]);
             }
 
+            // El stock se recalcula igual que despues de guardar un documento: las
+            // cantidades cambiaron, y dejarlo sin refrescar mostraria existencias que ya
+            // no corresponden.
+            $stmtSto = sqlsrv_prepare($conn, "(EXEC UPDATE_PRODUCTO_STO)");
+            if ($stmtSto) sqlsrv_execute($stmtSto);
+
             AuditoriaDocumentos::registrar(array(
-                'modulo' => 'GestionDocumentos', 'operacion' => 'anular',
+                'modulo' => 'GestionDocumentos', 'operacion' => 'anular', 'destructiva' => 1,
                 'tipo' => $tipo, 'numero' => $numero, 'anulado_antes' => $row['anulado'],
                 'lineas_antes' => $lineas, 'lineas_despues' => $lineas,
-                'resultado' => 'ok', 'mensaje' => 'Motivo: ' . trim($motivo)
+                'filas_afectadas' => $lineasAnuladas,
+                'resultado' => 'ok',
+                'mensaje' => 'Motivo: ' . trim($motivo)
+                           . ' | Cantidades puestas en cero en ' . $lineasAnuladas . ' lineas',
+                'detalle_antes' => $snapAnula['detalle']
             ));
 
-            return json_encode(['status' => 'success', 'message' => 'Documento anulado correctamente', 'notas' => $notaFinal]);
+            return json_encode([
+                'status'  => 'success',
+                'message' => 'Documento anulado correctamente. Se pusieron en cero las cantidades de '
+                           . $lineasAnuladas . ' línea(s); la cantidad original quedó registrada en la nota de cada una.',
+                'notas'   => $notaFinal
+            ]);
         }
 
     }
