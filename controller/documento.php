@@ -688,7 +688,11 @@
         break;
 
         case "update_doc_ref":
-            $registros = json_decode($_POST["registros"]); // Decodificar el JSON primero
+            $registros = isset($_POST["registros"]) ? json_decode($_POST["registros"]) : null;
+            if (!is_array($registros)) {
+                echo json_encode(array("status" => false, "message" => "No se recibieron documentos para actualizar"));
+                break;
+            }
             $documento->update_doc_ref($registros);
         break;
 
@@ -697,7 +701,7 @@
             $data = array();
             foreach ($datos as $row) {
                 $data[] = array(
-                    "tipo"           => $row["tipo"],
+                    "tipo"           => trim($row["tipo"]),
                     "tipoDoctos"     => trim($row["TipoDoctos"]),
                     "numero"         => $row["Numero_documento"],
                     "numeroDoctoBase"=> $row["Numero_Docto_Base"],

@@ -2640,39 +2640,87 @@
             }
         }
 
+        // Actualiza el Numero_Docto_Base de varios documentos dentro de una sola
+        // transacción: o quedan todos o no queda ninguno. Antes se llamaba a
+        // sqlsrv_commit/sqlsrv_rollback sin haber abierto transacción, así que un
+        // fallo a mitad de camino dejaba aplicados los documentos anteriores.
         public function update_doc_ref($registros){
             $cn = new Conectarserver;
+            $conn = $cn->getConecta();
 
-             // Inicializar variables
-             $success = true;
+            if ($conn === false) {
+                $this->registrar_error("update_doc_ref: sin conexion - " . print_r(sqlsrv_errors(), true));
+                echo json_encode(array("status" => false, "message" => "No fue posible conectar con la base de datos"));
+                return;
+            }
 
-            foreach($registros as $registro) {
-                $sql = "UPDATE Documentos 
-                        SET Numero_Docto_Base = ?                            
-                        WHERE tipo = ? AND Numero_documento = ?";
-                
-                $params = array(
-                    $registro->numeroDoctoBase,
-                    $registro->tipo,
-                    $registro->numeroDocumento
-                );
-                
-                $stmt = sqlsrv_query($cn->getConecta(), $sql, $params);
-                
-                if(!$stmt) {
-                    $success = false;
+            if (!is_array($registros) || count($registros) === 0) {
+                echo json_encode(array("status" => false, "message" => "No se recibieron documentos para actualizar"));
+                return;
+            }
+
+            if (sqlsrv_begin_transaction($conn) === false) {
+                $this->registrar_error("update_doc_ref: no se pudo iniciar la transaccion - " . print_r(sqlsrv_errors(), true));
+                echo json_encode(array("status" => false, "message" => "No fue posible iniciar la actualización"));
+                return;
+            }
+
+            $actualizados = 0;
+            $error = '';
+
+            foreach ($registros as $registro) {
+                $registro = (object) $registro;
+
+                $tipo            = isset($registro->tipo) ? trim($registro->tipo) : '';
+                $numeroDocumento = isset($registro->numeroDocumento) ? trim($registro->numeroDocumento) : '';
+                $numeroDoctoBase = isset($registro->numeroDoctoBase) ? trim($registro->numeroDoctoBase) : '';
+
+                if ($tipo === '' || $numeroDocumento === '' || !ctype_digit($numeroDocumento)) {
+                    $error = "Se recibió un documento con tipo o consecutivo inválido";
                     break;
                 }
+
+                // Numero_Docto_Base es varchar(50) en Documentos.
+                if (strlen($numeroDoctoBase) > 50) {
+                    $error = "El número de documento base del $tipo-$numeroDocumento supera los 50 caracteres";
+                    break;
+                }
+
+                $sql = "UPDATE Documentos
+                        SET Numero_Docto_Base = ?
+                        WHERE tipo = ? AND Numero_documento = ?";
+
+                $params = array($numeroDoctoBase, $tipo, (int) $numeroDocumento);
+
+                $stmt = sqlsrv_query($conn, $sql, $params);
+
+                if ($stmt === false) {
+                    $this->registrar_error("update_doc_ref ($tipo-$numeroDocumento): " . print_r(sqlsrv_errors(), true));
+                    $error = "Error al actualizar el documento $tipo-$numeroDocumento";
+                    break;
+                }
+
+                $filas = sqlsrv_rows_affected($stmt);
+                if ($filas > 0) {
+                    $actualizados += $filas;
+                }
+                sqlsrv_free_stmt($stmt);
             }
 
-            if($success) {
-                sqlsrv_commit($cn->getConecta());
-                echo json_encode(array("status" => true, "message" => "Actualización exitosa"));
+            if ($error === '') {
+                sqlsrv_commit($conn);
+                if ($actualizados === 0) {
+                    $mensaje = "No se actualizó ningún documento (verifique que los documentos aún existan)";
+                } else {
+                    $mensaje = $actualizados === 1
+                        ? "Se actualizó 1 documento correctamente"
+                        : "Se actualizaron $actualizados documentos correctamente";
+                }
+                echo json_encode(array("status" => true, "actualizados" => $actualizados, "message" => $mensaje));
             } else {
-                sqlsrv_rollback($cn->getConecta());
-                echo json_encode(array("status" => false, "message" => "Error al actualizar"));
+                sqlsrv_rollback($conn);
+                echo json_encode(array("status" => false, "message" => $error . ". No se aplicó ningún cambio."));
             }
-
         }
 
         // public function update_lote_nota($registros){

@@ -101,7 +101,7 @@ $DateAndTime = date('d-m-Y h:i:s', time());
 		</div>
 	</div>
 	<!-- Contenido -->
-	<script type="text/javascript" src="nuevodoc.js?v=4"></script>
+	<script type="text/javascript" src="nuevodoc.js?v=5"></script>
 
 </body>
 

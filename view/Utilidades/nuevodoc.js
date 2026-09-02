@@ -1,40 +1,9 @@
-var tabla;
-var usu_id =  $('#user_id').val();
-var rol_id =  $('#rol_id').val();
+$(document).ready(function() {
 
-
-function init(){   
-
-}
-
-$(document).ready(function() {    
-    
-    //Solo para documentos de entrada
-   /* $.post("../../controller/tipodoctos.php?op=combo_entradas",function(data, status){
-       $('#idTipo').html(data);    
-    });*/
-
-    //Para todos los tipos de documentos
-    $.post("../../controller/tipodoctos.php?op=doctos",function(data, status){
-        $('#idTipo').html(data);    
-     });
-    
-
-    $("#idTipo").change(function () {
-        
-        $("#idTipo option:selected").each(function () {
-            idTipo = $(this).val();
-            $.post("../../controller/tipodoctos.php?op=consecutivos", { idTipo : idTipo }, function(data){
-                data = JSON.parse(data);
-               $("#consecutivo").val(data.consecutivo);
-
-               console.log(data.consecutivo);
-            });            
-        });
+    // Combo con todos los tipos de documento.
+    $.post("../../controller/tipodoctos.php?op=doctos", function(data) {
+        $('#idTipo').html(data);
     });
-
-    var tipo =  getUrlParameter('tipo');
-    var consecutivo =  getUrlParameter('consecutivo');
 
     // Evitar que el formulario haga un submit normal (recargaría la página y
     // borraría los filtros); la consulta y la actualización se hacen por AJAX.
@@ -47,162 +16,146 @@ $(document).ready(function() {
         consultarUtilidades();
     });
 
+    $(document).on('click', '#btnupdate', function(event) {
+        event.preventDefault();
+        actualizarUtilidades();
+    });
+
 });
 
 // Consulta los documentos por Tipo/Fecha y repinta la tabla, sin tocar los
 // filtros ni recargar la página (mismo criterio que Gestión de Documentos).
-function consultarUtilidades() {
+function consultarUtilidades(callback) {
     var idTipo = $('#idTipo').val() || '';
     var fecha1 = $('#fecha1').val() || '';
+
+    // Sin filtros la consulta traería todos los documentos de la compañía.
+    if (idTipo === '' || fecha1 === '') {
+        swal("Advertencia!", "Seleccione el tipo de documento y la fecha.", "warning");
+        return;
+    }
 
     var $tbody = $('#tb-doc tbody');
     $tbody.empty();
 
-    $.post('../../controller/documento.php?op=listar_utilidades_doc_ref', { idTipo: idTipo, fecha1: fecha1 }, function(response) {
-        var data = typeof response === 'string' ? JSON.parse(response) : response;
+    $.blockUI({ message: '<h2>Consultando documentos, favor espere...</h2>' });
 
-        if (!data.status || !data.data || data.data.length === 0) {
-            $tbody.append($('<tr>').append($('<td colspan="6">').text('No se encontraron resultados.')));
-            return;
+    $.ajax({
+        url: '../../controller/documento.php?op=listar_utilidades_doc_ref',
+        type: 'POST',
+        data: { idTipo: idTipo, fecha1: fecha1 },
+        dataType: 'json',
+        success: function(data) {
+            if (!data.status || !data.data || data.data.length === 0) {
+                $tbody.append($('<tr>').append($('<td colspan="6">').text('No se encontraron resultados.')));
+                return;
+            }
+
+            data.data.forEach(function(row) {
+                var $tr = $('<tr>');
+                $tr.append($('<td>').text(row.tipoDoctos));
+                $tr.append($('<td>').text(row.numero));
+                $tr.append($('<td>').text(row.nombre));
+                $tr.append($('<td>').text(row.fecha));
+
+                // El tipo y el consecutivo viajan en data-* (antes se armaba un id
+                // "tipo_numero" y se partía por "_", lo que se rompe si el tipo
+                // trae guion bajo). data-original permite enviar sólo lo modificado.
+                var $input = $('<input type="text" class="form-control js-docto-base" maxlength="50">')
+                    .attr('data-tipo', row.tipo)
+                    .attr('data-numero', row.numero)
+                    .attr('data-original', row.numeroDoctoBase)
+                    .val(row.numeroDoctoBase);
+                $tr.append($('<td>').append($input));
+                $tr.append($('<td>'));
+
+                $tbody.append($tr);
+            });
+
+            if (typeof callback === 'function') {
+                callback();
+            }
+        },
+        error: function(jqXHR) {
+            $tbody.empty().append($('<tr>').append($('<td colspan="6">').text('Error al consultar los documentos.')));
+            if (jqXHR.status === 401) { return; } // lo maneja el interceptor global de sesión
+            swal("Error", "Error al consultar los documentos.", "error");
+        },
+        complete: function() {
+            $.unblockUI();
         }
-
-        data.data.forEach(function(row) {
-            var $tr = $('<tr>');
-            $tr.append($('<td>').text(row.tipoDoctos));
-            $tr.append($('<td>').text(row.numero));
-            $tr.append($('<td>').text(row.nombre));
-            $tr.append($('<td>').text(row.fecha));
-
-            var $input = $('<input type="text" class="form-control">')
-                .attr('id', row.tipo + '_' + row.numero)
-                .val(row.numeroDoctoBase);
-            $tr.append($('<td>').append($input));
-
-            $tbody.append($tr);
-        });
-    }, 'json').fail(function() {
-        $tbody.empty().append($('<tr>').append($('<td colspan="6">').text('Error al consultar los documentos.')));
     });
 }
 
-var getUrlParameter = function getUrlParameter(sParam) {
-    var sPageURL = decodeURIComponent(window.location.search.substring(1)),
-        sURLVariables = sPageURL.split('&'),
-        sParameterName,
-        i;
+// Envía a la base de datos únicamente los números de documento base que el
+// usuario cambió en pantalla.
+function actualizarUtilidades() {
 
-    for (i = 0; i < sURLVariables.length; i++) {
-        sParameterName = sURLVariables[i].split('=');
+    var $inputs = $("#tb-doc tbody input.js-docto-base");
 
-        if (sParameterName[0] === sParam) {
-            return sParameterName[1] === undefined ? true : sParameterName[1];
+    if ($inputs.length === 0) {
+        swal("Advertencia!", "Realice una consulta antes de actualizar.", "warning");
+        return;
+    }
+
+    var registrosModificados = [];
+
+    $inputs.each(function() {
+        var $input = $(this);
+        var valor = $.trim($input.val());
+        var original = $.trim($input.attr('data-original') || '');
+
+        if (valor === original) {
+            return; // sin cambios, no se envía
         }
-    }
-};
 
-$(document).on("click","#btnupdate1", function(event){
-
-    event.preventDefault();       
-
-    let tipo = document.getElementById("idTipo").value;
-    let consecutivo = document.getElementById("consecutivo").value;    
-    let numero = document.getElementById("numero").value;
-    let formData = new FormData($("#doc_form")[0]);
-
-    if ((tipo =='') || (consecutivo =='') || (numero =='')){
-        swal("Advertencia!", "Campos Vacios", "warning");
-    }else{
-         // Muestra el mensaje de espera
-        $.blockUI({ message: '<h2>Cargando favor Espere...</h2>' });  
-        $.ajax({
-            url: "../../controller/documento.php?op=update_doc_ref",
-            type: "POST",
-            data: formData,
-            contentType: false,
-            processData: false,
-            success: function(datos){   
-                console.log(datos);               
-                swal({
-                    title: "Correcto!", 
-                    text: "Documento Actualizado Correctamente", 
-                    type: "success"
-                }, function(){
-                    location.reload();
-                });
-                                    
-            },
-            complete: function() {
-                // Oculta el mensaje de espera
-                $.unblockUI();
-            }
-        });
-        
-    }
-
-    $("#btnupdate").prop('disabled',true)
-    
-    return false;
-});
-
-
-
-// Evento click para el botón actualizar
-$(document).on("click","#btnupdate", function(event){
-
-    event.preventDefault(); // Prevenir comportamiento por defecto
-    
-    // Array para almacenar los registros modificados
-    let registrosModificados = [];
-        
-    // Recorrer todos los inputs de la tabla
-    $("#tb-doc tbody input[type='text']").each(function() {
-        let input = $(this);
-        let id = input.attr('id');
-        let valor = input.val();
-            
-        // Separar el tipo y número de documento del ID
-        let [tipo, numeroDocumento] = id.split('_');
-            
         registrosModificados.push({
-            tipo: tipo,
-            numeroDocumento: numeroDocumento,
+            tipo: $input.attr('data-tipo'),
+            numeroDocumento: $input.attr('data-numero'),
             numeroDoctoBase: valor
         });
     });
 
-    console.log('Datos a enviar:', registrosModificados); // Para debug
-        
-        // Llamada AJAX para actualizar
-        $.ajax({
-            url: '../../controller/documento.php?op=update_doc_ref',
-            type: 'POST',
-            data: {
-                registros: JSON.stringify(registrosModificados)
-            },
-            success: function(response) {
-                console.log('Respuesta raw del servidor:', response); // Para debug
-                try {
-                    let data = JSON.parse(response);
-                    if(data.status) {
-                        swal("¡Éxito!", "Registros actualizados correctamente", "success");
-                        // Refrescar la tabla sin tocar los filtros ni recargar la página.
-                        consultarUtilidades();
-                    } else {
-                        swal("Error", "No se pudieron actualizar los registros", "error");
-                    }
-                } catch(e) {
-                    console.error(e);
-                    swal("Error", "Ocurrió un error al procesar la respuesta", "error");
-                }
-            },
-            error: function() {
-                swal("Error", "Error en la comunicación con el servidor", "error");
+    if (registrosModificados.length === 0) {
+        swal("Advertencia!", "No hay cambios por actualizar.", "warning");
+        return;
+    }
+
+    var mensaje = registrosModificados.length === 1
+        ? 'Actualizando 1 documento, favor espere...'
+        : 'Actualizando ' + registrosModificados.length + ' documentos, favor espere...';
+
+    $.blockUI({ message: '<h2>' + mensaje + '</h2>' });
+    $("#btnupdate").prop('disabled', true);
+
+    $.ajax({
+        url: '../../controller/documento.php?op=update_doc_ref',
+        type: 'POST',
+        data: { registros: JSON.stringify(registrosModificados) },
+        dataType: 'json',
+        success: function(data) {
+            if (data && data.status) {
+                swal({
+                    title: data.actualizados > 0 ? "¡Éxito!" : "Aviso",
+                    type: data.actualizados > 0 ? "success" : "warning",
+                    text: data.message || "Registros actualizados correctamente"
+                }, function() {
+                    // Se refresca la tabla con lo que quedó realmente en la base. El
+                    // setTimeout deja cerrar el swal actual antes de que la consulta
+                    // pueda abrir otro (SweetAlert v1 se traba si se encadenan).
+                    setTimeout(consultarUtilidades, 300);
+                });
+            } else {
+                swal("Error", (data && data.message) ? data.message : "No se pudieron actualizar los registros", "error");
             }
-        });
-});
-
-
-
-
-
-init();
+        },
+        error: function(jqXHR) {
+            if (jqXHR.status === 401) { return; } // lo maneja el interceptor global de sesión
+            swal("Error", "Error en la comunicación con el servidor", "error");
+        },
+        complete: function() {
+            $.unblockUI();
+            $("#btnupdate").prop('disabled', false);
+        }
+    });
+}
