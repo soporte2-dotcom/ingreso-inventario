@@ -453,7 +453,14 @@ function guardarDocumento() {
             !validarCampoRequerido(traslfact1, "Traslado/Factura")) {
             return false;
         }
-        
+
+        // El valor de la opción es "codigo_direccion,nit": la dirección debe ser del NIT digitado.
+        const nitDeDireccion = String(direccion).split(',')[1];
+        if (nitDeDireccion !== undefined && nitDeDireccion.trim() !== String(nit).trim()) {
+            swal("Advertencia!", "La dirección seleccionada no corresponde al NIT digitado. Vuelva a seleccionar la dirección.", "warning");
+            return false;
+        }
+
         procesarGuardado(CONFIG.endpoints.documento.guardar_entrada);
     } else {
         console.log("Vamos a Guardar Documentos con Traslado");

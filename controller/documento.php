@@ -131,7 +131,7 @@
                 echo json_encode(['status' => 'error', 'message' => 'Solo se aceptan archivos .xlsx']);
                 break;
             }
-            echo $documento->validar_excel_inventario($tmpPath);
+            echo $documento->validar_excel_inventario($tmpPath, $_POST['tipo'] ?? '', $_POST['numdoc'] ?? '');
         break;
 
         case "confirmar_excel_inventario":
@@ -669,6 +669,14 @@
 
         case "guardar_entrada":
 
+            // La dirección debe pertenecer al NIT con el que se guarda (ver terceros::validar_direccion).
+            require_once("../models/mdlTerceros.php");
+            $terceros = new terceros();
+            $v3 = $terceros->validar_direccion($_POST["direccion3"] ?? '', $_POST["nit3"] ?? '', 'Enviar A');
+            if ($v3['error']) {
+                echo "No se puede guardar: " . $v3['error'] . " \n";
+                break;
+            }
             $direccion = $_POST["direccion3"];
 
             if (strpos($direccion, ",") !== false) {

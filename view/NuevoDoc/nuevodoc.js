@@ -551,7 +551,7 @@ function generarTokenCarga() {
 function mensajeErrorHttpExcel(xhr) {
     if (xhr.status === 413)                      return "El archivo es demasiado grande para el servidor. Divide la carga en archivos más pequeños.";
     if (xhr.status === 429 || xhr.status === 503) return "El servidor está ocupado en este momento (muchas cargas a la vez). Espera unos segundos y vuelve a intentar.";
-    if (xhr.status === 0)                         return "Se interrumpió la conexión o la carga tardó demasiado. Revisa el detalle del documento antes de reintentar: el sistema no duplica productos ya cargados.";
+    if (xhr.status === 0)                         return "Se interrumpió la conexión o la carga tardó demasiado. Revisa el detalle del documento antes de volver a cargar el archivo: si los productos ya aparecen, la carga sí se guardó.";
     return "Error de comunicación con el servidor. Intenta nuevamente en un momento.";
 }
 
@@ -656,6 +656,9 @@ function validarExcelInventario() {
 
     const formData = new FormData();
     formData.append('archivo', file);
+    // Para advertir los productos que el documento ya tiene (p. ej. el mismo archivo subido dos veces).
+    formData.append('tipo',   getUrlParameter('tipo'));
+    formData.append('numdoc', getUrlParameter('consecutivo'));
 
     const btnProcesar = document.getElementById('btnCargarExcel');
     btnProcesar.disabled = true;
@@ -689,6 +692,16 @@ function validarExcelInventario() {
             excelTokenCarga = generarTokenCarga(); // token de esta carga validada (persiste en reintentos)
 
             document.getElementById('btnNuevoArchivo').style.display = 'inline-block';
+
+            // Solo se advierte (no se bloquea): el usuario decide si procesa igual.
+            const yaEnDocumento = response.yaEnDocumento || 0;
+            if (yaEnDocumento > 0) {
+                swal("Atención",
+                     yaEnDocumento + " de " + ok + " producto(s) del archivo YA están en este documento. " +
+                     "Si este archivo ya se había cargado, no lo procese de nuevo o las cantidades quedarán duplicadas. " +
+                     "Revise las filas marcadas con advertencia.",
+                     "warning");
+            }
 
             if (ok > 0) {
                 btnProcesar.innerHTML = '<i class="fa fa-check"></i> Procesar ' + ok + ' registro(s) válido(s)';
@@ -772,7 +785,7 @@ function confirmarExcelInventario() {
             btnProcesar.innerHTML = '<i class="fa fa-check"></i> Procesar registros válidos';
             console.error('[confirmarExcelInventario] Error HTTP:', status, errorThrown, xhr.responseText);
             const msg = (status === 'timeout')
-                ? "La operación tardó demasiado. Revisa el detalle del documento antes de reintentar: el sistema no duplica productos ya cargados."
+                ? "La operación tardó demasiado. Revisa el detalle del documento antes de volver a cargar el archivo: si los productos ya aparecen, la carga sí se guardó."
                 : mensajeErrorHttpExcel(xhr);
             swal("Error!", msg, "error");
         }

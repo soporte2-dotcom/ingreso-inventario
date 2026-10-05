@@ -3,6 +3,19 @@ var usu_id = $('#user_id').val();
 var rol_id = $('#rol_id').val();
 var nitEspejo = ''; // NIT que fue auto-llenado en Enviar A desde Facturar A
 
+// Las direcciones (combo_dir) llegan por AJAX: si el NIT cambió mientras la petición estaba en
+// curso, la respuesta es de otro tercero y no debe reemplazar el combo. Así se guardó 926-19358
+// con la dirección 12 del NIT de la granja en lugar de la del empleado de Enviar A.
+function nitVigente(campoNit, nitPedido) {
+    return String($(campoNit).val() || '').trim() === String(nitPedido || '').trim();
+}
+
+// El valor de cada opción es "codigo_direccion,nit": verifica que la dirección elegida sea del NIT del campo.
+function direccionDeNit(campoDir, campoNit) {
+    var partes = String($(campoDir).val() || '').split(',');
+    return partes.length < 2 || nitVigente(campoNit, partes[1]);
+}
+
 let editingRow = null;
 let originalData = {};
 
@@ -336,6 +349,7 @@ function inicializarEventos() {
                 // Cargar y pre-seleccionar direccion1
                 $("#direccion1").html('<option value="" disabled selected>Seleccione...</option>');
                 $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.combo_dir, { nit: nit }, function(html) {
+                    if (!nitVigente('#nit1', nit)) return; // respuesta de un NIT anterior: no pisar el combo
                     $("#direccion1").html(html);
                     $("#direccion1 option").each(function() {
                         if ($(this).val().split(',')[0].trim() == dir) {
@@ -353,6 +367,7 @@ function inicializarEventos() {
                 // Cargar y pre-seleccionar direccion2
                 $("#direccion2").html('<option value="" disabled selected>Seleccione...</option>');
                 $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.combo_dir, { nit: nit }, function(html) {
+                    if (!nitVigente('#nit2', nit)) return; // respuesta de un NIT anterior: no pisar el combo
                     $("#direccion2").html(html);
                     $("#direccion2 option").each(function() {
                         if ($(this).val().split(',')[0].trim() == dir) {
@@ -389,6 +404,7 @@ function inicializarEventos() {
         const nit = $(this).val();
         $("#direccion1").html('<option value="" disabled selected>Seleccione...</option>');
         $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.combo_dir, { nit }, function(data) {
+            if (!nitVigente('#nit1', nit)) return; // respuesta de un NIT anterior: no pisar el combo
             $("#direccion1").html(data);
         });
     });
@@ -404,6 +420,7 @@ function inicializarEventos() {
             $("#nombre2").val(ui.item.nombre);
             $("#direccion2").html('<option value="" disabled selected>Seleccione...</option>');
             $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.combo_dir, { nit: ui.item.value }, function(data) {
+                if (!nitVigente('#nit2', ui.item.value)) return; // respuesta de un NIT anterior: no pisar el combo
                 $("#direccion2").html(data);
             });
         }
@@ -432,6 +449,7 @@ function inicializarEventos() {
         const nit = $(this).val();
         $("#direccion2").html('<option value="" disabled selected>Seleccione...</option>');
         $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.combo_dir, { nit }, function(data) {
+            if (!nitVigente('#nit2', nit)) return; // respuesta de un NIT anterior: no pisar el combo
             $("#direccion2").html(data);
         });
     });
@@ -440,6 +458,7 @@ function inicializarEventos() {
     $("#nit3").change(function() {
         const nit = $(this).val();
         $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.combo_dir, { nit }, function(data) {
+            if (!nitVigente('#nit3', nit)) return; // respuesta de un NIT anterior: no pisar el combo
             $("#direccion3").html(data);
         });
     });
@@ -1266,6 +1285,11 @@ function continuarGuardarDocumento() {
           return false;
       }
 
+      if (!direccionDeNit('#direccion1', '#nit1') || !direccionDeNit('#direccion2', '#nit2')) {
+          swal("Advertencia!", "La dirección seleccionada no corresponde al NIT digitado. Vuelva a seleccionar la dirección de Facturar A / Enviar A.", "warning");
+          return false;
+      }
+
       procesarGuardado(CONFIG.endpoints.salidas.guardar_salida);
 
     } else if (sw == 9) {
@@ -1276,6 +1300,11 @@ function continuarGuardarDocumento() {
         if (!validarCampoRequerido(nit, "NIT/Cédula") ||
             !validarCampoRequerido(direccion, "Dirección") ||
             !validarCampoRequerido(traslfact1, "Despacho/Dia de Consumo")) {
+            return false;
+        }
+
+        if (!direccionDeNit('#direccion3', '#nit3')) {
+            swal("Advertencia!", "La dirección seleccionada no corresponde al NIT digitado. Vuelva a seleccionar la dirección.", "warning");
             return false;
         }
 
@@ -1313,6 +1342,9 @@ function procesarGuardado(endpoint) {
             // (guardar_entrada/guardar_doc) siguen respondiendo texto: si no parsea, es flujo heredado.
             var resp = null;
             try { resp = (typeof datos === 'object') ? datos : JSON.parse(datos); } catch (e) { resp = null; }
+            if (!resp && String(datos).indexOf('No se puede guardar') !== -1) {
+                resp = { status: 'error', message: String(datos).trim() };
+            }
 
             if (resp && resp.status === 'error') {
                 if (resp.code === 'ya_guardado') {
@@ -1618,6 +1650,7 @@ function listardetalle(tipo, consecutivo){
         $('#telefono1').val(data.telefono_1);
         if(data.nit_Cedula) {
             $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.combo_dir, { nit: data.nit_Cedula }, function(html) {
+                if (!nitVigente('#nit1', data.nit_Cedula)) return; // respuesta de un NIT anterior: no pisar el combo
                 $('#direccion1').html(html);
                 $('#direccion1 option').each(function() {
                     if($(this).val().split(',')[0].trim() == String(data.codigo_direccion).trim()) {
@@ -1634,6 +1667,7 @@ function listardetalle(tipo, consecutivo){
         $('#nombre2').val(nom2Usar);
         if(nit2Usar) {
             $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.combo_dir, { nit: nit2Usar }, function(html) {
+                if (!nitVigente('#nit2', nit2Usar)) return; // respuesta de un NIT anterior: no pisar el combo
                 $('#direccion2').html(html);
                 $('#direccion2 option').each(function() {
                     if($(this).val().split(',')[0].trim() == String(dir2Usar).trim()) {
@@ -1650,6 +1684,7 @@ function listardetalle(tipo, consecutivo){
             $('#nombre3').val(nom2Usar);
             $('#telefono3').val(data.telefono_1 || '');
             $.post(CONFIG.baseUrl + CONFIG.endpoints.terceros.combo_dir, { nit: nit2Usar }, function(html) {
+                if (!nitVigente('#nit3', nit2Usar)) return; // respuesta de un NIT anterior: no pisar el combo
                 $('#direccion3').html(html);
                 $('#direccion3 option').each(function() {
                     if($(this).val().split(',')[0].trim() == String(dir2Usar).trim()) {

@@ -108,11 +108,19 @@
         break;
 
         case "guardar_salida":
-            $dir1 = $_POST["direccion1"] ?? '';
-            if(strpos($dir1, ",") !== false) $dir1 = explode(",", $dir1)[0];
-
-            $dir2 = $_POST["direccion2"] ?? '';
-            if(strpos($dir2, ",") !== false) $dir2 = explode(",", $dir2)[0];
+            // La dirección debe pertenecer al NIT con el que se guarda (ver terceros::validar_direccion).
+            require_once("../models/mdlTerceros.php");
+            $terceros = new terceros();
+            $v1 = $terceros->validar_direccion($_POST["direccion1"] ?? '', $_POST["nit1"] ?? '', 'Facturar A');
+            $v2 = $terceros->validar_direccion($_POST["direccion2"] ?? '', $_POST["nit2"] ?? '', 'Enviar A');
+            foreach (array($v1, $v2) as $v) {
+                if ($v['error']) {
+                    echo json_encode(array("status" => "error", "message" => $v['error']));
+                    exit();
+                }
+            }
+            $dir1 = $v1['codigo'];
+            $dir2 = $v2['codigo'];
 
             $dotacion = isset($_POST["dotacion_epp"]) && $_POST["dotacion_epp"] == '1';
             date_default_timezone_set("America/Bogota");

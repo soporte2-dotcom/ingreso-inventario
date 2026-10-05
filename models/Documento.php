@@ -434,7 +434,7 @@
         // Paso 1: lee y valida el archivo completo, sin tocar Documentos_Lin.
         // Devuelve, además del detalle por fila, la lista de filas válidas ("validos") para
         // que el frontend las reenvíe tal cual al paso de confirmación sin tener que resubir el archivo.
-        public function validar_excel_inventario($filePath) {
+        public function validar_excel_inventario($filePath, $tipo = '', $numdoc = '') {
             $rows = $this->leer_xlsx($filePath);
             if (isset($rows['error'])) {
                 return json_encode(['status' => 'error', 'message' => $rows['error']]);
@@ -451,6 +451,21 @@
             $validos    = [];
             $procesados = [];
 
+            // Producto+lote que el documento YA tiene. La revisión de $procesados solo ve el archivo
+            // actual, así que subir dos veces el mismo Excel entraba completo sin aviso (180-345 quedó
+            // con sus 46 productos dos veces). Igual que los repetidos del archivo, solo se advierte.
+            $enDocumento = [];
+            if ($tipo !== '' && is_numeric($numdoc)) {
+                $stEx = sqlsrv_query($conn,
+                    "SELECT DISTINCT IdProducto, Numero_Lote FROM Documentos_Lin WHERE tipo = ? AND Numero_documento = ?",
+                    array($tipo, (int)$numdoc));
+                while ($stEx && ($ex = sqlsrv_fetch_array($stEx, SQLSRV_FETCH_ASSOC))) {
+                    $loteEx = trim((string)$ex['Numero_Lote']);
+                    $enDocumento[trim((string)$ex['IdProducto']) . '|' . ($loteEx === '' ? '0' : $loteEx)] = true;
+                }
+            }
+            $yaEnDocumento = 0;
+
             for ($i = 1; $i < count($rows); $i++) {
                 $row        = $rows[$i];
                 $idProducto = trim($row[0] ?? '');
@@ -461,6 +476,13 @@
                 if ($idProducto === '' && $cantidad === '') continue; // fila vacía
 
                 $check = $this->validar_fila_inventario($conn, $cnDev, $idProducto, $cantidad, $lote, $procesados);
+
+                // El lote vacío se guarda como '0' (ver confirmar_masiva_excel_inventario).
+                if ($check['ok'] && isset($enDocumento[$idProducto . '|' . ($lote !== '' ? $lote : '0')])) {
+                    $yaEnDocumento++;
+                    $check['warn']    = true;
+                    $check['mensaje'] = 'Ya está en el documento — ' . htmlspecialchars($check['producto']['Producto']);
+                }
 
                 $resultados[] = [
                     'fila'       => $i + 1,
@@ -488,12 +510,13 @@
             $warn  = count(array_filter($resultados, function($r) { return !empty($r['warn']); }));
 
             return json_encode([
-                'status'     => 'ok',
-                'ok'         => $ok,
-                'error'      => $error,
-                'warn'       => $warn,
-                'resultados' => $resultados,
-                'validos'    => $validos
+                'status'        => 'ok',
+                'ok'            => $ok,
+                'error'         => $error,
+                'warn'          => $warn,
+                'yaEnDocumento' => $yaEnDocumento,
+                'resultados'    => $resultados,
+                'validos'       => $validos
             ]);
         }
 
