@@ -78,10 +78,12 @@
                         $output["notas"] = $row["notas"];
                         $output["exportado"] = $row["exportado"];
                         $output["anulado"] = $row["anulado"];
+                        // Fecha real del documento con hora, para mostrarla en el encabezado al consultar
+                        $output["Fecha_Documento"] = $row["Fecha_Hora_Factura"] ? date_format($row["Fecha_Hora_Factura"], "d-m-Y h:i:s A") : '';
                     }
                     echo json_encode($output);
-    
-                }   
+
+                }
         break;
 
         case "consultar_seq":
@@ -465,6 +467,8 @@
                     $output["anulado"] = $row["anulado"];
                     $output["IdVendedor"] = $row["IdVendedor"];
                     $output["Fecha_Hora_Factura"] = $row["Fecha_Hora_Factura"] ? date_format($row["Fecha_Hora_Factura"], "Y-m-d") : date("Y-m-d");
+                    // Fecha real del documento con hora, para mostrarla en el encabezado al consultar
+                    $output["Fecha_Documento"] = $row["Fecha_Hora_Factura"] ? date_format($row["Fecha_Hora_Factura"], "d-m-Y h:i:s A") : '';
                     $output["IdTransportador"] = $row["IdTransportador"];
                     $output["IdVehiculo"] = $row["IdVehiculo"];
                     $output["NroOcTercero"] = trim($row["DescuentoOrdenVenta"] ?? '');

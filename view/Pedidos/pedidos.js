@@ -247,6 +247,7 @@ function listardetalle(tipo, consecutivo){
         $('#tipo').val(data.tipo);
         $('#tipodoc').val(data.TipoDoctos);
         $('#numdoc').val(data.Numero_documento);
+        $('#fecha1').val(data.Fecha_Documento);
         $('#nit1').val(data.nit_Cedula);
         $('#nombre1').val(data.Nombre_Cliente);
         $('#direcc').val(data.codigo_direccion);
