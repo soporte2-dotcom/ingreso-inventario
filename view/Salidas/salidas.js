@@ -1641,6 +1641,7 @@ function listardetalle(tipo, consecutivo){
         // muestra "BORRADOR" en un campo aparte (#numdoc_display), no tocando el valor de #numdoc.
         var esBorrador = parseInt(data.Numero_documento, 10) < 0;
         $('#numdoc').val(data.Numero_documento);
+        $('#fecha1').val(data.Fecha_Documento);
         $('#avisoBorrador').toggle(esBorrador);
         $('#pedido1').val(data.Numero_Docto_Base_2);
         $('#nroOcTercero').val(data.NroOcTercero || '');
